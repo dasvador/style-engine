@@ -66,7 +66,7 @@ async fn evaluate_outfit(
     } else {
         eval.suggestions
             .iter()
-            .map(|s| format!("- {}", s))
+            .map(|s| format!("- [{}] {}", s.suggestion_type, s.reason))
             .collect::<Vec<_>>()
             .join("\n")
     };
@@ -112,6 +112,7 @@ async fn evaluate_outfit(
         score: eval.score,
         verdict: eval.verdict,
         verdict_label,
+        summary: eval.summary,
         problems: eval.problems,
         strengths: eval.strengths,
         suggestions: eval.suggestions,

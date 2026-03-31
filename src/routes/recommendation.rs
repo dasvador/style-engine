@@ -39,11 +39,24 @@ async fn get_recommendation(
     .await
     .map_err(AppError::Internal)?;
 
-    // 3. Get user's clothes
+    // 3. Get user's clothes (with style metadata)
     let clothes = clothing_repo::list_clothing(&state.db).await?;
-    let clothes_names: Vec<String> = clothes
+    let clothes_descriptions: Vec<String> = clothes
         .iter()
-        .map(|c| format!("{} ({})", c.name, c.category))
+        .map(|c| {
+            format!(
+                "{} | 카테고리:{} | 색상:{} | 톤:{} | 색온도:{} | 역할:{} | 스타일:{} | 무게감:{} | 격식:{}",
+                c.name,
+                c.category,
+                c.color.as_deref().unwrap_or("-"),
+                c.tone.as_deref().unwrap_or("-"),
+                c.color_temperature.as_deref().unwrap_or("-"),
+                c.role.as_deref().unwrap_or("-"),
+                c.style.as_deref().unwrap_or("-"),
+                c.weight.as_deref().unwrap_or("-"),
+                c.formality_level.map(|l| l.to_string()).unwrap_or("-".to_string()),
+            )
+        })
         .collect();
 
     // 4. Call OpenAI
@@ -51,7 +64,7 @@ async fn get_recommendation(
         &state.http_client,
         &state.openai_api_key,
         &weather,
-        &clothes_names,
+        &clothes_descriptions,
         body.occasion.as_deref(),
         body.style_preference.as_deref(),
     )

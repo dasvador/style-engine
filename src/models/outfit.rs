@@ -33,6 +33,18 @@ impl SlotKind {
             SlotKind::Bag => "가방",
         }
     }
+
+    /// 슬롯별 기대 역할
+    pub fn expected_roles(&self, has_outer: bool) -> &'static [&'static str] {
+        match self {
+            SlotKind::Top if has_outer => &["밥", "연결템"],
+            SlotKind::Top => &["밥", "반찬", "약한반찬", "연결템"],
+            SlotKind::Bottom => &["밥", "구조템", "연결템"],
+            SlotKind::Outer => &["반찬", "약한반찬", "구조템", "연결템"],
+            SlotKind::Shoes => &["연결템", "구조템", "밥"],
+            SlotKind::Bag => &["연결템", "구조템", "밥"],
+        }
+    }
 }
 
 /// A clothing item placed in an outfit slot
@@ -63,6 +75,8 @@ pub enum IssueCode {
     BagConflict,
     StyleConflict,
     FormalitySituationMismatch,
+    SlotRoleMismatch,
+    WorldOvermatching,
 }
 
 /// A single rule violation
@@ -93,9 +107,9 @@ pub enum Verdict {
 impl Verdict {
     pub fn from_score(score: i32) -> Self {
         match score {
-            90..=100 => Verdict::Great,
-            70..=89 => Verdict::Good,
-            50..=69 => Verdict::Okay,
+            88..=100 => Verdict::Great,
+            73..=87 => Verdict::Good,
+            55..=72 => Verdict::Okay,
             _ => Verdict::Awkward,
         }
     }
@@ -110,13 +124,26 @@ impl Verdict {
     }
 }
 
+/// Structured suggestion for Flutter rendering
+#[derive(Debug, Serialize)]
+pub struct StructuredSuggestion {
+    #[serde(rename = "type")]
+    pub suggestion_type: String,
+    pub reason_code: IssueCode,
+    pub reason: String,
+    pub recommended_roles: Vec<String>,
+    pub recommended_colors: Vec<String>,
+    pub recommended_examples: Vec<String>,
+}
+
 /// Result of rule-based evaluation (before LLM explanation)
 pub struct EvaluationResult {
     pub score: i32,
     pub verdict: Verdict,
     pub problems: Vec<RuleProblem>,
     pub strengths: Vec<OutfitStrength>,
-    pub suggestions: Vec<String>,
+    pub suggestions: Vec<StructuredSuggestion>,
+    pub summary: String,
 }
 
 /// Full response returned to client
@@ -125,8 +152,9 @@ pub struct OutfitEvaluateResponse {
     pub score: i32,
     pub verdict: Verdict,
     pub verdict_label: String,
+    pub summary: String,
     pub problems: Vec<RuleProblem>,
     pub strengths: Vec<OutfitStrength>,
-    pub suggestions: Vec<String>,
+    pub suggestions: Vec<StructuredSuggestion>,
     pub explanation: String,
 }
