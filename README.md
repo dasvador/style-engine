@@ -1,0 +1,216 @@
+# Style Engine
+
+추천이 아닌 판단을 제공하는 AI 코디 평가 엔진
+
+> "이렇게 입으세요"가 아니라 "왜 좋고, 왜 별로인지" 설명하는 서비스
+
+## 핵심 기능
+
+- **2-Pass RAG 의류 인식** — 이미지 업로드 → Vision AI 서술 → 임베딩 검색 → 정밀 분석
+- **스타일 태깅** — 의류 등록 시 tone, role, color_temperature 등 11개 메타데이터 자동 추출
+- **코디 평가 엔진** — 10개 규칙 기반 점수화 + 강점/문제점/개선안 제공
+- **설명 가능한 AI** — LLM이 평가 결과를 자연어로 설명 (밥/반찬 비유 활용)
+- **날씨 기반 추천** — 현재 날씨 + 옷장 기반 코디 추천
+
+## Tech Stack
+
+| 구분 | 기술 |
+|------|------|
+| Language | Rust (Edition 2024) |
+| Framework | Axum + Tokio |
+| Database | MySQL (sqlx) |
+| Vision AI | OpenAI gpt-4o-mini |
+| Embedding | fastembed (multilingual-e5-small, 384차원, ONNX 로컬) |
+| Weather | Open-Meteo API |
+
+## 아키텍처
+
+### 2-Pass RAG Flow
+
+```
+이미지 업로드
+    ↓
+Pass 1: Vision API → 텍스트 서술 생성
+    ↓
+fastembed → 384차원 벡터 → 레퍼런스 코사인 유사도 검색 (인메모리)
+    ↓
+Pass 2: Vision API + 레퍼런스 컨텍스트 → 정밀 분석 + 스타일 태그 추출
+    ↓
+DB 저장 (의류 정보 + 11개 스타일 메타데이터 + 시즌 + 텍스처 월드)
+```
+
+### 코디 평가 Flow
+
+```
+코디 입력 (상의/하의/아우터/신발/가방 + 상황)
+    ↓
+Style Engine: 10개 규칙 평가 → 점수 + 강점 + 문제점
+    ↓
+LLM Explanation: 자연어 설명 생성
+    ↓
+응답: score, verdict, strengths, problems, suggestions, explanation
+```
+
+## 스타일 메타데이터
+
+의류 등록 시 자동으로 추출되는 11개 속성:
+
+| 속성 | 값 | 설명 |
+|------|-----|------|
+| tone | 밝음/중간/어두움 | 전체 밝기 |
+| saturation | 낮음/중간/높음 | 색상 채도 |
+| style | 베이직/워크/밀리터리/포멀/스포츠 | 대표 스타일 |
+| weight | 가벼움/중간/무거움 | 시각적 무게감 |
+| role | 밥/반찬/약한반찬/연결템/구조템 | 코디에서의 역할 |
+| color_temperature | warm/cool/neutral | 색온도 |
+| versatility | universal/flexible/situational/statement | 활용도 |
+| statement_level | 1~5 | 존재감 |
+| formality_level | 1~5 | 격식 수준 |
+| texture_worlds | workwear/military/tailoring/sweat/outdoor/minimal | 텍스처 월드 (복수) |
+| seasons | 봄/여름/가을/겨울 | 계절 (복수) |
+
+## 평가 규칙 (10개)
+
+| 규칙 | Issue Code | 감점 |
+|------|-----------|------|
+| 반찬(포인트) 과다 | TooManyAccents | -20 |
+| 밥(베이스) 부재 | LackOfStructure | -10 |
+| 밝기 불균형 | LackOfContrast | -15 |
+| 톤/채도 대비 부족 | LackOfContrast | -15 |
+| 자연톤(warm) 과다 | TooMuchNaturalTone | -12 |
+| 스타일 충돌 | StyleConflict | -20 |
+| 텍스처 월드 충돌 | TextureWorldConflict | -15 |
+| 강한 이너 | StrongInner | -10 |
+| 가방 부조화 | BagConflict | -10 |
+| 격식-상황 미스매치 | FormalitySituationMismatch | -12 |
+
+**Verdict**: 90+ 훌륭해요 / 70+ 좋아요 / 50+ 괜찮아요 / ~49 아쉬워요
+
+## API Endpoints
+
+### 의류
+
+| Method | Path | 설명 |
+|--------|------|------|
+| POST | `/api/clothes/upload` | 이미지 → RAG 분석 → 자동 등록 + 스타일 태깅 |
+| POST | `/api/clothes` | 수동 등록 |
+| GET | `/api/clothes` | 전체 목록 |
+| GET | `/api/clothes/{id}` | 단일 조회 |
+| PUT | `/api/clothes/{id}` | 수정 |
+| DELETE | `/api/clothes/{id}` | 삭제 |
+
+### 코디 평가
+
+| Method | Path | 설명 |
+|--------|------|------|
+| POST | `/api/outfit/evaluate` | 코디 평가 (점수 + 강점 + 문제 + 설명) |
+
+```json
+// Request
+{
+  "top": "clothing-id",
+  "bottom": "clothing-id",
+  "outer": "clothing-id",
+  "situation": "출근"
+}
+
+// Response
+{
+  "score": 88,
+  "verdict": "Good",
+  "verdict_label": "좋아요",
+  "strengths": [{ "rule": "밝기 밸런스", "detail": "밝음과 어두움의 대비가 잘 잡혀있어..." }],
+  "problems": [{ "code": "FormalitySituationMismatch", "deduction": 12, "detail": "출근에 비해 너무 캐주얼..." }],
+  "suggestions": ["상황에 맞게 격식도를 올려보세요"],
+  "explanation": "LLM이 생성한 자연어 설명..."
+}
+```
+
+### 레퍼런스 (RAG 지식 베이스)
+
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | `/api/references` | 전체 목록 |
+| POST | `/api/references` | 추가 (자동 임베딩) |
+| PUT | `/api/references/{id}` | 수정 (재임베딩) |
+| DELETE | `/api/references/{id}` | 삭제 |
+
+### 추천 / 날씨 / 기타
+
+| Method | Path | 설명 |
+|--------|------|------|
+| POST | `/api/recommendation` | 날씨 기반 코디 추천 |
+| GET | `/api/weather` | 현재 날씨 |
+| PUT | `/api/region` | 지역 설정 |
+| GET | `/api/health` | 헬스 체크 |
+
+## 프로젝트 구조
+
+```
+src/
+├── main.rs                     # 서버 초기화, 상태 구성
+├── errors.rs                   # 에러 타입
+├── models/
+│   ├── clothing.rs             # 의류 모델 + 스타일 태그
+│   ├── outfit.rs               # 코디 평가 모델 (Verdict, IssueCode 등)
+│   ├── recommendation.rs       # 추천 모델
+│   ├── reference.rs            # RAG 레퍼런스 모델
+│   ├── weather.rs              # 날씨 모델
+│   └── region.rs               # 지역 설정
+├── services/
+│   ├── style_engine.rs         # 10개 규칙 엔진 + 강점 감지
+│   ├── openai.rs               # Vision API (2-Pass) + 코디 설명 생성
+│   ├── embedding.rs            # fastembed 래퍼, 캐시, 검색
+│   └── weather.rs              # Open-Meteo API
+├── routes/
+│   ├── outfit.rs               # POST /api/outfit/evaluate
+│   ├── clothes.rs              # 의류 CRUD + 이미지 업로드
+│   ├── reference.rs            # 레퍼런스 CRUD
+│   ├── recommendation.rs       # 코디 추천
+│   └── ...
+└── db/
+    ├── clothing_repo.rs        # 의류 + 시즌 + 텍스처월드 DB
+    ├── reference_repo.rs       # 레퍼런스 DB
+    └── region_repo.rs          # 지역 DB
+
+migrations/                     # MySQL 마이그레이션 (7개)
+```
+
+## 시작하기
+
+### 사전 요구사항
+
+- Rust (Edition 2024)
+- MySQL 8.0+
+- OpenAI API Key
+
+### 설정
+
+```bash
+# 환경변수
+cp .env.example .env
+# .env 파일에서 DATABASE_URL, OPENAI_API_KEY 설정
+
+# DB 생성
+mysql -u root -e "CREATE DATABASE rust_web_app"
+
+# 실행 (마이그레이션 자동 + 시드 데이터 자동 + 임베딩 모델 자동 다운로드)
+cargo run
+```
+
+서버가 `http://localhost:3000`에서 시작됩니다.
+
+### 첫 실행 시
+
+1. 임베딩 모델 (~80MB) 자동 다운로드 → `.fastembed_cache/`에 캐시
+2. DB 마이그레이션 자동 실행
+3. 밀리터리/빈티지 레퍼런스 13종 자동 시드
+4. 레퍼런스 임베딩 자동 생성 + 인메모리 캐시 로딩
+
+## 설계 원칙
+
+- **로컬 임베딩**: API 비용 없이 한국어 임베딩 (fastembed ONNX)
+- **인메모리 캐시**: 레퍼런스 검색 시 DB 조회 없이 코사인 유사도 계산
+- **규칙 우선**: 점수화는 결정론적 규칙, LLM은 설명 생성에만 사용
+- **설명 가능**: 모든 감점/강점에 이유와 개선안 제공
+- **점진적 확장**: 기존 코드 유지하면서 레이어 추가 방식
