@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS clothing_reference (
+    id VARCHAR(36) PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    era VARCHAR(100),
+    style VARCHAR(100),
+    description TEXT NOT NULL,
+    embedding JSON,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);

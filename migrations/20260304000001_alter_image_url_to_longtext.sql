@@ -1,0 +1,1 @@
+ALTER TABLE clothing MODIFY COLUMN image_url LONGTEXT;

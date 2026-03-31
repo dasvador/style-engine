@@ -1,0 +1,128 @@
+use chrono::NaiveDateTime;
+use serde::{Deserialize, Serialize};
+use validator::Validate;
+
+/// DB row for clothing table
+#[derive(Debug, Clone, sqlx::FromRow, Serialize)]
+pub struct Clothing {
+    pub id: String,
+    pub name: String,
+    pub category: String,
+    pub color: Option<String>,
+    pub thickness: String,
+    pub image_url: Option<String>,
+    pub tone: Option<String>,
+    pub saturation: Option<String>,
+    pub style: Option<String>,
+    pub weight: Option<String>,
+    pub role: Option<String>,
+    pub color_temperature: Option<String>,
+    pub versatility: Option<String>,
+    pub statement_level: Option<i8>,
+    pub formality_level: Option<i8>,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+}
+
+/// Request body for creating clothing
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreateClothingRequest {
+    #[validate(length(min = 1, max = 100))]
+    pub name: String,
+    #[validate(length(min = 1, max = 50))]
+    pub category: String,
+    pub color: Option<String>,
+    #[validate(length(min = 1, max = 20))]
+    pub thickness: Option<String>,
+    pub image_url: Option<String>,
+    pub seasons: Option<Vec<String>>,
+    pub tone: Option<String>,
+    pub saturation: Option<String>,
+    pub style: Option<String>,
+    pub weight: Option<String>,
+    pub role: Option<String>,
+    pub color_temperature: Option<String>,
+    pub versatility: Option<String>,
+    pub statement_level: Option<i8>,
+    pub formality_level: Option<i8>,
+    pub texture_worlds: Option<Vec<String>>,
+}
+
+/// Request body for updating clothing
+#[derive(Debug, Deserialize)]
+pub struct UpdateClothingRequest {
+    pub name: Option<String>,
+    pub category: Option<String>,
+    pub color: Option<String>,
+    pub thickness: Option<String>,
+    pub image_url: Option<String>,
+    pub seasons: Option<Vec<String>>,
+    pub tone: Option<String>,
+    pub saturation: Option<String>,
+    pub style: Option<String>,
+    pub weight: Option<String>,
+    pub role: Option<String>,
+    pub color_temperature: Option<String>,
+    pub versatility: Option<String>,
+    pub statement_level: Option<i8>,
+    pub formality_level: Option<i8>,
+    pub texture_worlds: Option<Vec<String>>,
+}
+
+/// Response from OpenAI Vision API clothing analysis
+#[derive(Debug, Deserialize)]
+pub struct VisionAnalysisResult {
+    pub is_clothing: bool,
+    pub name: Option<String>,
+    pub category: Option<String>,
+    pub color: Option<String>,
+    pub thickness: Option<String>,
+    pub seasons: Option<Vec<String>>,
+    pub rejection_reason: Option<String>,
+    pub tone: Option<String>,
+    pub saturation: Option<String>,
+    pub style: Option<String>,
+    pub weight: Option<String>,
+    pub role: Option<String>,
+    pub color_temperature: Option<String>,
+    pub versatility: Option<String>,
+    pub statement_level: Option<i8>,
+    pub formality_level: Option<i8>,
+    pub texture_worlds: Option<Vec<String>>,
+}
+
+/// Request body for image-based clothing upload
+#[derive(Debug, Deserialize)]
+pub struct ImageUploadRequest {
+    pub image_data: String,
+}
+
+/// Pass 1 result from Vision API: simple description of the clothing item
+#[derive(Debug, Deserialize)]
+pub struct Pass1Result {
+    pub description: String,
+}
+
+/// Response DTO with seasons included
+#[derive(Debug, Serialize)]
+pub struct ClothingResponse {
+    pub id: String,
+    pub name: String,
+    pub category: String,
+    pub color: Option<String>,
+    pub thickness: String,
+    pub image_url: Option<String>,
+    pub seasons: Vec<String>,
+    pub tone: Option<String>,
+    pub saturation: Option<String>,
+    pub style: Option<String>,
+    pub weight: Option<String>,
+    pub role: Option<String>,
+    pub color_temperature: Option<String>,
+    pub versatility: Option<String>,
+    pub statement_level: Option<i8>,
+    pub formality_level: Option<i8>,
+    pub texture_worlds: Vec<String>,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+}
