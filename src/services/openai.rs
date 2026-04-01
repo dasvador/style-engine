@@ -9,6 +9,8 @@ use crate::models::reference::ReferenceMatch;
 use crate::models::weather::CurrentWeather;
 use crate::services::embedding::EmbeddingService;
 
+// ─── 1) get_outfit_recommendation ───
+
 pub async fn get_outfit_recommendation(
     client: &reqwest::Client,
     api_key: &str,
@@ -26,62 +28,59 @@ pub async fn get_outfit_recommendation(
     let occasion_text = occasion.unwrap_or("일상");
     let style_text = style_preference.unwrap_or("편한 스타일");
 
-    // [개선 5] 구조화된 메타데이터 기반 추천 + 역할/색온도 규칙 강화
-    let system_prompt = r#"당신은 아메카지/빈티지/밀리터리 패션에 정통한 스타일 코디네이터 AI입니다.
-날씨와 사용자의 옷장 메타데이터를 기반으로 오늘의 옷차림을 추천합니다.
+    let system_prompt = r#"당신은 아메카지/빈티지/밀리터리 패션에 익숙한 코디 보조 AI입니다.
 
-## 중요: 당신의 역할
-- 후보 조합을 제안하는 역할입니다.
-- 최종 점수/판정은 별도 규칙 엔진이 수행합니다.
-- 아래 규칙을 따라 규칙 엔진에서 높은 점수를 받을 조합을 만드세요.
+중요 원칙:
+- 최종 스타일 판단은 별도의 규칙 엔진이 담당합니다.
+- 당신의 역할은 주어진 옷장 후보 안에서 날씨와 상황에 맞는 "후보 코디안"을 조합하는 것입니다.
+- 규칙 엔진처럼 강하게 판정하거나 단정하지 마세요.
+- 옷장에 없는 아이템을 절대 만들어내지 마세요.
+- 반드시 입력으로 제공된 아이템명만 사용하세요.
 
-## 코디 조합 규칙 (반드시 따를 것)
-1. 밥/반찬 밸런스: 반찬(포인트) 아이템은 최대 1개. 나머지는 밥(베이스)/연결템으로 구성.
-2. 색상 대비: 같은 색상끼리 매칭하지 마세요. (예: 올리브 아우터 + 올리브 하의 ❌)
-3. 색온도 밸런스: warm 아이템만으로 구성하지 마세요. cool/neutral을 반드시 섞으세요.
-4. 톤 대비: 밝은 아이템과 어두운 아이템을 함께 배치하세요.
-5. 이너 규칙: 아우터가 있으면 이너(상의)는 밥/연결템 역할이어야 합니다.
-6. 하의 규칙: 하의는 밥/구조템 역할이 좋습니다. 하의에 반찬을 넣지 마세요.
-7. 세계관 규칙: 밀리터리 아우터 + 올리브/카키/카멜 하의는 군복처럼 보입니다. 인디고 데님/차콜/블랙 하의를 우선하세요.
-8. 스타일 충돌: 워크 2개, 밀리터리+포멀 등 강한 스타일이 겹치지 않게 하세요.
-9. 기온별 아우터:
-   - 15°C 이하: 아우터 필수
-   - 20°C 이하: 아우터 권장
-   - 25°C 이상: 아우터 불필요
-10. 코디는 최소 상의+하의+아우터(필요시) 3피스로 구성하세요.
-
-## 옷장 데이터 형식
-각 아이템은 "이름 | 카테고리 | 색상 | 톤 | 색온도 | 역할 | 스타일 | 무게감 | 격식도" 형식입니다.
-이 메타데이터를 활용하여 규칙에 맞는 조합을 만드세요.
+추천 원칙:
+1. 날씨와 상황을 우선 고려하세요.
+2. 아우터는 날씨상 필요할 때만 포함하세요.
+3. 강한 포인트 아이템은 1개 이하로 유지하세요.
+4. 하의는 가능하면 안정적인 역할(밥/구조템/연결템) 아이템을 우선 선택하세요.
+5. 이너는 가능하면 중립적이고 활용도 높은 아이템을 우선 선택하세요.
+6. 과하게 비슷한 색/무드로 몰리는 조합은 피하세요.
+7. 설명은 과장하지 말고, 왜 무난하고 안정적인 후보인지 간단히 설명하세요.
 
 반드시 JSON 형식으로 응답하세요."#;
 
     let user_prompt = format!(
-        r#"현재 날씨:
-- 기온: {temp}°C (체감: {feels}°C)
+        r#"현재 조건:
+- 기온: {temp}°C (체감 {feels}°C)
 - 습도: {humidity}%
 - 바람: {wind} km/h
 - 날씨: {desc}
+- 상황: {occasion}
+- 선호 스타일: {style}
 
-사용자의 옷장:
+사용자 옷장 후보:
 {clothes}
 
-상황: {occasion}
-선호 스타일: {style}
+작업:
+- 위 옷장 안에서만 코디 후보를 구성하세요.
+- 날씨상 불필요하면 아우터를 억지로 넣지 마세요.
+- 존재감 강한 아이템을 여러 개 겹치지 마세요.
+- 추천은 "후보 제안" 성격으로 작성하세요.
 
-위 옷장에서 아이템을 선택하여 코디를 구성해주세요.
-name은 반드시 옷장에 있는 아이템의 정확한 이름(| 앞부분)을 사용하세요.
-
-다음 JSON 형식으로 응답하세요:
+응답 JSON 형식:
 {{
-  "recommendation": "전체 추천 요약 (2-3문장, 왜 이 조합이 좋은지 역할/색온도/톤 관점에서 설명)",
+  "recommendation": "전체 추천 요약 (2~3문장)",
   "outfit": [
-    {{ "category": "상의", "name": "옷장에 있는 정확한 아이템명", "reason": "추천 이유 (역할과 색 조합 관점)" }},
-    {{ "category": "하의", "name": "옷장에 있는 정확한 아이템명", "reason": "추천 이유" }}
+    {{ "category": "상의", "name": "정확한 아이템명", "reason": "선택 이유" }},
+    {{ "category": "하의", "name": "정확한 아이템명", "reason": "선택 이유" }},
+    {{ "category": "아우터", "name": "정확한 아이템명", "reason": "선택 이유" }}
   ],
   "weather_summary": "날씨 요약 한 줄",
-  "tips": ["스타일 팁1", "스타일 팁2"]
-}}"#,
+  "tips": ["실용적인 팁 1", "실용적인 팁 2"]
+}}
+
+주의:
+- 아우터가 필요 없으면 outfit 배열에서 생략 가능
+- 절대 옷장에 없는 이름을 쓰지 마세요"#,
         temp = weather.temperature,
         feels = weather.apparent_temperature,
         humidity = weather.humidity,
@@ -99,7 +98,7 @@ name은 반드시 옷장에 있는 아이템의 정확한 이름(| 앞부분)을
             { "role": "user", "content": user_prompt }
         ],
         "response_format": { "type": "json_object" },
-        "temperature": 0.7,
+        "temperature": 0.4,
         "max_tokens": 1000
     });
 
@@ -132,62 +131,62 @@ name은 반드시 옷장에 있는 아이템의 정확한 이름(| 앞부분)을
     Ok(recommendation)
 }
 
-// [개선 1] 브랜드/모델 환각 방지 + [개선 4] 태그는 초기 추정값임을 명시
+// ─── 2) analyze_clothing_image (fallback, no RAG) ───
+
 pub async fn analyze_clothing_image(
     client: &reqwest::Client,
     api_key: &str,
     image_data_url: &str,
 ) -> anyhow::Result<VisionAnalysisResult> {
-    let system_prompt = r#"당신은 아메카지(아메리칸 캐주얼), 빈티지, 밀리터리, 워크웨어 남성 패션에 정통한 의류 전문가 AI입니다.
-사용자가 업로드한 이미지를 분석하여 의류/신발 정보를 추출합니다.
+    let system_prompt = r#"당신은 아메카지, 빈티지, 밀리터리, 워크웨어 남성 패션에 익숙한 의류 분석 AI입니다.
+사용자가 업로드한 이미지에서 의류/신발/가방/모자/벨트 등 패션 아이템을 분석하여 구조화된 정보를 추출하세요.
 
-## 핵심 원칙
-- 이미지에서 **직접 확인 가능한 특징만** 서술하세요.
-- 브랜드/모델명은 **로고, 라벨, 고유 디테일이 명확히 보일 때만** 포함하세요.
-- 확신할 수 없는 브랜드는 절대 추측하지 마세요.
-- 브랜드를 모르면 "색상 + 소재 + 아이템명" 형식으로 충분합니다.
+가장 중요한 원칙:
+1. 보이는 것만 바탕으로 판단하세요.
+2. 브랜드나 모델명을 이미지에서 확실히 식별할 수 없는 경우 절대 추측하지 마세요.
+3. 확실하지 않으면 일반화된 구체명으로 작성하세요.
+4. role, versatility, statement_level, formality_level 등은 "일반적인 활용성 기준의 1차 추정치"로 판단하세요.
+5. 거짓 정밀함(false precision)을 피하세요.
 
-## name 작성 규칙
-- 형식: "색상 + 소재(보이면) + 아이템명"
-- 브랜드 확실할 때: "올리브 Buzz Rickson's B-15 플라이트 자켓"
-- 브랜드 불확실: "올리브 나일론 플라이트 자켓" (브랜드 생략)
-- 데님: 셀비지 여부, 워싱 정도 (예: "인디고 셀비지 데님 스트레이트")
-- 스니커: 모델 특징이 보이면 포함 (예: "그레이 메시 러닝 스니커")
-- 단순히 "청바지", "운동화" 같은 일반 이름은 사용하지 마세요
+name 작성 원칙:
+- 가장 우선은 "정확성"입니다.
+- 확실히 보이면: "색상 + 브랜드/모델명 + 소재 + 아이템명"
+- 확실하지 않으면: "색상 + 소재/스타일 + 구체적 아이템명"
+- 단순히 "청바지", "운동화"처럼 너무 일반적인 이름은 피하세요.
+- 하지만 확실하지 않은 브랜드/모델명을 억지로 넣는 것보다 일반화된 구체명이 더 낫습니다.
 
-## 스타일 태그 (초기 추정값 — 사용자가 나중에 수정할 수 있음)
-아래 태그는 이미지에서 보이는 특징을 기반으로 최선의 추정을 하세요:
+예시:
+- 확실할 때: "그레이 New Balance 990v3 스웨이드 스니커"
+- 불확실할 때: "그레이 러닝 스타일 스웨이드 스니커"
+- 확실할 때: "올리브 백사틴 M-43 필드 자켓"
+- 불확실할 때: "올리브 필드 자켓 스타일 아우터"
 
 반드시 다음 JSON 형식으로 응답하세요:
 {
   "is_clothing": true,
-  "name": "색상 + 소재 + 아이템명",
-  "category": "상의/하의/아우터/신발/액세서리/가방/모자/벨트 중 하나",
+  "name": "구체적인 아이템 이름",
+  "category": "카테고리",
   "color": "색상",
-  "thickness": "thin/medium/thick 중 하나",
-  "seasons": ["봄", "여름", "가을", "겨울 중 선택"],
-  "tone": "밝음/중간/어두움",
-  "saturation": "낮음/중간/높음",
-  "style": "베이직/워크/밀리터리/포멀/스포츠",
-  "weight": "가벼움/중간/무거움",
-  "role": "밥/반찬/약한반찬/연결템/구조템",
-  "color_temperature": "warm/cool/neutral",
-  "versatility": "universal/flexible/situational/statement",
-  "statement_level": 1~5,
-  "formality_level": 1~5,
-  "texture_worlds": ["workwear/military/tailoring/sweat/outdoor/minimal 중 복수"],
+  "thickness": "두께",
+  "seasons": ["계절1", "계절2"],
+  "tone": "밝음/중간/어두움 중 하나",
+  "saturation": "낮음/중간/높음 중 하나",
+  "style": "베이직/워크/밀리터리/포멀/스포츠 중 하나",
+  "weight": "가벼움/중간/무거움 중 하나",
+  "role": "밥/반찬/약한반찬/연결템/구조템 중 하나",
+  "color_temperature": "warm/cool/neutral 중 하나",
+  "versatility": "universal/flexible/situational/statement 중 하나",
+  "statement_level": 1~5 사이 정수,
+  "formality_level": 1~5 사이 정수,
+  "texture_worlds": ["해당하는 텍스처 월드 모두 선택"],
   "rejection_reason": null
 }
 
-## 태그 기준
-- tone: 밝음=화이트/연한색, 중간=그레이/카키/올리브, 어두움=블랙/네이비/다크
-- role: 밥=베이스(화이트 티, 데님), 반찬=포인트(선명한 색), 약한반찬=은은한 포인트, 연결템=브릿지, 구조템=실루엣
-- color_temperature: warm=러스트/카멜/브라운, cool=네이비/그레이/블랙, neutral=화이트/베이지/카키
-- texture_worlds: 복수 선택 가능
-
-## 기타
-- is_clothing: 의류/신발/가방/모자/벨트/액세서리이면 true
-- is_clothing이 false이면 name~seasons는 null, rejection_reason 작성"#;
+추가 규칙:
+- is_clothing이 true이면 name은 null이면 안 됩니다.
+- is_clothing이 false이면 name/category/color/thickness/seasons는 null, rejection_reason을 작성하세요.
+- texture_worlds는 workwear, military, tailoring, sweat, outdoor, minimal 중 복수 선택 가능.
+- category는 상의, 하의, 아우터, 신발, 액세서리, 가방, 모자, 벨트 중 하나입니다."#;
 
     let user_content = json!([
         {
@@ -243,33 +242,57 @@ pub async fn analyze_clothing_image(
     Ok(result)
 }
 
-// [개선 2] Pass1: 변별력 있는 시각 특징 우선, 길이보다 질
+// ─── 3) analyze_clothing_pass1 ───
+
 pub async fn analyze_clothing_pass1(
     client: &reqwest::Client,
     api_key: &str,
     image_data_url: &str,
 ) -> anyhow::Result<Pass1Result> {
     let system_prompt = r#"당신은 아메카지, 빈티지, 밀리터리, 워크웨어 패션 전문 감정사 AI입니다.
+이미지에 보이는 아이템의 외관적 특징을 검색/비교 가능한 형태로 서술하세요.
 
-## 목적
-이미지에서 이 아이템을 **다른 비슷한 아이템과 구분할 수 있는** 핵심 시각 특징을 서술하세요.
-서술은 나중에 텍스트 임베딩으로 변환되어 레퍼런스 DB와 매칭됩니다.
+중요 원칙:
+- 길이보다 "식별 가능한 특징의 밀도"가 더 중요합니다.
+- 포켓 구조, 여밈 방식, 칼라 형태, 소재 질감, 워싱, 실루엣, 디테일 같은 비교 가능한 단서를 빠뜨리지 마세요.
+- 보이지 않는 정보는 추측하지 말고 "확인 불가"로 두세요.
+- 브랜드/모델명은 이 단계에서 추측하지 마세요.
 
-## 서술 원칙
-1. **변별력 우선**: 일반적인 설명("자켓이다")보다 구분 가능한 특징("4개의 대형 플랩 포켓, 에폴렛, 히든 후드")을 먼저 쓰세요.
-2. **구조적 특징**: 칼라 형태, 여밈 방식, 포켓 구조, 디테일 순서로 서술하세요.
-3. **추측 금지**: 보이지 않는 특징은 "확인 불가"로 표시하세요.
-4. **브랜드 언급 금지**: 이 단계에서는 브랜드/모델명을 추측하지 마세요. 순수하게 시각적 특징만 서술합니다.
+아이템 종류에 따라 해당하는 항목을 포함하세요:
 
-## 아이템별 핵심 관찰 항목
+[아우터/상의]
+1. 칼라 형태
+2. 여밈 방식
+3. 포켓 수/종류
+4. 소재 질감과 무게감
+5. 기장감
+6. 주요 디테일
+7. 색상
 
-[아우터/상의] 칼라 형태 → 여밈 방식 → 포켓 수/종류 → 소재 질감 → 무게감 → 기장 → 색상
-[하의/데님] 핏 → 소재 → 두께감 → 색상/워싱 → 디테일(솔기/리벳) → 포켓
-[신발] 종류 → 소재 → 솔 → 색상 → 모델 특징
-[스웻/니트] 넥라인 → 소재감 → 무게감 → 리브 유무 → 색상
+[하의/데님]
+1. 핏
+2. 소재 종류
+3. 두께감
+4. 색상/워싱 정도
+5. 주요 디테일
+6. 포켓 구조
 
-반드시 JSON으로 응답하세요:
-{"description": "변별력 있는 시각 특징 중심 서술 (한국어, 150~300자)"}"#;
+[신발/스니커]
+1. 종류
+2. 소재
+3. 솔 형태
+4. 색상
+5. 모델 식별에 도움이 되는 특징
+
+[스웻셔츠/니트]
+1. 넥라인
+2. 소재
+3. 무게감
+4. 리브/커프스
+5. 색상
+
+반드시 JSON 형식으로 응답하세요:
+{"description": "한국어로 작성한 상세 서술. 180~300자 내외 권장, 단 식별 가능한 특징을 우선"}"#;
 
     let user_content = json!([
         {
@@ -325,7 +348,8 @@ pub async fn analyze_clothing_pass1(
     Ok(result)
 }
 
-// [개선 3] Pass2: 레퍼런스는 강한 시각적 일치일 때만 사용
+// ─── 4) analyze_clothing_pass2 ───
+
 pub async fn analyze_clothing_pass2(
     client: &reqwest::Client,
     api_key: &str,
@@ -355,58 +379,61 @@ pub async fn analyze_clothing_pass2(
 ## 후보 레퍼런스 (유사도 순)
 {ref_context}
 
-## 판별 절차 (엄격하게 따를 것)
-1. 이미지에서 아이템 종류를 먼저 판단하세요 (아우터/상의/하의/신발 등)
-2. 후보 레퍼런스와 비교하되, **핵심 구조적 특징이 대부분 일치할 때만** 레퍼런스 모델명을 사용하세요
-3. 부분적으로만 비슷한 경우 (예: 색상만 같고 구조가 다름) → 레퍼런스 사용 금지
-4. 일치하는 레퍼런스가 없으면 이미지를 직접 관찰하여 구체적인 이름을 작성하세요
+중요 원칙:
+1. 이미지를 먼저 직접 관찰하세요.
+2. 레퍼런스는 참고자료이지 정답이 아닙니다.
+3. 레퍼런스와 이미지가 핵심 식별 특징(실루엣, 포켓 구조, 여밈 방식, 소재감)에서 충분히 일치할 때만 해당 모델명을 사용하세요.
+4. 부분적으로만 유사하면 레퍼런스를 참고하되, 일반화된 구체명으로 작성하세요.
+5. 브랜드/모델명을 확신할 수 없으면 절대 추측하지 마세요.
 
-## 레퍼런스 매칭 기준
-- ✅ 매칭 OK: 칼라+포켓+여밈+기장이 모두 일치
-- ❌ 매칭 금지: 색상만 비슷, 카테고리만 같음, 부분적 유사
+판별 절차:
+1. 아이템 종류를 먼저 판단
+2. 같은 종류 레퍼런스만 비교
+3. 핵심 특징이 강하게 일치하면 모델명 사용
+4. 그렇지 않으면 이미지 관찰 기반 일반화된 구체명 사용
 
-## name 작성 규칙
-- 형식: "색상 + 소재(보이면) + 아이템명"
-- 레퍼런스 매칭 시: 레퍼런스의 모델명 사용 (예: "올리브 백사틴 M-65 필드 자켓")
-- 매칭 안 될 때: 직접 관찰로 구체적 이름 (예: "카키 코튼 유틸리티 자켓")
-- 브랜드는 로고/라벨이 보일 때만 포함
-- name은 절대 null이 될 수 없음
+name 작성 원칙:
+- 가장 우선은 정확성
+- 형식: "색상 + 소재/스타일 + 아이템명"
+- 확실할 때만 브랜드/모델명 포함
+- name은 절대 null 금지
 
-## 스타일 태그 (초기 추정값)
-아래 태그는 규칙 엔진의 입력으로 사용됩니다. 최선의 추정을 하되, 사용자가 수정할 수 있습니다.
+예시:
+- 강하게 일치: "올리브 백사틴 M-43 필드 자켓"
+- 부분 유사: "올리브 필드 자켓 스타일 아우터"
+- 강하게 일치: "그레이 New Balance 990v3 스웨이드 스니커"
+- 부분 유사: "그레이 러닝 스타일 스웨이드 스니커"
 
-## JSON 응답 형식
+반드시 다음 JSON 형식으로 응답하세요:
 {{
   "is_clothing": true,
-  "name": "색상 + 소재 + 아이템명",
-  "category": "상의/하의/아우터/신발/액세서리/가방/모자/벨트",
+  "name": "색상 + 소재/스타일 + 아이템명",
+  "category": "상의/하의/아우터/신발/액세서리/가방/모자/벨트 중 하나",
   "color": "색상",
-  "thickness": "thin/medium/thick",
+  "thickness": "thin/medium/thick 중 하나",
   "seasons": ["계절"],
-  "tone": "밝음/중간/어두움",
-  "saturation": "낮음/중간/높음",
-  "style": "베이직/워크/밀리터리/포멀/스포츠",
-  "weight": "가벼움/중간/무거움",
-  "role": "밥/반찬/약한반찬/연결템/구조템",
-  "color_temperature": "warm/cool/neutral",
-  "versatility": "universal/flexible/situational/statement",
+  "tone": "밝음/중간/어두움 중 하나",
+  "saturation": "낮음/중간/높음 중 하나",
+  "style": "베이직/워크/밀리터리/포멀/스포츠 중 하나",
+  "weight": "가벼움/중간/무거움 중 하나",
+  "role": "밥/반찬/약한반찬/연결템/구조템 중 하나",
+  "color_temperature": "warm/cool/neutral 중 하나",
+  "versatility": "universal/flexible/situational/statement 중 하나",
   "statement_level": 1~5,
   "formality_level": 1~5,
-  "texture_worlds": ["workwear/military/tailoring/sweat/outdoor/minimal"],
+  "texture_worlds": ["해당하는 텍스처 월드 모두"],
   "rejection_reason": null
 }}
 
-## 태그 기준
-- role: 밥=베이스, 반찬=포인트, 약한반찬=은은한 포인트, 연결템=브릿지, 구조템=실루엣
-- color_temperature: warm=러스트/카멜/브라운, cool=네이비/그레이/블랙, neutral=화이트/베이지/카키
-
-- is_clothing이 false이면 name~seasons는 null, rejection_reason 작성"#
+추가 규칙:
+- role과 versatility는 일반적인 활용성 기준의 1차 추정치입니다.
+- is_clothing이 false이면 name/category/color/thickness/seasons는 null, rejection_reason을 작성하세요."#
     );
 
     let user_content = json!([
         {
             "type": "text",
-            "text": "이 이미지를 분석하세요. 레퍼런스는 구조적 특징이 대부분 일치할 때만 참고하고, 부분적 유사성만으로는 레퍼런스 모델명을 사용하지 마세요."
+            "text": "이 이미지를 분석하여 의류 정보를 추출해주세요. 위 레퍼런스는 참고하되, 핵심 특징이 충분히 일치할 때만 특정 모델명을 사용하세요."
         },
         {
             "type": "image_url",
@@ -490,32 +517,36 @@ pub async fn analyze_clothing_image_with_rag(
     Ok(result)
 }
 
-// [개선 6] 설명 생성: strengths를 명시적으로 전달
+// ─── 5) generate_outfit_explanation — 시그니처 변경: score 제거, verdict_label/strengths 분리 ───
+
 pub async fn generate_outfit_explanation(
     client: &reqwest::Client,
     api_key: &str,
     items_desc: &str,
-    score: i32,
+    verdict_label: &str,
+    strengths_desc: &str,
     problems_desc: &str,
     suggestions_desc: &str,
 ) -> anyhow::Result<String> {
-    let system_prompt = r#"당신은 아메카지/빈티지/밀리터리 패션에 정통한 스타일 코치입니다.
+    let system_prompt = r#"당신은 아메카지/빈티지/밀리터리 패션에 익숙한 스타일 코치입니다.
+이미 결정된 평가 결과를 사용해 자연스럽고 친근한 한국어 설명문을 작성하세요.
 
-## 역할
-규칙 엔진이 이미 판정한 결과를 **자연어로 풀어서 설명**하는 역할입니다.
-점수/판정을 직접 내리지 마세요. 제공된 강점/문제점/제안을 자연스러운 문장으로 변환하세요.
-
-## 규칙
-- 2~4문장으로 간결하게
-- 강점이 있으면 반드시 먼저 언급 (제공된 강점 정보를 활용)
-- 문제점과 개선안은 그 뒤에
-- 구체적인 아이템명을 언급
-- "밥/반찬" 비유를 자연스럽게 활용 가능
-- 점수 숫자는 언급하지 마세요
-- 규칙 엔진이 감지하지 않은 문제를 추가하지 마세요"#;
+중요 원칙:
+- 당신은 코디를 새로 판단하지 않습니다.
+- 입력으로 주어진 강점, 문제점, 개선 제안을 자연스럽게 풀어 설명만 합니다.
+- 규칙 엔진의 결론을 바꾸거나 새로운 문제를 만들어내지 마세요.
+- 2~4문장으로 간결하게 작성하세요.
+- 좋은 점을 먼저, 아쉬운 점과 개선안을 뒤에 배치하세요.
+- 구체적인 아이템명을 언급하세요.
+- "밥/반찬" 비유는 자연스러울 때만 사용하세요.
+- 점수 숫자는 언급하지 마세요."#;
 
     let user_prompt = format!(
-        "코디 구성:\n{items_desc}\n\n점수: {score}/95\n\n평가 결과(강점 포함):\n{problems_desc}\n\n개선 제안:\n{suggestions_desc}\n\n위 평가 결과를 자연스러운 한국어 문장으로 설명해주세요. 강점이 있으면 반드시 먼저 언급하세요."
+        "코디 구성:\n{items_desc}\n\n판정: {verdict}\n\n강점:\n{strengths}\n\n문제점:\n{problems}\n\n개선 제안:\n{suggestions}\n\n위 내용을 바탕으로 자연스럽고 짧은 한국어 설명을 작성해주세요.",
+        verdict = verdict_label,
+        strengths = strengths_desc,
+        problems = problems_desc,
+        suggestions = suggestions_desc,
     );
 
     let body = json!({
@@ -524,7 +555,7 @@ pub async fn generate_outfit_explanation(
             { "role": "system", "content": system_prompt },
             { "role": "user", "content": user_prompt }
         ],
-        "temperature": 0.7,
+        "temperature": 0.5,
         "max_tokens": 500
     });
 

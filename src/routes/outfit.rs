@@ -80,21 +80,13 @@ async fn evaluate_outfit(
     let explanation = if !state.openai_api_key.is_empty()
         && state.openai_api_key != "sk-your-key-here"
     {
-        let full_problems = if strengths_desc.is_empty() {
-            problems_desc.clone()
-        } else {
-            format!(
-                "{}\n\n강점:\n{}",
-                problems_desc, strengths_desc
-            )
-        };
-
         openai::generate_outfit_explanation(
             &state.http_client,
             &state.openai_api_key,
             &format!("{}{}", items_desc, situation_text),
-            eval.score,
-            &full_problems,
+            eval.verdict.label(),
+            &strengths_desc,
+            &problems_desc,
             &suggestions_desc,
         )
         .await
