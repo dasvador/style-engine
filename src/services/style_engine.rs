@@ -368,7 +368,7 @@ fn rule_natural_tone(ctx: &OutfitContext, score: &mut i32, problems: &mut Vec<Ru
     });
 }
 
-/// Rule 6: 스타일 충돌
+/// Rule 6: 스타일 충돌 — 밀리터리+포멀(tailoring)은 밸런싱 페어로 재분류
 fn rule_style_conflict(ctx: &OutfitContext, score: &mut i32, problems: &mut Vec<RuleProblem>) {
     let styles: Vec<&str> = ctx
         .slots
@@ -377,9 +377,10 @@ fn rule_style_conflict(ctx: &OutfitContext, score: &mut i32, problems: &mut Vec<
         .filter(|s| *s != "베이직")
         .collect();
 
-    let conflicts = [("포멀", "스포츠"), ("밀리터리", "포멀")];
+    // 진짜 충돌만 남김 (밀리터리+포멀은 제거 — 밸런싱 페어)
+    let hard_conflicts = [("포멀", "스포츠")];
 
-    for (a, b) in &conflicts {
+    for (a, b) in &hard_conflicts {
         let has_a = styles.iter().any(|s| s == a);
         let has_b = styles.iter().any(|s| s == b);
         if has_a && has_b {
@@ -410,7 +411,7 @@ fn rule_style_conflict(ctx: &OutfitContext, score: &mut i32, problems: &mut Vec<
     }
 }
 
-/// Rule 7: 텍스처 월드 충돌
+/// Rule 7: 텍스처 월드 충돌 — military+tailoring은 밸런싱 페어
 fn rule_texture_world_conflict(
     ctx: &OutfitContext,
     score: &mut i32,
@@ -427,9 +428,14 @@ fn rule_texture_world_conflict(
         return;
     }
 
-    let conflicts = [("tailoring", "sweat"), ("outdoor", "tailoring")];
+    // 진짜 충돌 (sweat+tailoring은 여전히 충돌)
+    let hard_conflicts = [("sweat", "tailoring")];
+    // 약한 충돌 (outdoor+tailoring: 미세 감점)
+    let mild_conflicts = [("outdoor", "tailoring")];
+    // 밸런싱 페어 (충돌이 아닌 보완 관계)
+    let balance_pairs = [("military", "tailoring"), ("workwear", "military")];
 
-    for (a, b) in &conflicts {
+    for (a, b) in &hard_conflicts {
         let has_a = all_worlds.iter().any(|w| w == a);
         let has_b = all_worlds.iter().any(|w| w == b);
         if has_a && has_b {
@@ -444,13 +450,40 @@ fn rule_texture_world_conflict(
         }
     }
 
-    let has_workwear = all_worlds.iter().any(|w| *w == "workwear");
-    let has_military = all_worlds.iter().any(|w| *w == "military");
-    if has_workwear && has_military {
-        strengths.push(OutfitStrength {
-            rule: "텍스처 조화".to_string(),
-            detail: "워크웨어와 밀리터리가 자연스럽게 어우러지는 아메카지 스타일입니다".to_string(),
-        });
+    for (a, b) in &mild_conflicts {
+        let has_a = all_worlds.iter().any(|w| w == a);
+        let has_b = all_worlds.iter().any(|w| w == b);
+        if has_a && has_b {
+            let deduction = 5;
+            *score -= deduction;
+            problems.push(RuleProblem {
+                code: IssueCode::TextureWorldConflict,
+                rule: "텍스처 미세 충돌".to_string(),
+                deduction,
+                detail: format!("{} + {} 텍스처가 약간 어색할 수 있습니다", a, b),
+            });
+            return;
+        }
+    }
+
+    // 밸런싱 페어 강점
+    for (a, b) in &balance_pairs {
+        let has_a = all_worlds.iter().any(|w| w == a);
+        let has_b = all_worlds.iter().any(|w| w == b);
+        if has_a && has_b {
+            let label = if (*a == "military" && *b == "tailoring")
+                || (*a == "tailoring" && *b == "military")
+            {
+                "밀리터리와 테일러링이 거친 + 정제의 밸런스를 만들어냅니다"
+            } else {
+                "워크웨어와 밀리터리가 자연스럽게 어우러지는 아메카지 스타일입니다"
+            };
+            strengths.push(OutfitStrength {
+                rule: "텍스처 조화".to_string(),
+                detail: label.to_string(),
+            });
+            return;
+        }
     }
 }
 
@@ -640,7 +673,7 @@ fn rule_shoes(ctx: &OutfitContext, score: &mut i32, problems: &mut Vec<RuleProbl
     }
 }
 
-/// Rule 10c: 세계관 과잉 매칭 (밀리터리 아우터 + 자연톤 하의 = 군복감)
+/// Rule 10c: 세계관 과잉 매칭 — 밀리터리/워크웨어/아웃도어 일반화
 fn rule_world_overmatching(
     ctx: &OutfitContext,
     score: &mut i32,
@@ -655,24 +688,29 @@ fn rule_world_overmatching(
         _ => return,
     };
 
-    // 아우터가 밀리터리인지 확인
-    let outer_is_military = outer_slot.clothing.style.as_deref() == Some("밀리터리")
-        || outer_slot.texture_worlds.iter().any(|w| w == "military");
+    // 아우터가 테마성 강한 스타일인지 (밀리터리/워크/아웃도어)
+    let thematic_worlds = ["military", "workwear", "outdoor"];
+    let outer_thematic: Vec<&str> = outer_slot
+        .texture_worlds
+        .iter()
+        .filter(|w| thematic_worlds.contains(&w.as_str()))
+        .map(|w| w.as_str())
+        .collect();
 
-    if !outer_is_military {
+    let outer_style = outer_slot.clothing.style.as_deref().unwrap_or("");
+    let is_thematic_outer = !outer_thematic.is_empty()
+        || outer_style == "밀리터리"
+        || outer_style == "워크";
+
+    if !is_thematic_outer {
         return;
     }
 
-    // 하의 색상/색온도 확인
+    // 하의 속성
     let bottom_color = bottom_slot.clothing.color.as_deref().unwrap_or("");
     let bottom_temp = bottom_slot.clothing.color_temperature.as_deref().unwrap_or("");
     let bottom_tone = bottom_slot.clothing.tone.as_deref().unwrap_or("");
     let bottom_role = bottom_slot.clothing.role.as_deref().unwrap_or("");
-
-    // 자연톤/warm 하의 색상 목록
-    let natural_colors = ["올리브", "카키", "카멜", "베이지", "탄", "브라운", "샌드"];
-    let is_natural_bottom = natural_colors.iter().any(|c| bottom_color.contains(c))
-        || (bottom_temp == "warm" && bottom_tone == "중간");
 
     // 인디고/다크 계열은 안정화 앵커 역할
     let anchor_colors = ["인디고", "블랙", "차콜", "다크", "네이비"];
@@ -680,32 +718,51 @@ fn rule_world_overmatching(
         || bottom_tone == "어두움";
 
     if is_anchor_bottom {
-        // 밀리터리 + 어두운 하의 = 좋은 대비
         strengths.push(OutfitStrength {
             rule: "세계관 밸런스".to_string(),
             detail: format!(
-                "{}가 밀리터리 아우터의 안정적인 앵커 역할을 합니다",
+                "{}가 아우터의 안정적인 앵커 역할을 합니다",
                 bottom_slot.clothing.name
             ),
         });
         return;
     }
 
+    // 자연톤/warm 하의 감지
+    let natural_colors = ["올리브", "카키", "카멜", "베이지", "탄", "브라운", "샌드", "러스트"];
+    let is_natural_bottom = natural_colors.iter().any(|c| bottom_color.contains(c))
+        || (bottom_temp == "warm" && bottom_tone == "중간");
+
     if !is_natural_bottom {
         return;
     }
 
-    // 자연톤 하의가 구조템이면 약간 완화
-    let is_structure = bottom_role == "구조템";
+    // 하의도 같은 테마 세계관을 공유하는지
+    let bottom_thematic: Vec<&str> = bottom_slot
+        .texture_worlds
+        .iter()
+        .filter(|w| thematic_worlds.contains(&w.as_str()))
+        .map(|w| w.as_str())
+        .collect();
+    let shared_world = outer_thematic
+        .iter()
+        .any(|w| bottom_thematic.contains(w));
 
-    // 심각도 판단: 아우터 색상도 warm/자연톤이면 severe
+    // 톤 대비가 없는지
     let outer_temp = outer_slot.clothing.color_temperature.as_deref().unwrap_or("");
     let outer_tone = outer_slot.clothing.tone.as_deref().unwrap_or("");
-    let both_warm_mid = outer_temp == "warm" && outer_tone == "중간"
-        && bottom_temp == "warm" && bottom_tone == "중간";
+    let both_warm_mid = (outer_temp == "warm" || outer_tone == "중간")
+        && (bottom_temp == "warm" || bottom_tone == "중간");
 
-    let deduction = if both_warm_mid && !is_structure {
+    let is_structure = bottom_role == "구조템";
+
+    // 심각도 결정
+    let deduction = if shared_world && both_warm_mid && !is_structure {
+        // 같은 세계관 + 같은 무드 + 구조 없음 = severe
         DEDUCT_WORLD_OVERMATCH_SEVERE
+    } else if both_warm_mid && !is_structure {
+        // 다른 세계관이지만 warm 편중 + 구조 없음
+        DEDUCT_WORLD_OVERMATCH_MILD + 4 // -12
     } else if is_structure {
         DEDUCT_WORLD_OVERMATCH_MILD / 2 // 구조템이면 절반
     } else {
@@ -713,13 +770,22 @@ fn rule_world_overmatching(
     };
 
     if deduction > 0 {
+        let theme_label = if outer_style == "밀리터리" || outer_thematic.contains(&"military") {
+            "밀리터리"
+        } else if outer_style == "워크" || outer_thematic.contains(&"workwear") {
+            "워크웨어"
+        } else {
+            "테마"
+        };
+
         *score -= deduction;
         problems.push(RuleProblem {
             code: IssueCode::WorldOvermatching,
             rule: "세계관 과잉".to_string(),
             deduction,
             detail: format!(
-                "밀리터리 아우터({})와 자연톤 하의({})가 너무 비슷해 군복처럼 보일 수 있습니다. 인디고 데님이나 차콜 팬츠로 대비를 만들어보세요",
+                "{} 아우터({})와 자연톤 하의({})가 너무 비슷한 무드라 단조로워 보일 수 있습니다. 인디고 데님이나 차콜 팬츠로 대비를 만들어보세요",
+                theme_label,
                 outer_slot.clothing.name,
                 bottom_slot.clothing.name,
             ),
