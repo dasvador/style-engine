@@ -21,7 +21,7 @@
 | Database | MySQL (sqlx) |
 | Vision AI | OpenAI gpt-4o-mini |
 | Embedding | fastembed (multilingual-e5-small, 384차원, ONNX 로컬) |
-| Weather | Open-Meteo API |
+| Weather | 기상청 초단기실황 API (Open-Meteo 폴백) |
 
 ## 아키텍처
 
@@ -213,7 +213,7 @@ src/
 │   ├── style_engine.rs         # 13개 규칙 엔진 + 강점 감지 + 구조화된 suggestions + summary
 │   ├── openai.rs               # Vision API (2-Pass) + 코디 추천 + 설명 생성
 │   ├── embedding.rs            # fastembed 래퍼, 캐시, 검색
-│   └── weather.rs              # Open-Meteo API
+│   └── weather.rs              # 기상청 초단기실황 API (Open-Meteo 폴백)
 ├── routes/
 │   ├── home.rs                 # 4화면 SPA (홈/평가/옷장/상세)
 │   ├── outfit.rs               # POST /api/outfit/evaluate
@@ -236,13 +236,14 @@ migrations/                     # MySQL 마이그레이션 (7개)
 - Rust (Edition 2024)
 - MySQL 8.0+
 - OpenAI API Key
+- 기상청 API Key (공공데이터포털, 선택 — 미설정 시 Open-Meteo 폴백)
 
 ### 설정
 
 ```bash
 # 환경변수
 cp .env.example .env
-# .env 파일에서 DATABASE_URL, OPENAI_API_KEY 설정
+# .env 파일에서 DATABASE_URL, OPENAI_API_KEY, KMA_API_KEY 설정
 
 # DB 생성
 mysql -u root -e "CREATE DATABASE rust_web_app"

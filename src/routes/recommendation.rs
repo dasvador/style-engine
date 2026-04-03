@@ -33,6 +33,7 @@ async fn get_recommendation(
     // 2. Fetch weather
     let weather = weather_service::fetch_weather(
         &state.http_client,
+        &state.kma_api_key,
         region.latitude,
         region.longitude,
     )

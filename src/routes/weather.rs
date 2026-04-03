@@ -19,6 +19,7 @@ async fn get_weather(
 
     let current = weather_service::fetch_weather(
         &state.http_client,
+        &state.kma_api_key,
         region.latitude,
         region.longitude,
     )

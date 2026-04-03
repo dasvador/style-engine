@@ -21,6 +21,7 @@ pub struct AppState {
     pub db: sqlx::MySqlPool,
     pub http_client: reqwest::Client,
     pub openai_api_key: String,
+    pub kma_api_key: String,
     pub embedding: Arc<EmbeddingService>,
 }
 
@@ -54,6 +55,8 @@ async fn main() {
 
     let openai_api_key =
         std::env::var("OPENAI_API_KEY").unwrap_or_default();
+    let kma_api_key =
+        std::env::var("KMA_API_KEY").unwrap_or_default();
     let http_client = reqwest::Client::new();
 
     // Initialize embedding model (downloads ~80MB model on first run)
@@ -75,6 +78,7 @@ async fn main() {
         db: pool,
         http_client,
         openai_api_key,
+        kma_api_key,
         embedding: embedding_service,
     };
 
