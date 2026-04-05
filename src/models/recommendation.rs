@@ -33,11 +33,59 @@ pub struct AiOutfitItem {
     pub reason: String,
 }
 
-/// Shape we expect from OpenAI JSON response
+/// Shape we expect from OpenAI JSON response (single candidate)
 #[derive(Debug, Deserialize)]
 pub struct AiRecommendation {
     pub recommendation: String,
     pub outfit: Vec<AiOutfitItem>,
     pub weather_summary: String,
     pub tips: Vec<String>,
+}
+
+/// Multi-candidate response from OpenAI
+#[derive(Debug, Deserialize)]
+pub struct AiMultiRecommendation {
+    pub candidates: Vec<AiRecommendation>,
+}
+
+/// 후보 코디 (style_engine 점수 + 리센시 페널티 + 다양성 보너스)
+#[derive(Debug, Clone)]
+pub struct OutfitCandidate {
+    pub top_id: Option<String>,
+    pub bottom_id: Option<String>,
+    pub outer_id: Option<String>,
+    pub shoes_id: Option<String>,
+    pub bag_id: Option<String>,
+
+    pub style_score: i32,
+    pub recency_penalty: i32,
+    pub diversity_bonus: i32,
+    pub final_score: i32,
+
+    /// 원본 AI 추천 인덱스 (candidates 배열 내 위치)
+    pub ai_candidate_index: usize,
+}
+
+impl OutfitCandidate {
+    pub fn new(
+        top_id: Option<String>,
+        bottom_id: Option<String>,
+        outer_id: Option<String>,
+        shoes_id: Option<String>,
+        bag_id: Option<String>,
+        ai_candidate_index: usize,
+    ) -> Self {
+        Self {
+            top_id,
+            bottom_id,
+            outer_id,
+            shoes_id,
+            bag_id,
+            style_score: 0,
+            recency_penalty: 0,
+            diversity_bonus: 0,
+            final_score: 0,
+            ai_candidate_index,
+        }
+    }
 }

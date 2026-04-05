@@ -4,7 +4,7 @@ use anyhow::Context;
 use serde_json::json;
 
 use crate::models::clothing::{Pass1Result, VisionAnalysisResult};
-use crate::models::recommendation::AiRecommendation;
+use crate::models::recommendation::{AiMultiRecommendation, AiRecommendation};
 use crate::models::reference::ReferenceMatch;
 use crate::models::weather::CurrentWeather;
 use crate::services::embedding::EmbeddingService;
@@ -129,6 +129,161 @@ pub async fn get_outfit_recommendation(
         serde_json::from_str(content).context("Failed to parse AI recommendation JSON")?;
 
     Ok(recommendation)
+}
+
+// ─── 1b) get_outfit_candidates (3 candidates for diversity scoring) ───
+
+pub async fn get_outfit_candidates(
+    client: &reqwest::Client,
+    api_key: &str,
+    weather: &CurrentWeather,
+    clothes: &[String],
+    occasion: Option<&str>,
+    style_preference: Option<&str>,
+    recent_items_hint: &str,
+) -> anyhow::Result<AiMultiRecommendation> {
+    let clothes_list = if clothes.is_empty() {
+        "사용자가 등록한 옷이 없습니다. 일반적인 추천을 해주세요.".to_string()
+    } else {
+        clothes.join("\n")
+    };
+
+    let occasion_text = occasion.unwrap_or("일상");
+    let style_text = style_preference.unwrap_or("편한 스타일");
+
+    let today = chrono::Local::now().format("%Y-%m-%d (%A)").to_string();
+
+    let system_prompt = r#"당신은 아메카지/빈티지/밀리터리 패션에 익숙한 코디 보조 AI입니다.
+
+중요 원칙:
+- 최종 스타일 판단은 별도의 규칙 엔진이 담당합니다.
+- 당신의 역할은 주어진 옷장 후보 안에서 날씨와 상황에 맞는 "후보 코디안"을 조합하는 것입니다.
+- 규칙 엔진처럼 강하게 판정하거나 단정하지 마세요.
+- 옷장에 없는 아이템을 절대 만들어내지 마세요.
+- 반드시 입력으로 제공된 아이템명만 사용하세요.
+
+추천 원칙:
+1. 날씨와 상황을 우선 고려하세요.
+2. 아우터는 날씨상 필요할 때만 포함하세요.
+3. 강한 포인트 아이템은 1개 이하로 유지하세요.
+4. 하의는 가능하면 안정적인 역할(밥/구조템/연결템) 아이템을 우선 선택하세요.
+5. 이너는 가능하면 중립적이고 활용도 높은 아이템을 우선 선택하세요.
+6. 과하게 비슷한 색/무드로 몰리는 조합은 피하세요.
+7. 설명은 과장하지 말고, 왜 무난하고 안정적인 후보인지 간단히 설명하세요.
+
+3가지 서로 다른 후보 코디를 제안하세요.
+- 각 후보는 반드시 다른 아이템 조합이어야 합니다.
+- 상의와 하의 중 최소 하나는 후보마다 달라야 합니다.
+
+반드시 JSON 형식으로 응답하세요."#;
+
+    let user_prompt = format!(
+        r#"오늘 날짜: {today}
+
+현재 조건:
+- 기온: {temp}°C (체감 {feels}°C)
+- 습도: {humidity}%
+- 바람: {wind} km/h
+- 날씨: {desc}
+- 상황: {occasion}
+- 선호 스타일: {style}
+{recent_section}
+사용자 옷장 후보:
+{clothes}
+
+작업:
+- 위 옷장 안에서만 3가지 서로 다른 코디 후보를 구성하세요.
+- 각 후보는 다른 아이템 조합이어야 합니다.
+- 날씨상 불필요하면 아우터를 억지로 넣지 마세요.
+- 존재감 강한 아이템을 여러 개 겹치지 마세요.
+
+응답 JSON 형식:
+{{
+  "candidates": [
+    {{
+      "recommendation": "후보 1 요약 (1~2문장)",
+      "outfit": [
+        {{ "category": "상의", "name": "정확한 아이템명", "reason": "선택 이유" }},
+        {{ "category": "하의", "name": "정확한 아이템명", "reason": "선택 이유" }}
+      ],
+      "weather_summary": "날씨 요약 한 줄",
+      "tips": ["팁"]
+    }},
+    {{
+      "recommendation": "후보 2 요약",
+      "outfit": [...],
+      "weather_summary": "...",
+      "tips": [...]
+    }},
+    {{
+      "recommendation": "후보 3 요약",
+      "outfit": [...],
+      "weather_summary": "...",
+      "tips": [...]
+    }}
+  ]
+}}
+
+주의:
+- 아우터가 필요 없으면 outfit 배열에서 생략 가능
+- 절대 옷장에 없는 이름을 쓰지 마세요"#,
+        temp = weather.temperature,
+        feels = weather.apparent_temperature,
+        humidity = weather.humidity,
+        wind = weather.wind_speed,
+        desc = weather.weather_description,
+        clothes = clothes_list,
+        occasion = occasion_text,
+        style = style_text,
+        today = today,
+        recent_section = if recent_items_hint.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "\n최근 추천된 아이템 (가능하면 다른 조합을 시도하세요):\n{}\n",
+                recent_items_hint
+            )
+        },
+    );
+
+    let body = json!({
+        "model": "gpt-4o-mini",
+        "messages": [
+            { "role": "system", "content": system_prompt },
+            { "role": "user", "content": user_prompt }
+        ],
+        "response_format": { "type": "json_object" },
+        "temperature": 0.5,
+        "max_tokens": 2000
+    });
+
+    let resp = client
+        .post("https://api.openai.com/v1/chat/completions")
+        .bearer_auth(api_key)
+        .json(&body)
+        .send()
+        .await
+        .context("Failed to call OpenAI API")?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("OpenAI API error ({}): {}", status, text);
+    }
+
+    let resp_json: serde_json::Value = resp
+        .json()
+        .await
+        .context("Failed to parse OpenAI response")?;
+
+    let content = resp_json["choices"][0]["message"]["content"]
+        .as_str()
+        .context("Missing content in OpenAI response")?;
+
+    let multi: AiMultiRecommendation =
+        serde_json::from_str(content).context("Failed to parse AI multi-recommendation JSON")?;
+
+    Ok(multi)
 }
 
 // ─── 2) analyze_clothing_image (fallback, no RAG) ───

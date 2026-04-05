@@ -63,7 +63,7 @@ pub struct OutfitContext {
 }
 
 /// Issue code enum for structured problem identification
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum IssueCode {
     TooManyAccents,
     LackOfStructure,

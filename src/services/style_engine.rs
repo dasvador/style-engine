@@ -8,7 +8,7 @@ const DEDUCT_BANCHAN_OVERLOAD: i32 = 20;
 const DEDUCT_BANCHAN_WRONG_SLOT: i32 = 25; // 이너+하의에 반찬이 있으면 더 심각
 const DEDUCT_NO_AXIS: i32 = 15;
 const DEDUCT_ALL_DARK: i32 = 15;
-const DEDUCT_ALL_BRIGHT: i32 = 10;
+const DEDUCT_ALL_BRIGHT: i32 = 15;
 const DEDUCT_STYLE_CONFLICT: i32 = 20;
 const DEDUCT_INNER_ISSUE: i32 = 10;
 const DEDUCT_BAG_MILD: i32 = 6;
@@ -24,6 +24,7 @@ const DEDUCT_FORMALITY_MISMATCH: i32 = 12;
 const DEDUCT_SLOT_ROLE_MISMATCH: i32 = 8;
 const DEDUCT_WORLD_OVERMATCH_MILD: i32 = 8;
 const DEDUCT_WORLD_OVERMATCH_SEVERE: i32 = 15;
+const DEDUCT_FLAT_OUTFIT: i32 = 7; // 밥+연결템만으로 구성된 심심한 코디
 
 // 최대 점수 상한 (100은 너무 절대적)
 const SCORE_CEILING: i32 = 95;
@@ -35,6 +36,7 @@ pub fn evaluate(ctx: &OutfitContext, current_season: Option<&str>) -> Evaluation
 
     rule_bab_banchan(ctx, &mut score, &mut problems, &mut strengths);
     rule_lack_of_structure(ctx, &mut score, &mut problems);
+    rule_flat_outfit(ctx, &mut score, &mut problems);
     rule_brightness(ctx, &mut score, &mut problems, &mut strengths);
     rule_lack_of_contrast(ctx, &mut score, &mut problems, &mut strengths);
     rule_natural_tone(ctx, &mut score, &mut problems);
@@ -205,6 +207,48 @@ fn rule_lack_of_structure(
             rule: "중심축 부재".to_string(),
             deduction: DEDUCT_NO_AXIS,
             detail: "코디의 중심축이 부족합니다. 시각적 무게감을 잡아줄 베이스 또는 구조템이 필요합니다".to_string(),
+        });
+    }
+}
+
+/// Rule 2b: 밥+연결템만으로 구성된 심심한 코디
+/// 안정적이지만 스타일적 재미가 부족한 경우 약하게 감점
+fn rule_flat_outfit(
+    ctx: &OutfitContext,
+    score: &mut i32,
+    problems: &mut Vec<RuleProblem>,
+) {
+    if ctx.slots.len() < 2 {
+        return;
+    }
+
+    let all_basic = ctx.slots.iter().all(|s| {
+        matches!(
+            s.clothing.role.as_deref(),
+            Some("밥") | Some("연결템") | Some("구조템")
+        )
+    });
+
+    let has_accent = ctx.slots.iter().any(|s| {
+        matches!(
+            s.clothing.role.as_deref(),
+            Some("반찬") | Some("약한반찬")
+        )
+    });
+
+    let has_structure = ctx
+        .slots
+        .iter()
+        .any(|s| s.clothing.role.as_deref() == Some("구조템"));
+
+    // 반찬 0개 + 구조템 0개 = 밥+연결템만 → 심심한 코디
+    if all_basic && !has_accent && !has_structure {
+        *score -= DEDUCT_FLAT_OUTFIT;
+        problems.push(RuleProblem {
+            code: IssueCode::LackOfStructure,
+            rule: "코디 단조로움".to_string(),
+            deduction: DEDUCT_FLAT_OUTFIT,
+            detail: "안정적이지만 포인트나 구조감이 없어 단조롭습니다".to_string(),
         });
     }
 }
@@ -825,22 +869,29 @@ fn rule_formality_situation(
     };
 
     if avg < min_formality {
-        *score -= DEDUCT_FORMALITY_MISMATCH;
+        // 격차가 클수록 추가 감점
+        let gap = min_formality - avg;
+        let extra = if gap >= 1.0 { 8 } else if gap >= 0.5 { 4 } else { 0 };
+        let deduction = DEDUCT_FORMALITY_MISMATCH + extra;
+        *score -= deduction;
         problems.push(RuleProblem {
             code: IssueCode::FormalitySituationMismatch,
             rule: "격식 수준".to_string(),
-            deduction: DEDUCT_FORMALITY_MISMATCH,
+            deduction,
             detail: format!(
                 "{}에 비해 코디가 너무 캐주얼합니다 (평균 격식도: {:.1})",
                 situation, avg
             ),
         });
     } else if avg > max_formality {
-        *score -= DEDUCT_FORMALITY_MISMATCH;
+        let gap = avg - max_formality;
+        let extra = if gap >= 1.0 { 8 } else if gap >= 0.5 { 4 } else { 0 };
+        let deduction = DEDUCT_FORMALITY_MISMATCH + extra;
+        *score -= deduction;
         problems.push(RuleProblem {
             code: IssueCode::FormalitySituationMismatch,
             rule: "격식 수준".to_string(),
-            deduction: DEDUCT_FORMALITY_MISMATCH,
+            deduction,
             detail: format!(
                 "{}에 비해 코디가 너무 격식적입니다 (평균 격식도: {:.1})",
                 situation, avg
