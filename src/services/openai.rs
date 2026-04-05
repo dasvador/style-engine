@@ -171,9 +171,11 @@ pub async fn get_outfit_candidates(
 6. 과하게 비슷한 색/무드로 몰리는 조합은 피하세요.
 7. 설명은 과장하지 말고, 왜 무난하고 안정적인 후보인지 간단히 설명하세요.
 
-3가지 서로 다른 후보 코디를 제안하세요.
+5가지 서로 다른 후보 코디를 제안하세요.
+- 각 후보는 반드시 상의 + 하의 + 신발 + 가방을 포함해야 합니다.
 - 각 후보는 반드시 다른 아이템 조합이어야 합니다.
 - 상의와 하의 중 최소 하나는 후보마다 달라야 합니다.
+- 가능하면 다양한 스타일과 무드의 조합을 포함하세요.
 
 반드시 JSON 형식으로 응답하세요."#;
 
@@ -192,7 +194,7 @@ pub async fn get_outfit_candidates(
 {clothes}
 
 작업:
-- 위 옷장 안에서만 3가지 서로 다른 코디 후보를 구성하세요.
+- 위 옷장 안에서만 5가지 서로 다른 코디 후보를 구성하세요.
 - 각 후보는 다른 아이템 조합이어야 합니다.
 - 날씨상 불필요하면 아우터를 억지로 넣지 마세요.
 - 존재감 강한 아이템을 여러 개 겹치지 마세요.
@@ -204,7 +206,9 @@ pub async fn get_outfit_candidates(
       "recommendation": "후보 1 요약 (1~2문장)",
       "outfit": [
         {{ "category": "상의", "name": "정확한 아이템명", "reason": "선택 이유" }},
-        {{ "category": "하의", "name": "정확한 아이템명", "reason": "선택 이유" }}
+        {{ "category": "하의", "name": "정확한 아이템명", "reason": "선택 이유" }},
+        {{ "category": "신발", "name": "정확한 아이템명", "reason": "선택 이유" }},
+        {{ "category": "가방", "name": "정확한 아이템명", "reason": "선택 이유" }}
       ],
       "weather_summary": "날씨 요약 한 줄",
       "tips": ["팁"]
@@ -220,7 +224,9 @@ pub async fn get_outfit_candidates(
       "outfit": [...],
       "weather_summary": "...",
       "tips": [...]
-    }}
+    }},
+    {{ "recommendation": "후보 4 요약", "outfit": [...], "weather_summary": "...", "tips": [...] }},
+    {{ "recommendation": "후보 5 요약", "outfit": [...], "weather_summary": "...", "tips": [...] }}
   ]
 }}
 
@@ -254,7 +260,7 @@ pub async fn get_outfit_candidates(
         ],
         "response_format": { "type": "json_object" },
         "temperature": 0.5,
-        "max_tokens": 2000
+        "max_tokens": 3000
     });
 
     let resp = client

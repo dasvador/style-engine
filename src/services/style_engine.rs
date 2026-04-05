@@ -1,3 +1,5 @@
+use chrono::Datelike;
+
 use crate::models::outfit::{
     EvaluationResult, IssueCode, OutfitContext, OutfitSlot, OutfitStrength, RuleProblem, SlotKind,
     StructuredSuggestion, Verdict,
@@ -11,9 +13,8 @@ const DEDUCT_ALL_DARK: i32 = 15;
 const DEDUCT_ALL_BRIGHT: i32 = 15;
 const DEDUCT_STYLE_CONFLICT: i32 = 20;
 const DEDUCT_INNER_ISSUE: i32 = 10;
-const DEDUCT_BAG_MILD: i32 = 6;
-const DEDUCT_BAG_SEVERE: i32 = 12;
-const DEDUCT_SHOES_ISSUE: i32 = 8;
+// (가방 적합도는 rule_bag 내부에서 동적 계산)
+// (신발 적합도는 rule_shoes 내부에서 동적 계산)
 const DEDUCT_SEASON_ALL: i32 = 15;
 const DEDUCT_SEASON_HALF: i32 = 5;
 const DEDUCT_LACK_OF_CONTRAST: i32 = 15;
@@ -44,8 +45,8 @@ pub fn evaluate(ctx: &OutfitContext, current_season: Option<&str>) -> Evaluation
     rule_texture_world_conflict(ctx, &mut score, &mut problems, &mut strengths);
     rule_slot_role(ctx, &mut score, &mut problems);
     rule_inner(ctx, &mut score, &mut problems);
-    rule_bag(ctx, &mut score, &mut problems);
-    rule_shoes(ctx, &mut score, &mut problems);
+    rule_bag(ctx, &mut score, &mut problems, &mut strengths);
+    rule_shoes(ctx, &mut score, &mut problems, &mut strengths);
     rule_world_overmatching(ctx, &mut score, &mut problems, &mut strengths);
     rule_formality_situation(ctx, &mut score, &mut problems);
     if let Some(season) = current_season {
@@ -590,131 +591,363 @@ fn rule_inner(ctx: &OutfitContext, score: &mut i32, problems: &mut Vec<RuleProbl
 }
 
 /// Rule 10: 가방 규칙 — severity-aware
-fn rule_bag(ctx: &OutfitContext, score: &mut i32, problems: &mut Vec<RuleProblem>) {
-    let bag = ctx.slots.iter().find(|s| s.slot == SlotKind::Bag);
-    let bag_slot = match bag {
+/// Rule 10a: 가방 적합도 (양방향 adjustment: -8 ~ +5)
+/// 신발보다 낮은 임팩트 — 코디 마무리 보정 역할
+fn rule_bag(
+    ctx: &OutfitContext,
+    score: &mut i32,
+    problems: &mut Vec<RuleProblem>,
+    strengths: &mut Vec<OutfitStrength>,
+) {
+    let bag_slot = match ctx.slots.iter().find(|s| s.slot == SlotKind::Bag) {
         Some(b) => b,
         None => return,
     };
 
-    // 반찬 가방: 코디에 이미 반찬이 있으면 severe, 없으면 mild
-    if bag_slot.clothing.role.as_deref() == Some("반찬") {
-        let other_banchan = ctx
-            .slots
-            .iter()
-            .filter(|s| s.slot != SlotKind::Bag)
-            .any(|s| s.clothing.role.as_deref() == Some("반찬"));
+    let shoes_slot = ctx.slots.iter().find(|s| s.slot == SlotKind::Shoes);
+    let bag_name = &bag_slot.clothing.name;
+    let bag_role = bag_slot.clothing.role.as_deref().unwrap_or("");
+    let bag_style = bag_slot.clothing.style.as_deref().unwrap_or("베이직");
+    let bag_tone = bag_slot.clothing.tone.as_deref().unwrap_or("중간");
 
-        let deduction = if other_banchan {
-            DEDUCT_BAG_SEVERE
-        } else {
-            DEDUCT_BAG_MILD
-        };
+    let mut adjustment = 0i32;
+    let mut reasons_good: Vec<String> = Vec::new();
+    let mut reasons_bad: Vec<String> = Vec::new();
 
-        *score -= deduction;
-        problems.push(RuleProblem {
-            code: IssueCode::BagConflict,
-            rule: "가방 규칙".to_string(),
-            deduction,
-            detail: if other_banchan {
-                format!(
-                    "가방({})이 반찬인데, 다른 반찬 아이템도 있어 포인트가 과합니다",
-                    bag_slot.clothing.name
-                )
+    // ─── 1. 역할 적합도 ───
+    let other_accent_count = ctx
+        .slots
+        .iter()
+        .filter(|s| s.slot != SlotKind::Bag)
+        .filter(|s| {
+            matches!(
+                s.clothing.role.as_deref(),
+                Some("반찬") | Some("약한반찬")
+            )
+        })
+        .count();
+
+    match bag_role {
+        "구조템" => {
+            adjustment += 3;
+            reasons_good.push("정리 역할로 코디를 안정시킵니다".to_string());
+        }
+        "연결템" => {
+            adjustment += 2;
+            reasons_good.push("자연스러운 연결 역할".to_string());
+        }
+        "밥" => {
+            adjustment += 1;
+        }
+        "반찬" => {
+            if other_accent_count >= 1 {
+                adjustment -= 8;
+                reasons_bad.push("가방까지 포인트라 시선이 분산됩니다".to_string());
             } else {
-                format!(
-                    "가방({})이 다소 눈에 띕니다. 가방은 정리 역할이 좋습니다",
-                    bag_slot.clothing.name
-                )
-            },
-        });
-        return;
+                adjustment -= 3;
+                reasons_bad.push("가방이 다소 눈에 띕니다".to_string());
+            }
+        }
+        "약한반찬" => {
+            if other_accent_count >= 2 {
+                adjustment -= 5;
+                reasons_bad.push("포인트 아이템이 이미 많습니다".to_string());
+            }
+        }
+        _ => {}
     }
 
-    // 스타일 충돌 가방
-    if let Some(bag_style) = bag_slot.clothing.style.as_deref() {
-        let dominant_styles: Vec<&str> = ctx
+    // ─── 2. 스타일 호환 ───
+    let dominant_styles: Vec<&str> = ctx
+        .slots
+        .iter()
+        .filter(|s| s.slot != SlotKind::Bag)
+        .filter_map(|s| s.clothing.style.as_deref())
+        .filter(|s| *s != "베이직")
+        .collect();
+
+    if bag_style == "베이직" {
+        // 베이직 가방은 항상 안전
+    } else if !dominant_styles.is_empty() {
+        let dominant = dominant_styles.first().unwrap_or(&"");
+        if bag_style == *dominant {
+            adjustment += 2;
+            reasons_good.push(format!("{} 스타일 통일", bag_style));
+        } else {
+            let clash = (*dominant == "포멀" && (bag_style == "스포츠" || bag_style == "밀리터리"))
+                || (*dominant == "밀리터리" && bag_style == "포멀");
+            if clash {
+                adjustment -= 5;
+                reasons_bad.push(format!(
+                    "가방({})이 코디({})와 스타일 불일치",
+                    bag_style, dominant
+                ));
+            }
+        }
+    }
+
+    // ─── 3. 색상 조화: 하의와 톤 매치 ───
+    let bottom_tone = ctx
+        .slots
+        .iter()
+        .find(|s| s.slot == SlotKind::Bottom)
+        .and_then(|s| s.clothing.tone.as_deref())
+        .unwrap_or("중간");
+
+    if bag_tone == bottom_tone || bag_tone == "중간" {
+        adjustment += 1;
+    }
+
+    // ─── 4. 신발과의 관계: 둘 다 포인트면 감점 ───
+    if let Some(shoes) = shoes_slot {
+        let shoes_accent = matches!(
+            shoes.clothing.role.as_deref(),
+            Some("반찬") | Some("약한반찬")
+        );
+        let bag_accent = matches!(bag_role, "반찬" | "약한반찬");
+        if shoes_accent && bag_accent {
+            adjustment -= 3;
+            reasons_bad.push("신발과 가방 모두 포인트라 과합니다".to_string());
+        }
+    }
+
+    // ─── 5. 존재감 과부하: 강한 가방 + 강한 아우터/신발 ───
+    let bag_statement = bag_slot.clothing.statement_level.unwrap_or(1);
+    if bag_statement >= 3 {
+        let outer_strong = ctx
             .slots
             .iter()
-            .filter(|s| s.slot != SlotKind::Bag)
-            .filter_map(|s| s.clothing.style.as_deref())
-            .filter(|s| *s != "베이직")
-            .collect();
+            .find(|s| s.slot == SlotKind::Outer)
+            .and_then(|s| s.clothing.statement_level)
+            .unwrap_or(0)
+            >= 3;
+        let shoes_strong = shoes_slot
+            .and_then(|s| s.clothing.statement_level)
+            .unwrap_or(0)
+            >= 3;
 
-        if !dominant_styles.is_empty()
-            && bag_style != "베이직"
-            && !dominant_styles.contains(&bag_style)
-        {
-            let dominant = dominant_styles.first().unwrap_or(&"");
-            if (*dominant == "밀리터리" && bag_style == "포멀")
-                || (*dominant == "포멀" && bag_style == "스포츠")
-            {
-                *score -= DEDUCT_BAG_MILD;
-                problems.push(RuleProblem {
-                    code: IssueCode::BagConflict,
-                    rule: "가방 규칙".to_string(),
-                    deduction: DEDUCT_BAG_MILD,
-                    detail: format!(
-                        "가방({}, {})이 전체 코디({})와 어울리지 않습니다",
-                        bag_slot.clothing.name, bag_style, dominant
-                    ),
-                });
-            }
+        if outer_strong || shoes_strong {
+            adjustment -= 4;
+            reasons_bad.push("가방 존재감이 강한데 아우터/신발도 눈에 띕니다".to_string());
+        }
+    }
+
+    // ─── 6. 밝기 밸런스 보정 ───
+    let top_tone = ctx
+        .slots
+        .iter()
+        .find(|s| s.slot == SlotKind::Top)
+        .and_then(|s| s.clothing.tone.as_deref())
+        .unwrap_or("중간");
+
+    let outfit_all_dark = top_tone == "어두움" && bottom_tone == "어두움";
+    let outfit_all_bright = top_tone == "밝음" && bottom_tone == "밝음";
+
+    if outfit_all_dark && bag_tone == "밝음" {
+        adjustment += 2;
+        reasons_good.push("어두운 코디에 밝은 가방으로 포인트".to_string());
+    } else if outfit_all_bright && bag_tone == "어두움" {
+        adjustment += 2;
+        reasons_good.push("밝은 코디에 어두운 가방으로 앵커".to_string());
+    }
+
+    // ─── 적용: clamp -8 ~ +5 ───
+    adjustment = adjustment.clamp(-8, 5);
+
+    if adjustment > 0 {
+        *score += adjustment;
+        if *score > SCORE_CEILING {
+            *score = SCORE_CEILING;
+        }
+        if !reasons_good.is_empty() {
+            strengths.push(OutfitStrength {
+                rule: "가방 적합도".to_string(),
+                detail: format!(
+                    "{}이(가) {} (+{}점)",
+                    bag_name,
+                    reasons_good.join(", "),
+                    adjustment
+                ),
+            });
+        }
+    } else if adjustment < -2 {
+        *score += adjustment;
+        if let Some(reason) = reasons_bad.first() {
+            problems.push(RuleProblem {
+                code: IssueCode::BagConflict,
+                rule: "가방 적합도".to_string(),
+                deduction: -adjustment,
+                detail: reason.clone(),
+            });
         }
     }
 }
 
 /// Rule 10b: 신발 밸런스
-fn rule_shoes(ctx: &OutfitContext, score: &mut i32, problems: &mut Vec<RuleProblem>) {
-    let shoes = ctx.slots.iter().find(|s| s.slot == SlotKind::Shoes);
-    let shoes_slot = match shoes {
+/// Rule 10b: 신발 적합도 (양방향 adjustment: +10 ~ -15)
+fn rule_shoes(
+    ctx: &OutfitContext,
+    score: &mut i32,
+    problems: &mut Vec<RuleProblem>,
+    strengths: &mut Vec<OutfitStrength>,
+) {
+    let shoes_slot = match ctx.slots.iter().find(|s| s.slot == SlotKind::Shoes) {
         Some(s) => s,
         None => return,
     };
 
-    // 신발이 반찬이면 감점
-    if shoes_slot.clothing.role.as_deref() == Some("반찬") {
-        *score -= DEDUCT_SHOES_ISSUE;
-        problems.push(RuleProblem {
-            code: IssueCode::SlotRoleMismatch,
-            rule: "신발 밸런스".to_string(),
-            deduction: DEDUCT_SHOES_ISSUE,
-            detail: format!(
-                "신발({})이 포인트 역할이라 코디가 산만해질 수 있습니다. 신발은 정리/연결 역할이 좋습니다",
-                shoes_slot.clothing.name
-            ),
-        });
-        return;
+    let top = ctx.slots.iter().find(|s| s.slot == SlotKind::Top);
+    let bottom = ctx.slots.iter().find(|s| s.slot == SlotKind::Bottom);
+    let shoe_tone = shoes_slot.clothing.tone.as_deref().unwrap_or("중간");
+    let shoe_role = shoes_slot.clothing.role.as_deref().unwrap_or("");
+    let shoe_style = shoes_slot.clothing.style.as_deref().unwrap_or("베이직");
+    let shoe_name = &shoes_slot.clothing.name;
+
+    let mut adjustment = 0i32;
+    let mut reasons_good: Vec<String> = Vec::new();
+    let mut reasons_bad: Vec<String> = Vec::new();
+
+    // ─── 1. 역할 적합도 ───
+    match shoe_role {
+        "구조템" => {
+            adjustment += 5;
+            reasons_good.push("안정적인 구조 역할".to_string());
+        }
+        "연결템" => {
+            adjustment += 3;
+            reasons_good.push("자연스러운 연결 역할".to_string());
+        }
+        "밥" => {
+            adjustment += 1;
+        }
+        "반찬" | "약한반찬" => {
+            // 코디에 이미 반찬이 있으면 과다
+            let has_other_accent = ctx
+                .slots
+                .iter()
+                .filter(|s| s.slot != SlotKind::Shoes)
+                .any(|s| {
+                    matches!(
+                        s.clothing.role.as_deref(),
+                        Some("반찬") | Some("약한반찬")
+                    )
+                });
+            if has_other_accent {
+                adjustment -= 10;
+                reasons_bad.push("신발까지 포인트라 산만합니다".to_string());
+            } else {
+                adjustment -= 3;
+                reasons_bad.push("신발이 포인트 역할입니다".to_string());
+            }
+        }
+        _ => {}
     }
 
-    // 신발 스타일이 전체와 심하게 충돌
-    if let Some(shoes_style) = shoes_slot.clothing.style.as_deref() {
-        let dominant_styles: Vec<&str> = ctx
-            .slots
-            .iter()
-            .filter(|s| s.slot != SlotKind::Shoes)
-            .filter_map(|s| s.clothing.style.as_deref())
-            .filter(|s| *s != "베이직")
-            .collect();
+    // ─── 2. 대비 보강 ───
+    let top_tone = top.and_then(|s| s.clothing.tone.as_deref()).unwrap_or("중간");
+    let bottom_tone = bottom.and_then(|s| s.clothing.tone.as_deref()).unwrap_or("중간");
 
-        if !dominant_styles.is_empty() && shoes_style != "베이직" {
-            let dominant = dominant_styles.first().unwrap_or(&"");
-            if (*dominant == "밀리터리" && shoes_style == "포멀")
-                || (*dominant == "포멀" && shoes_style == "스포츠")
-            {
-                *score -= DEDUCT_SHOES_ISSUE;
-                problems.push(RuleProblem {
-                    code: IssueCode::SlotRoleMismatch,
-                    rule: "신발 밸런스".to_string(),
-                    deduction: DEDUCT_SHOES_ISSUE,
-                    detail: format!(
-                        "신발({}, {})이 코디({})와 스타일이 맞지 않습니다",
-                        shoes_slot.clothing.name, shoes_style, dominant
-                    ),
-                });
+    let outfit_low_contrast = top_tone == bottom_tone;
+
+    if outfit_low_contrast {
+        // 코디 대비가 약한데 신발이 다른 톤이면 보강
+        if shoe_tone != top_tone {
+            adjustment += 5;
+            reasons_good.push("코디 대비를 보강합니다".to_string());
+        }
+    } else {
+        // 코디 대비가 충분한데 신발이 한쪽과 맞으면 안정감
+        if shoe_tone == bottom_tone || shoe_tone == "중간" {
+            adjustment += 2;
+        }
+    }
+
+    // 전부 밝은 코디에 어두운 신발 = 강한 보강
+    if top_tone == "밝음" && bottom_tone == "밝음" && shoe_tone == "어두움" {
+        adjustment += 3; // 위 대비 보강과 합산되면 +8
+        reasons_good.push("밝은 코디에 시각적 앵커".to_string());
+    }
+
+    // ─── 3. 스타일 호환 ───
+    let dominant_styles: Vec<&str> = ctx
+        .slots
+        .iter()
+        .filter(|s| s.slot != SlotKind::Shoes)
+        .filter_map(|s| s.clothing.style.as_deref())
+        .filter(|s| *s != "베이직")
+        .collect();
+
+    if shoe_style == "베이직" {
+        // 베이직 신발은 항상 안전
+        adjustment += 1;
+    } else if !dominant_styles.is_empty() {
+        let dominant = dominant_styles.first().unwrap_or(&"");
+        if shoe_style == *dominant {
+            // 동일 스타일 = 좋은 매치
+            adjustment += 3;
+            reasons_good.push(format!("{} 스타일 통일", shoe_style));
+        } else {
+            // 스타일 충돌 체크
+            let clash = (*dominant == "포멀" && shoe_style == "스포츠")
+                || (*dominant == "포멀" && shoe_style == "아웃도어")
+                || (*dominant == "밀리터리" && shoe_style == "포멀");
+            if clash {
+                adjustment -= 8;
+                reasons_bad.push(format!(
+                    "{}({})이 코디({})와 스타일 불일치",
+                    shoe_name, shoe_style, dominant
+                ));
             }
         }
     }
+
+    // ─── 4. 시즌 적합 ───
+    if !shoes_slot.seasons.is_empty() {
+        let current = match chrono::Local::now().month() {
+            3..=5 => "봄",
+            6..=8 => "여름",
+            9..=11 => "가을",
+            _ => "겨울",
+        };
+        if !shoes_slot.seasons.iter().any(|s| s == current) {
+            adjustment -= 4;
+            reasons_bad.push("현재 시즌에 맞지 않는 신발".to_string());
+        }
+    }
+
+    // ─── 적용 ───
+    // 클램프: -15 ~ +10
+    adjustment = adjustment.clamp(-15, 10);
+
+    if adjustment > 0 {
+        *score += adjustment;
+        // ceiling 유지
+        if *score > SCORE_CEILING {
+            *score = SCORE_CEILING;
+        }
+        if !reasons_good.is_empty() {
+            strengths.push(OutfitStrength {
+                rule: "신발 적합도".to_string(),
+                detail: format!(
+                    "{}이(가) {} (+{}점)",
+                    shoe_name,
+                    reasons_good.join(", "),
+                    adjustment
+                ),
+            });
+        }
+    } else if adjustment < -3 {
+        *score += adjustment; // 음수이므로 감점
+        if let Some(reason) = reasons_bad.first() {
+            problems.push(RuleProblem {
+                code: IssueCode::SlotRoleMismatch,
+                rule: "신발 적합도".to_string(),
+                deduction: -adjustment,
+                detail: reason.clone(),
+            });
+        }
+    }
+    // -3 ~ 0: 무시 (중립)
 }
 
 /// Rule 10c: 세계관 과잉 매칭 — 밀리터리/워크웨어/아웃도어 일반화

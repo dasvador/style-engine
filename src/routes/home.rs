@@ -286,6 +286,49 @@ const HOME_HTML: &str = r#"<!DOCTYPE html>
   .rec-reason { font-size: 0.8rem; color: var(--gray-500); line-height: 1.4; }
   .rec-tip { font-size: 0.78rem; color: var(--warning); margin-top: 6px; display: flex; gap: 4px; }
 
+  /* --- Mode cards --- */
+  .mode-card {
+    background: #fff; border-radius: var(--radius); padding: 14px;
+    box-shadow: var(--shadow); margin-bottom: 10px;
+    border-left: 4px solid var(--gray-300);
+  }
+  .mode-card[data-mode="todays_pick"] { border-left-color: var(--primary); }
+  .mode-card[data-mode="variation"] { border-left-color: #7c3aed; }
+  .mode-card[data-mode="dormant_revival"] { border-left-color: var(--warning); }
+  .mode-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .mode-header-left { display: flex; align-items: center; gap: 6px; }
+  .mode-icon { font-size: 1rem; }
+  .mode-label { font-weight: 700; font-size: 0.88rem; }
+  .mode-score {
+    font-size: 0.72rem; font-weight: 700; color: #fff;
+    padding: 2px 8px; border-radius: 10px; background: var(--gray-400);
+  }
+  .mode-score.score-great { background: var(--success); }
+  .mode-score.score-good { background: var(--primary); }
+  .mode-score.score-okay { background: var(--warning); }
+  .mode-score.score-awkward { background: var(--danger); }
+  .mode-subtitle { font-size: 0.75rem; color: var(--gray-400); margin-bottom: 8px; }
+  .mode-reason { font-size: 0.8rem; color: var(--gray-600); line-height: 1.4; margin-top: 6px; }
+  .revival-chip {
+    background: var(--warning-light); color: #92400e;
+    font-size: 0.72rem; padding: 2px 8px; border-radius: 8px;
+    display: inline-block; margin-right: 4px; margin-bottom: 4px;
+  }
+  .mode-detail { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--gray-100); }
+  .mode-detail.open { display: block; }
+  .mode-toggle {
+    font-size: 0.75rem; color: var(--primary); cursor: pointer;
+    background: none; border: none; padding: 4px 0; margin-top: 4px;
+  }
+  .scoring-bar {
+    font-size: 0.72rem; color: var(--gray-400); margin-top: 6px;
+    display: flex; gap: 8px; flex-wrap: wrap;
+  }
+  .scoring-bar span { white-space: nowrap; }
+
   /* --- Quick actions --- */
   .quick-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 8px; }
 
@@ -861,63 +904,138 @@ function renderWardrobeSummary() {
   }
 }
 
-/* ===== RECOMMENDATION (HOME) ===== */
+/* ===== RECOMMENDATION (HOME) — 3-Mode ===== */
+const MODE_STYLES = {
+  todays_pick:     { icon: '\u2B50', color: 'var(--primary)', scoreClass: 'score-good' },
+  variation:       { icon: '\uD83D\uDD04', color: '#7c3aed', scoreClass: 'score-good' },
+  dormant_revival: { icon: '\uD83D\uDC40', color: 'var(--warning)', scoreClass: 'score-okay' },
+};
+
+function verdictScoreClass(verdict) {
+  if (verdict === '\uD6CC\uB96D\uD574\uC694') return 'score-great';
+  if (verdict === '\uC88B\uC544\uC694') return 'score-good';
+  if (verdict === '\uAD1C\uCC2E\uC544\uC694') return 'score-okay';
+  return 'score-awkward';
+}
+
 async function loadRecommendation() {
   const el = document.getElementById('rec-content');
-  el.innerHTML = '<div class="msg msg-loading"><span class="spinner"></span> AI가 코디를 고민 중...</div>';
+  el.innerHTML = '<div class="msg msg-loading"><span class="spinner"></span> AI\uAC00 \uCF54\uB514\uB97C \uACE0\uBBFC \uC911...</div>';
   try {
-    const r = await fetchJSON(API + '/recommendation', {
+    const r = await fetchJSON(API + '/recommendation/multi', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ occasion: '일상' }),
+      body: JSON.stringify({ occasion: '\uC77C\uC0C1' }),
     });
-    renderRecResult(r);
+    renderMultiModeResult(r);
   } catch (err) {
-    el.innerHTML = `<div class="msg msg-error">추천을 불러올 수 없습니다: ${escHtml(err.message)}</div>`;
+    el.innerHTML = `<div class="msg msg-error">\uCD94\uCC9C\uC744 \uBD88\uB7EC\uC62C \uC218 \uC5C6\uC2B5\uB2C8\uB2E4: ${escHtml(err.message)}</div>`;
   }
 }
 
-function renderRecResult(r) {
+function renderMultiModeResult(r) {
   const el = document.getElementById('rec-content');
+  if (!r.modes || r.modes.length === 0) {
+    el.innerHTML = '<div class="msg msg-error">\uCD94\uCC9C \uACB0\uACFC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4</div>';
+    return;
+  }
+
   let html = '';
 
-  html += `<div class="rec-card">`;
-  html += `<div class="rec-card-header">`;
-  html += `<div class="rec-score-mini score-good" style="background:var(--primary);">\u2605</div>`;
-  html += `<div><div class="rec-verdict">${escHtml(r.weather_summary)}</div></div>`;
-  html += `</div>`;
+  // Weather summary
+  html += `<div style="font-size:0.82rem;color:var(--gray-500);margin-bottom:10px;">${escHtml(r.weather_summary)}</div>`;
 
-  if (r.outfit && r.outfit.length) {
-    html += `<div class="rec-items">`;
-    r.outfit.forEach(o => {
-      html += `<span class="chip">${escHtml(o.category)}: ${escHtml(o.name)}</span>`;
-    });
+  r.modes.forEach((m, idx) => {
+    const st = MODE_STYLES[m.mode] || MODE_STYLES.todays_pick;
+    const sc = verdictScoreClass(m.verdict);
+
+    html += `<div class="mode-card" data-mode="${escHtml(m.mode)}">`;
+
+    // Header: icon + label + score badge
+    html += `<div class="mode-header">`;
+    html += `<div class="mode-header-left">`;
+    html += `<span class="mode-icon">${st.icon}</span>`;
+    html += `<span class="mode-label">${escHtml(m.mode_label)}</span>`;
     html += `</div>`;
-  }
+    html += `<span class="mode-score ${sc}">${m.score}</span>`;
+    html += `</div>`;
 
-  html += `<div class="rec-reason">${escHtml(r.recommendation).substring(0, 150)}${r.recommendation.length > 150 ? '...' : ''}</div>`;
+    // Subtitle
+    html += `<div class="mode-subtitle">${escHtml(m.mode_description)}</div>`;
 
-  if (r.tips && r.tips.length > 0) {
-    html += `<div class="rec-tip"><span>\uD83D\uDCA1</span><span>${escHtml(r.tips[0])}</span></div>`;
-  }
-  html += `</div>`;
+    // Revival chips (dormant mode)
+    if (m.revival_items && m.revival_items.length > 0) {
+      m.revival_items.forEach(name => {
+        html += `<span class="revival-chip">${escHtml(name)} \u2190 \uC624\uB79C\uB9CC!</span>`;
+      });
+    }
 
-  // Outfit items with images
-  if (r.outfit && r.outfit.length) {
-    r.outfit.forEach(o => {
-      html += `<div class="card" style="padding:10px;">`;
-      html += `<div style="display:flex; gap:10px; align-items:center;">`;
-      if (o.image_url && o.image_url.startsWith('data:image/')) {
-        html += `<img src="${o.image_url}" style="width:48px;height:48px;border-radius:8px;object-fit:cover;">`;
-      }
-      html += `<div>`;
-      html += `<div style="font-weight:600;font-size:0.9rem;">${escHtml(o.name)}</div>`;
-      html += `<div style="font-size:0.78rem;color:var(--gray-500);">${escHtml(o.category)} · ${escHtml(o.reason)}</div>`;
-      html += `</div></div></div>`;
-    });
-  }
+    // Outfit chips
+    if (m.outfit && m.outfit.length) {
+      html += `<div class="rec-items">`;
+      m.outfit.forEach(o => {
+        html += `<span class="chip">${escHtml(o.category)}: ${escHtml(o.name)}</span>`;
+      });
+      html += `</div>`;
+    }
+
+    // Reason
+    html += `<div class="mode-reason">${escHtml(m.reason)}</div>`;
+
+    // Toggle button
+    html += `<button class="mode-toggle" onclick="toggleModeDetail(${idx})">\uC790\uC138\uD788 \u25BE</button>`;
+
+    // Detail panel (hidden)
+    html += `<div class="mode-detail" id="mode-detail-${idx}">`;
+
+    // Items with images
+    if (m.outfit && m.outfit.length) {
+      m.outfit.forEach(o => {
+        html += `<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">`;
+        if (o.image_url && o.image_url.startsWith('data:image/')) {
+          html += `<img src="${o.image_url}" style="width:40px;height:40px;border-radius:6px;object-fit:cover;">`;
+        }
+        html += `<div>`;
+        html += `<div style="font-weight:600;font-size:0.85rem;">${escHtml(o.name)}</div>`;
+        html += `<div style="font-size:0.75rem;color:var(--gray-500);">${escHtml(o.category)} \u00B7 ${escHtml(o.reason)}</div>`;
+        html += `</div></div>`;
+      });
+    }
+
+    // Recommendation text
+    html += `<div style="font-size:0.8rem;color:var(--gray-600);margin-top:8px;">${escHtml(m.recommendation)}</div>`;
+
+    // Scoring bar
+    const sd = m.scoring_detail;
+    if (sd) {
+      html += `<div class="scoring-bar">`;
+      html += `<span>\uC2A4\uD0C0\uC77C ${sd.style_score}</span>`;
+      if (sd.recency_penalty > 0) html += `<span>\uBC18\uBCF5 -${sd.recency_penalty}</span>`;
+      if (sd.diversity_bonus > 0) html += `<span>\uB2E4\uC591\uC131 +${sd.diversity_bonus}</span>`;
+      if (sd.dormant_bonus > 0) html += `<span>\uBD80\uD65C +${sd.dormant_bonus}</span>`;
+      html += `<span>\u2192 ${sd.final_score}</span>`;
+      html += `</div>`;
+    }
+
+    // Tip
+    if (m.tips && m.tips.length > 0) {
+      html += `<div class="rec-tip"><span>\uD83D\uDCA1</span><span>${escHtml(m.tips[0])}</span></div>`;
+    }
+
+    html += `</div>`; // mode-detail
+    html += `</div>`; // mode-card
+  });
 
   el.innerHTML = html;
+}
+
+function toggleModeDetail(idx) {
+  const detail = document.getElementById('mode-detail-' + idx);
+  if (detail) {
+    detail.classList.toggle('open');
+    const btn = detail.previousElementSibling;
+    if (btn) btn.textContent = detail.classList.contains('open') ? '\uC811\uAE30 \u25B4' : '\uC790\uC138\uD788 \u25BE';
+  }
 }
 
 function loadAndScrollRec() {

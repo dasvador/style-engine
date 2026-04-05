@@ -66,6 +66,39 @@ pub struct OutfitCandidate {
     pub ai_candidate_index: usize,
 }
 
+// ─── 3-모드 추천 시스템 ───
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ScoringDetail {
+    pub style_score: i32,
+    pub recency_penalty: i32,
+    pub diversity_bonus: i32,
+    pub dormant_bonus: i32,
+    pub final_score: i32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ModeRecommendation {
+    pub mode: String,
+    pub mode_label: String,
+    pub mode_description: String,
+    pub outfit: Vec<OutfitItem>,
+    pub recommendation: String,
+    pub weather_summary: String,
+    pub tips: Vec<String>,
+    pub score: i32,
+    pub verdict: String,
+    pub reason: String,
+    pub revival_items: Vec<String>,
+    pub scoring_detail: ScoringDetail,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MultiModeRecommendationResponse {
+    pub modes: Vec<ModeRecommendation>,
+    pub weather_summary: String,
+}
+
 impl OutfitCandidate {
     pub fn new(
         top_id: Option<String>,

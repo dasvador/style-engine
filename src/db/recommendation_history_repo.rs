@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use sqlx::MySqlPool;
 
 use crate::models::recommendation_history::{
@@ -119,5 +121,41 @@ impl RecommendationHistoryRepo {
         }
 
         Ok(summary)
+    }
+
+    /// 14일 이상 추천되지 않은 휴면 아이템 ID 집합
+    pub async fn find_dormant_item_ids(
+        pool: &MySqlPool,
+        user_id: &str,
+        all_clothing_ids: &[String],
+    ) -> Result<HashSet<String>, sqlx::Error> {
+        let recent = Self::find_recent_by_user(pool, user_id, 100).await?;
+        let cutoff = chrono::Local::now().naive_local() - chrono::Duration::days(14);
+
+        let mut recently_used = HashSet::new();
+        for row in &recent {
+            if row.recommended_at >= cutoff {
+                for id in [
+                    &row.top_id,
+                    &row.bottom_id,
+                    &row.outer_id,
+                    &row.shoes_id,
+                    &row.bag_id,
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    recently_used.insert(id.clone());
+                }
+            }
+        }
+
+        let dormant = all_clothing_ids
+            .iter()
+            .filter(|id| !recently_used.contains(*id))
+            .cloned()
+            .collect();
+
+        Ok(dormant)
     }
 }
