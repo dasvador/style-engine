@@ -283,52 +283,20 @@ pub fn select_variation(
         })
 }
 
-/// Step 3: 안 입은 옷 — 휴면 아이템을 포함하는 후보 중 최고 점수
+/// Step 3: 안 입은 옷 — 휴면 아이템을 포함하면서 Today와 top+bottom이 다르고
+/// 품질 기준을 통과하는 후보가 있을 때만 추천. 없으면 None (옵셔널 카드)
 pub fn select_dormant(
     candidates: &[OutfitCandidate],
     dormant_ids: &HashSet<String>,
     todays_pick: &OutfitCandidate,
 ) -> Option<ModeSelectionResult> {
-    // 1차: 휴면 포함 + Today와 다른 후보
-    let dormant_and_different: Vec<_> = candidates
+    let pool: Vec<_> = candidates
         .iter()
         .filter(|c| contains_dormant_item(c, dormant_ids))
-        .filter(|c| !is_same_outfit(c, todays_pick))
+        .filter(|c| !has_same_top_bottom(c, todays_pick))
         .collect();
 
-    if let Some(best) = pick_best_dormant(&dormant_and_different, dormant_ids) {
-        return Some(best);
-    }
-
-    // 2차: 휴면 포함 (Today와 같아도 OK)
-    let dormant_any: Vec<_> = candidates
-        .iter()
-        .filter(|c| contains_dormant_item(c, dormant_ids))
-        .collect();
-
-    if let Some(best) = pick_best_dormant(&dormant_any, dormant_ids) {
-        return Some(best);
-    }
-
-    // 3차 폴백: 가장 덜 사용된 후보
-    candidates
-        .iter()
-        .filter(|c| !is_same_outfit(c, todays_pick))
-        .max_by_key(|c| c.diversity_bonus * 10 - c.recency_penalty)
-        .or_else(|| candidates.last())
-        .map(|c| {
-            let dormant = calculate_dormant_bonus(c, dormant_ids);
-            ModeSelectionResult {
-                scoring: ScoringDetail {
-                    style_score: c.style_score,
-                    recency_penalty: c.recency_penalty,
-                    diversity_bonus: c.diversity_bonus,
-                    dormant_bonus: dormant,
-                    final_score: c.style_score - c.recency_penalty + c.diversity_bonus + dormant,
-                },
-                candidate: c.clone(),
-            }
-        })
+    pick_best_dormant(&pool, dormant_ids)
 }
 
 // ─── Helper functions ───
@@ -371,10 +339,8 @@ fn pick_best_dormant(
     pool: &[&OutfitCandidate],
     dormant_ids: &HashSet<String>,
 ) -> Option<ModeSelectionResult> {
-    if pool.is_empty() {
-        return None;
-    }
     pool.iter()
+        .filter(|c| c.style_score >= 70)
         .max_by_key(|c| {
             let dormant = calculate_dormant_bonus(c, dormant_ids);
             c.style_score + dormant

@@ -951,13 +951,12 @@ function renderMultiModeResult(r) {
 
     html += `<div class="mode-card" data-mode="${escHtml(m.mode)}">`;
 
-    // Header: icon + label + score badge
+    // Header: icon + label
     html += `<div class="mode-header">`;
     html += `<div class="mode-header-left">`;
     html += `<span class="mode-icon">${st.icon}</span>`;
     html += `<span class="mode-label">${escHtml(m.mode_label)}</span>`;
     html += `</div>`;
-    html += `<span class="mode-score ${sc}">${m.score}</span>`;
     html += `</div>`;
 
     // Subtitle

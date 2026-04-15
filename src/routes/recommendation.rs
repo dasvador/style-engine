@@ -356,6 +356,10 @@ async fn get_multi_recommendation(
         let (winner, scoring) = match result {
             Some(r) => (&r.candidate, &r.scoring),
             None => {
+                // 안 입은 옷 활용은 옵셔널 카드 — 조건 미달 시 노출하지 않음
+                if *key == "dormant_revival" {
+                    continue;
+                }
                 // 폴백: 첫 번째 후보
                 let c = match reranked.first() {
                     Some(c) => c,
