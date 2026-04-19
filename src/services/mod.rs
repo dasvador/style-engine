@@ -1,6 +1,10 @@
+pub mod candidate_pipeline;
 pub mod embedding;
 pub mod openai;
 pub mod recommendation_diversity;
+pub mod recommendation_experiment;
 pub mod recommendation_service;
+pub mod serving_ranker;
 pub mod style_engine;
+pub mod style_engine_v2;
 pub mod weather;

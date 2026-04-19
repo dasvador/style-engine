@@ -1,0 +1,1388 @@
+version = 1
+
+# ═══════════════════════════════════════════════════════════════
+# 1. Hard filter false positive — military/workwear 과잉
+# ═══════════════════════════════════════════════════════════════
+
+[[cases]]
+case_id = "HC001"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "khaki_utility_shirt"
+bottom = "indigo_selvedge_denim"
+shoes = "white_canvas_sneaker"
+bag = "cream_canvas_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "밀리터리 1개만. 정상 아메카지."
+
+[[cases]]
+case_id = "HC002"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "khaki_utility_shirt"
+bottom = "navy_utility_pants"
+shoes = "white_canvas_sneaker"
+bag = "cream_canvas_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "밀리터리 상하의 2개. 이 앱에서 가장 빈번한 정상 조합."
+
+[[cases]]
+case_id = "HC003"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "khaki_utility_shirt"
+bottom = "navy_utility_pants"
+shoes = "black_canvas_sneaker"
+bag = "olive_helmet_bag"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "밀리터리 3개(상+하+가방). 가방 포함 false positive 핵심."
+
+[[cases]]
+case_id = "HC004"
+situation = "데이트"
+temperature_c = 20.0
+top = "khaki_utility_shirt"
+bottom = "navy_utility_pants"
+shoes = "black_canvas_sneaker"
+bag = "olive_helmet_bag"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Borderline"
+notes = "HC003과 동일 조합 + 데이트. 유니폼 느낌 가능성. hard fail은 아님."
+
+[[cases]]
+case_id = "HC005"
+situation = "캐주얼"
+temperature_c = 15.0
+top = "khaki_utility_shirt"
+bottom = "olive_cargo_pants"
+outer = "olive_m65_jacket"
+shoes = "beige_desert_boots"
+expected_hard_pass = false
+expected_today_fit = "Fail"
+expected_preference = "Reject"
+forbidden_reason = "상하의+아우터 3개 전부 밀리터리 — 유니폼 느낌."
+notes = "큰 슬롯 3개 전부 밀리터리는 진짜 과함."
+
+[[cases]]
+case_id = "HC006"
+situation = "캐주얼"
+temperature_c = 15.0
+top = "white_crewneck_tee"
+bottom = "indigo_selvedge_denim"
+outer = "olive_m65_jacket"
+shoes = "white_canvas_sneaker"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "밀리터리 아우터 1개. 상하의 중립. 완전 정상."
+
+[[cases]]
+case_id = "HC007"
+situation = "캐주얼"
+temperature_c = 15.0
+top = "white_crewneck_tee"
+bottom = "indigo_selvedge_denim"
+outer = "olive_m65_jacket"
+shoes = "white_canvas_sneaker"
+bag = "olive_helmet_bag"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "밀리터리는 아우터+가방만. 상하의 중립. 가방 포함 false positive 타겟."
+
+[[cases]]
+case_id = "HC008"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "brick_red_flannel_shirt"
+bottom = "washed_black_denim"
+shoes = "german_trainer"
+bag = "tan_leather_crossbody"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "워크 상의+가방만. 전형적 아메카지 데일리."
+
+[[cases]]
+case_id = "HC009"
+situation = "데이트"
+temperature_c = 18.0
+top = "brick_red_flannel_shirt"
+bottom = "brown_corduroy_pants"
+shoes = "brown_walker_boots"
+bag = "cream_canvas_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "워크 상하의 2개. 데이트룩으로 전형적."
+
+[[cases]]
+case_id = "HC010"
+situation = "캐주얼"
+temperature_c = 15.0
+top = "brick_red_flannel_shirt"
+bottom = "brown_corduroy_pants"
+outer = "indigo_coverall_jacket"
+shoes = "brown_walker_boots"
+expected_hard_pass = false
+expected_today_fit = "Fail"
+expected_preference = "Reject"
+forbidden_reason = "상하의+아우터 3개 전부 워크 — 작업복 느낌."
+notes = "큰 슬롯 3개 워크는 과함. 진짜 hard fail 의도."
+
+[[cases]]
+case_id = "HC011"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "cream_flannel_shirt"
+bottom = "indigo_selvedge_denim"
+shoes = "white_canvas_sneaker"
+bag = "cream_canvas_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "워크 1개 포인트. 정상."
+
+[[cases]]
+case_id = "HC012"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "heather_gray_henley"
+bottom = "indigo_selvedge_denim"
+shoes = "black_canvas_sneaker"
+bag = "tan_leather_crossbody"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "워크 요소는 가방 1개뿐. 정상."
+
+[[cases]]
+case_id = "HC013"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "heather_gray_henley"
+bottom = "brown_corduroy_pants"
+shoes = "brown_walker_boots"
+bag = "cream_canvas_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "워크 하의+신발. 상의·가방 베이직. 자연스러운 아메카지."
+
+# ═══════════════════════════════════════════════════════════════
+# 2. 진짜 hard fail — 포멀+스포츠, 구조 부재, 톤 이슈
+# ═══════════════════════════════════════════════════════════════
+
+[[cases]]
+case_id = "HC014"
+situation = "출근"
+temperature_c = 20.0
+top = "white_oxford_shirt"
+bottom = "charcoal_twill_slacks"
+shoes = "silver_running_shoes"
+expected_hard_pass = false
+expected_today_fit = "Fail"
+expected_preference = "Reject"
+forbidden_reason = "포멀+스포츠+출근 — 명확 충돌."
+
+[[cases]]
+case_id = "HC015"
+situation = "비즈니스"
+temperature_c = 20.0
+top = "navy_suit_jacket"
+bottom = "navy_suit_pants"
+shoes = "navy_running_shoes"
+expected_hard_pass = false
+expected_today_fit = "Fail"
+expected_preference = "Reject"
+forbidden_reason = "비즈니스 슈트에 러닝화."
+
+[[cases]]
+case_id = "HC016"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "white_oxford_shirt"
+bottom = "charcoal_twill_slacks"
+shoes = "silver_running_shoes"
+expected_hard_pass = false
+expected_today_fit = "Fail"
+expected_preference = "Reject"
+forbidden_reason = "포멀+스포츠 조합 자체가 충돌. 상황 무관."
+
+[[cases]]
+case_id = "HC017"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "black_hoodie"
+bottom = "charcoal_sweatpants"
+shoes = "black_canvas_sneaker"
+expected_hard_pass = false
+expected_today_fit = "Fail"
+expected_preference = "Reject"
+forbidden_reason = "전부 어두움 + 구조템 없음."
+
+[[cases]]
+case_id = "HC018"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "beige_linen_tee"
+bottom = "cream_linen_pants"
+shoes = "red_running_shoes"
+bag = "yellow_canvas_tote"
+expected_hard_pass = false
+expected_today_fit = "Fail"
+expected_preference = "Reject"
+forbidden_reason = "구조 부재 — 밥 가벼움만 + 반찬 2개."
+
+[[cases]]
+case_id = "HC019"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "beige_linen_tee"
+bottom = "brown_chino"
+shoes = "tan_suede_loafer"
+bag = "beige_canvas_tote"
+expected_hard_pass = false
+expected_today_fit = "Fail"
+expected_preference = "Reject"
+forbidden_reason = "웜톤 일색 + 구조템 없음 + 어두운 anchor 없음."
+
+[[cases]]
+case_id = "HC020"
+situation = "캐주얼"
+temperature_c = 15.0
+top = "royal_blue_work_shirt"
+bottom = "indigo_selvedge_denim"
+outer = "olive_m65_jacket"
+shoes = "german_trainer"
+expected_hard_pass = false
+expected_today_fit = "Fail"
+expected_preference = "Reject"
+forbidden_reason = "이너가 반찬 역할 — 아우터와 경쟁."
+
+# ═══════════════════════════════════════════════════════════════
+# 3. HC021-HC040 — military/work 과검출, tone edge, context 의존
+# ═══════════════════════════════════════════════════════════════
+
+[[cases]]
+case_id = "HC021"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "olive_fatigue_shirt"
+bottom = "indigo_selvedge_denim"
+shoes = "brown_suede_trainer"
+bag = "olive_helmet_bag"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "상의만 밀리터리, 가방도 밀리터리지만 전형적인 믹스. hard fail이면 과검출."
+tags = ["false_positive_hard", "military_mix"]
+
+[[cases]]
+case_id = "HC022"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "olive_fatigue_shirt"
+bottom = "olive_fatigue_pants"
+shoes = "black_canvas_sneaker"
+bag = "olive_helmet_bag"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Reject"
+notes = "올 밀리터리. hard fail보다 낮은 점수로 밀리는 게 자연스러움."
+tags = ["military_overload", "soft_penalty"]
+
+[[cases]]
+case_id = "HC023"
+situation = "데이트"
+temperature_c = 20.0
+top = "navy_knit"
+bottom = "beige_slacks"
+shoes = "brown_loafer"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "정석 데이트룩. 항상 상위권 나와야 하는 기준 케이스."
+tags = ["anchor_case", "date"]
+
+[[cases]]
+case_id = "HC024"
+situation = "데이트"
+temperature_c = 20.0
+top = "navy_knit"
+bottom = "beige_slacks"
+shoes = "running_sneaker"
+bag = "brown_tote"
+expected_hard_pass = false
+expected_today_fit = "Fail"
+expected_preference = "Reject"
+notes = "데이트에서 러닝화는 명확한 하드 실패."
+tags = ["true_hard_fail", "date"]
+
+[[cases]]
+case_id = "HC025"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "white_tee"
+bottom = "white_pants"
+outer = "light_beige_shirt"
+shoes = "cream_sneaker"
+bag = "cream_tote"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Borderline"
+notes = "완전 밝은 톤온톤. hard fail은 아님."
+tags = ["all_bright", "tone_on_tone"]
+
+[[cases]]
+case_id = "HC026"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "black_tee"
+bottom = "black_pants"
+outer = "black_jacket"
+shoes = "black_sneaker"
+bag = "black_bag"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Reject"
+notes = "올블랙. flat 느낌으로 점수 낮아야 함."
+tags = ["all_dark", "flat"]
+
+[[cases]]
+case_id = "HC027"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "grey_sweatshirt"
+bottom = "grey_sweatpants"
+shoes = "white_sneaker"
+bag = "black_backpack"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Borderline"
+notes = "트레이닝 셋업. 상황에 따라 허용."
+tags = ["athleisure"]
+
+[[cases]]
+case_id = "HC028"
+situation = "출근"
+temperature_c = 20.0
+top = "grey_sweatshirt"
+bottom = "grey_sweatpants"
+shoes = "white_sneaker"
+bag = "black_backpack"
+expected_hard_pass = false
+expected_today_fit = "Fail"
+expected_preference = "Reject"
+notes = "같은 조합도 출근에서는 실패."
+tags = ["context_dependent"]
+
+[[cases]]
+case_id = "HC029"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "navy_shirt"
+bottom = "navy_pants"
+outer = "navy_jacket"
+shoes = "brown_shoes"
+bag = "brown_bag"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "톤온톤이지만 신발/가방으로 풀린 케이스."
+tags = ["tone_on_tone", "balanced"]
+
+[[cases]]
+case_id = "HC030"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "navy_shirt"
+bottom = "navy_pants"
+outer = "navy_jacket"
+shoes = "navy_sneaker"
+bag = "navy_bag"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Reject"
+notes = "완전 단색. 구조 부족."
+tags = ["monotone_fail"]
+
+[[cases]]
+case_id = "HC031"
+situation = "데이트"
+temperature_c = 20.0
+top = "white_shirt"
+bottom = "beige_slacks"
+outer = "charcoal_jacket"
+shoes = "black_derby"
+bag = "black_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "클래식 세미포멀 기준."
+tags = ["anchor_case"]
+
+[[cases]]
+case_id = "HC032"
+situation = "데이트"
+temperature_c = 20.0
+top = "white_shirt"
+bottom = "beige_slacks"
+outer = "charcoal_jacket"
+shoes = "german_trainer"
+bag = "black_tote"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Borderline"
+notes = "스니커는 borderline."
+tags = ["context"]
+
+[[cases]]
+case_id = "HC033"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "olive_shirt"
+bottom = "brown_chino"
+shoes = "brown_shoes"
+bag = "brown_bag"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "자연톤 조합. 안정적."
+tags = ["earth_tone"]
+
+[[cases]]
+case_id = "HC034"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "olive_shirt"
+bottom = "brown_chino"
+shoes = "camel_sneaker"
+bag = "camel_bag"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Reject"
+notes = "카멜 과다로 붕 뜨는 케이스."
+tags = ["warm_overload"]
+
+[[cases]]
+case_id = "HC035"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "blue_shirt"
+bottom = "blue_pants"
+shoes = "brown_shoes"
+bag = "brown_bag"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "블루+브라운 정석."
+tags = ["classic"]
+
+[[cases]]
+case_id = "HC036"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "blue_shirt"
+bottom = "blue_pants"
+shoes = "blue_sneaker"
+bag = "blue_bag"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Reject"
+notes = "색 단조로움."
+tags = ["monotone"]
+
+[[cases]]
+case_id = "HC037"
+situation = "데이트"
+temperature_c = 20.0
+top = "grey_tee"
+bottom = "black_pants"
+outer = "leather_jacket"
+shoes = "black_boots"
+bag = "black_bag"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "올블랙이지만 소재로 살아나는 케이스."
+tags = ["texture"]
+
+[[cases]]
+case_id = "HC038"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "grey_tee"
+bottom = "black_pants"
+shoes = "black_sneaker"
+bag = "black_bag"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Reject"
+notes = "같은 올블랙이라도 outer 없으면 flat."
+tags = ["contrast"]
+
+[[cases]]
+case_id = "HC039"
+situation = "출근"
+temperature_c = 20.0
+top = "white_shirt"
+bottom = "navy_slacks"
+shoes = "brown_loafer"
+bag = "brown_briefcase"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "기본 출근룩."
+tags = ["anchor"]
+
+[[cases]]
+case_id = "HC040"
+situation = "출근"
+temperature_c = 20.0
+top = "white_shirt"
+bottom = "navy_slacks"
+shoes = "white_sneaker"
+bag = "brown_briefcase"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Reject"
+notes = "출근에서 화이트 스니커는 경계선."
+tags = ["context"]
+# ═══════════════════════════════════════════════════════════════
+# 5. Baseline vs v2 비교 — 과감점/과관대 케이스
+# ═══════════════════════════════════════════════════════════════
+
+[[cases]]
+case_id = "BV001"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "white_crewneck_tee"
+bottom = "indigo_selvedge_denim"
+shoes = "brown_walker_boots"
+bag = "cream_canvas_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "데일리 기본 조합. baseline과 v2 모두 높은 점수 기대."
+
+[[cases]]
+case_id = "BV002"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "white_crewneck_tee"
+bottom = "indigo_selvedge_denim"
+outer = "light_indigo_denim_jacket"
+shoes = "white_canvas_sneaker"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "올 베이직 + 아우터. 가산점 있을 법함."
+
+[[cases]]
+case_id = "BV003"
+situation = "캐주얼"
+temperature_c = 15.0
+top = "white_crewneck_tee"
+bottom = "indigo_selvedge_denim"
+outer = "olive_m65_jacket"
+shoes = "white_canvas_sneaker"
+bag = "cream_canvas_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "밀리터리 아우터 포인트 + 중립 베이스. 실제 운영에서 자주 나와야 함."
+
+[[cases]]
+case_id = "BV004"
+situation = "캐주얼"
+temperature_c = 15.0
+top = "white_crewneck_tee"
+bottom = "indigo_selvedge_denim"
+outer = "olive_m65_jacket"
+shoes = "german_trainer"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "M-65 + 독일군. baseline에서 과감점 의심."
+
+[[cases]]
+case_id = "BV005"
+situation = "캐주얼"
+temperature_c = 22.0
+top = "oatmeal_sweatshirt"
+bottom = "cream_chino_pants"
+shoes = "white_canvas_sneaker"
+bag = "pigment_gray_backpack"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "라이트 톤 통일. 밝기 밸런스 soft 감점 예상."
+
+[[cases]]
+case_id = "BV006"
+situation = "캐주얼"
+temperature_c = 15.0
+top = "white_crewneck_tee"
+bottom = "indigo_selvedge_denim"
+outer = "olive_m65_jacket"
+shoes = "german_trainer"
+bag = "olive_helmet_bag"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "M-65 + 독일군 + 헬멧백. 밀리터리 2개(아우터+가방)인데 상하의 중립."
+
+
+# ═══════════════════════════════════════════════════════════════
+# SG — Situation 민감 케이스
+# ═══════════════════════════════════════════════════════════════
+
+[[cases]]
+case_id = "SG001"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "white_tee"
+bottom = "navy_slacks"
+outer = "grey_tailored_jacket"
+shoes = "black_derby"
+bag = "black_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Borderline"
+notes = "캐주얼인데 너무 차려입은 케이스."
+tags = ["situation", "overformal", "casual"]
+
+[[cases]]
+case_id = "SG002"
+situation = "비즈니스"
+temperature_c = 20.0
+top = "white_tee"
+bottom = "navy_slacks"
+outer = "grey_tailored_jacket"
+shoes = "black_derby"
+bag = "black_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "같은 조합도 비즈니스에선 정상."
+tags = ["situation", "business"]
+
+[[cases]]
+case_id = "SG003"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "grey_hoodie"
+bottom = "grey_sweatpants"
+shoes = "white_sneaker"
+bag = "black_backpack"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "캐주얼에선 충분히 정상."
+tags = ["situation", "sweat", "casual"]
+
+[[cases]]
+case_id = "SG004"
+situation = "출근"
+temperature_c = 20.0
+top = "grey_hoodie"
+bottom = "grey_sweatpants"
+shoes = "white_sneaker"
+bag = "black_backpack"
+expected_hard_pass = true
+expected_today_fit = "Fail"
+expected_preference = "Reject"
+notes = "출근 상황에서는 Fail."
+tags = ["situation", "sweat", "office"]
+
+[[cases]]
+case_id = "SG005"
+situation = "데이트"
+temperature_c = 20.0
+top = "navy_tee"
+bottom = "beige_chino"
+shoes = "running_sneaker"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Fail"
+expected_preference = "Reject"
+notes = "데이트 + 러닝화 강화 확인용."
+tags = ["situation", "date", "running_shoes"]
+
+[[cases]]
+case_id = "SG006"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "navy_tee"
+bottom = "beige_chino"
+shoes = "running_sneaker"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "같은 조합도 캐주얼이면 정상."
+tags = ["situation", "casual", "running_shoes"]
+
+[[cases]]
+case_id = "SG007"
+situation = "데이트"
+temperature_c = 20.0
+top = "khaki_utility_shirt"
+bottom = "indigo_denim"
+shoes = "brown_suede_trainer"
+bag = "olive_helmet_bag"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Borderline"
+notes = "데이트에선 살짝 거칠 수 있음."
+tags = ["situation", "date", "military"]
+
+[[cases]]
+case_id = "SG008"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "khaki_utility_shirt"
+bottom = "indigo_denim"
+shoes = "brown_suede_trainer"
+bag = "olive_helmet_bag"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "같은 조합도 캐주얼이면 자연스러움."
+tags = ["situation", "casual", "military"]
+
+[[cases]]
+case_id = "SG009"
+situation = "비즈니스"
+temperature_c = 20.0
+top = "light_blue_shirt"
+bottom = "charcoal_slacks"
+outer = "navy_blazer"
+shoes = "german_trainer"
+bag = "black_brief"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Reject"
+notes = "비즈니스에서 독일군은 경고."
+tags = ["situation", "business", "sneaker"]
+
+[[cases]]
+case_id = "SG010"
+situation = "데이트"
+temperature_c = 20.0
+top = "light_blue_shirt"
+bottom = "charcoal_slacks"
+outer = "navy_blazer"
+shoes = "german_trainer"
+bag = "black_brief"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Borderline"
+notes = "데이트에서는 세미캐주얼로 간신히 가능."
+tags = ["situation", "date", "sneaker"]
+
+[[cases]]
+case_id = "SG011"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "light_blue_shirt"
+bottom = "charcoal_slacks"
+outer = "navy_blazer"
+shoes = "german_trainer"
+bag = "black_brief"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Borderline"
+notes = "캐주얼 기준 과하게 차려입었지만 불가능하진 않음."
+tags = ["situation", "casual", "overformal"]
+
+[[cases]]
+case_id = "SG012"
+situation = "출근"
+temperature_c = 20.0
+top = "white_shirt"
+bottom = "navy_slacks"
+shoes = "white_sneaker"
+bag = "black_brief"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Reject"
+notes = "출근 + 화이트 스니커 경계 확인."
+tags = ["situation", "office", "white_sneaker"]
+
+[[cases]]
+case_id = "SG013"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "white_shirt"
+bottom = "navy_slacks"
+shoes = "white_sneaker"
+bag = "black_brief"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Borderline"
+notes = "같은 조합도 캐주얼이면 허용."
+tags = ["situation", "casual", "white_sneaker"]
+
+[[cases]]
+case_id = "SG014"
+situation = "데이트"
+temperature_c = 20.0
+top = "heather_grey_tee"
+bottom = "stone_beige_pants"
+outer = "swedish_blue_parka"
+shoes = "beige_gat"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "데이트에서도 자연스러운 믹스."
+tags = ["situation", "date", "balanced"]
+
+[[cases]]
+case_id = "SG015"
+situation = "비즈니스"
+temperature_c = 20.0
+top = "heather_grey_tee"
+bottom = "stone_beige_pants"
+outer = "swedish_blue_parka"
+shoes = "beige_gat"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Fail"
+expected_preference = "Reject"
+notes = "같은 조합도 비즈니스면 실패."
+tags = ["situation", "business", "casual_outfit"]
+
+# ═══════════════════════════════════════════════════════════════
+# AC — 액세서리 교체 민감 케이스
+# ═══════════════════════════════════════════════════════════════
+
+[[cases]]
+case_id = "AC001"
+situation = "출근"
+temperature_c = 20.0
+top = "white_shirt"
+bottom = "charcoal_slacks"
+outer = "navy_blazer"
+shoes = "black_derby"
+bag = "black_brief"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "기준 출근룩."
+tags = ["accessory", "office", "anchor"]
+
+[[cases]]
+case_id = "AC002"
+situation = "출근"
+temperature_c = 20.0
+top = "white_shirt"
+bottom = "charcoal_slacks"
+outer = "navy_blazer"
+shoes = "german_trainer"
+bag = "black_brief"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Reject"
+notes = "신발만 바뀐 케이스."
+tags = ["accessory", "office", "shoe_swap"]
+
+[[cases]]
+case_id = "AC003"
+situation = "출근"
+temperature_c = 20.0
+top = "white_shirt"
+bottom = "charcoal_slacks"
+outer = "navy_blazer"
+shoes = "black_derby"
+bag = "black_backpack"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Borderline"
+notes = "가방만 백팩으로 바뀐 케이스."
+tags = ["accessory", "office", "bag_swap"]
+
+[[cases]]
+case_id = "AC004"
+situation = "데이트"
+temperature_c = 20.0
+top = "navy_knit"
+bottom = "beige_slacks"
+shoes = "brown_loafer"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "데이트 기준점."
+tags = ["accessory", "date", "anchor"]
+
+[[cases]]
+case_id = "AC005"
+situation = "데이트"
+temperature_c = 20.0
+top = "navy_knit"
+bottom = "beige_slacks"
+shoes = "running_sneaker"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Fail"
+expected_preference = "Reject"
+notes = "로퍼→러닝화 교체."
+tags = ["accessory", "date", "shoe_swap"]
+
+[[cases]]
+case_id = "AC006"
+situation = "데이트"
+temperature_c = 20.0
+top = "navy_knit"
+bottom = "beige_slacks"
+shoes = "brown_loafer"
+bag = "olive_helmet_bag"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Reject"
+notes = "가방이 헬멧백으로 바뀌면 데이트 무드 깨짐."
+tags = ["accessory", "date", "bag_swap"]
+
+[[cases]]
+case_id = "AC007"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "white_tee"
+bottom = "indigo_denim"
+outer = "khaki_field_jacket"
+shoes = "beige_gat"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "캐주얼 기준."
+tags = ["accessory", "casual"]
+
+[[cases]]
+case_id = "AC008"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "white_tee"
+bottom = "indigo_denim"
+outer = "khaki_field_jacket"
+shoes = "black_derby"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Borderline"
+notes = "캐주얼에서 더비는 과격식."
+tags = ["accessory", "casual", "shoe_swap"]
+
+[[cases]]
+case_id = "AC009"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "white_tee"
+bottom = "indigo_denim"
+outer = "khaki_field_jacket"
+shoes = "beige_gat"
+bag = "black_brief"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Borderline"
+notes = "캐주얼에서 브리프는 어색."
+tags = ["accessory", "casual", "bag_swap"]
+
+[[cases]]
+case_id = "AC010"
+situation = "출근"
+temperature_c = 20.0
+top = "light_blue_shirt"
+bottom = "navy_slacks"
+shoes = "brown_loafer"
+bag = "brown_brief"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "기본 출근."
+tags = ["accessory", "office"]
+
+[[cases]]
+case_id = "AC011"
+situation = "출근"
+temperature_c = 20.0
+top = "light_blue_shirt"
+bottom = "navy_slacks"
+shoes = "white_sneaker"
+bag = "brown_brief"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Reject"
+notes = "화이트 스니커로만 변경."
+tags = ["accessory", "office", "shoe_swap"]
+
+[[cases]]
+case_id = "AC012"
+situation = "출근"
+temperature_c = 20.0
+top = "light_blue_shirt"
+bottom = "navy_slacks"
+shoes = "brown_loafer"
+bag = "olive_backpack"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Reject"
+notes = "가방만 올리브 백팩으로 교체."
+tags = ["accessory", "office", "bag_swap"]
+
+[[cases]]
+case_id = "AC013"
+situation = "데이트"
+temperature_c = 20.0
+top = "heather_grey_tee"
+bottom = "stone_beige_pants"
+outer = "charcoal_denim_type1"
+shoes = "beige_gat"
+bag = "vintage_red_backpack"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "사용자 취향 기준 잘 되는 조합."
+tags = ["accessory", "date", "anchor"]
+
+[[cases]]
+case_id = "AC014"
+situation = "데이트"
+temperature_c = 20.0
+top = "heather_grey_tee"
+bottom = "stone_beige_pants"
+outer = "charcoal_denim_type1"
+shoes = "running_sneaker"
+bag = "vintage_red_backpack"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Reject"
+notes = "신발만 러닝화로 바뀐 케이스."
+tags = ["accessory", "date", "shoe_swap"]
+
+[[cases]]
+case_id = "AC015"
+situation = "데이트"
+temperature_c = 20.0
+top = "heather_grey_tee"
+bottom = "stone_beige_pants"
+outer = "charcoal_denim_type1"
+shoes = "beige_gat"
+bag = "olive_helmet_bag"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Borderline"
+notes = "가방만 헬멧백으로 교체."
+tags = ["accessory", "date", "bag_swap"]
+
+# ═══════════════════════════════════════════════════════════════
+# TG — 온도 게이트 케이스
+# ═══════════════════════════════════════════════════════════════
+
+[[cases]]
+case_id = "TG001"
+situation = "캐주얼"
+temperature_c = 10.0
+top = "white_tee"
+bottom = "stone_beige_pants"
+shoes = "beige_gat"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Fail"
+expected_preference = "Reject"
+notes = "10도에 반팔 단독은 실패."
+tags = ["temperature", "too_cold"]
+
+[[cases]]
+case_id = "TG002"
+situation = "캐주얼"
+temperature_c = 10.0
+top = "white_tee"
+bottom = "stone_beige_pants"
+outer = "swedish_blue_parka"
+shoes = "beige_gat"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "같은 반팔도 아우터가 있으면 가능."
+tags = ["temperature", "cold_with_outer"]
+
+[[cases]]
+case_id = "TG003"
+situation = "캐주얼"
+temperature_c = 13.0
+top = "light_shirt"
+bottom = "stone_beige_pants"
+shoes = "beige_gat"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Borderline"
+notes = "13도 얇은 셔츠 단독은 경계."
+tags = ["temperature", "borderline_cool"]
+
+[[cases]]
+case_id = "TG004"
+situation = "캐주얼"
+temperature_c = 13.0
+top = "light_shirt"
+bottom = "stone_beige_pants"
+outer = "light_jacket"
+shoes = "beige_gat"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "같은 조건에 가벼운 아우터 추가."
+tags = ["temperature", "cool_with_outer"]
+
+[[cases]]
+case_id = "TG005"
+situation = "캐주얼"
+temperature_c = 28.0
+top = "thick_sweatshirt"
+bottom = "heavy_chino"
+shoes = "beige_gat"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Fail"
+expected_preference = "Reject"
+notes = "28도에 두꺼운 상하의는 실패."
+tags = ["temperature", "too_hot"]
+
+[[cases]]
+case_id = "TG006"
+situation = "캐주얼"
+temperature_c = 28.0
+top = "light_tee"
+bottom = "linen_pants"
+shoes = "beige_gat"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "한여름 정상 조합."
+tags = ["temperature", "summer_ok"]
+
+[[cases]]
+case_id = "TG007"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "light_tee"
+bottom = "linen_pants"
+shoes = "beige_gat"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "20도 기준 정상."
+tags = ["temperature", "baseline"]
+
+[[cases]]
+case_id = "TG008"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "light_tee"
+bottom = "linen_pants"
+outer = "heavy_wool_jacket"
+shoes = "beige_gat"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Reject"
+notes = "20도에 너무 무거운 아우터는 과함."
+tags = ["temperature", "too_heavy_outer"]
+
+[[cases]]
+case_id = "TG009"
+situation = "출근"
+temperature_c = 18.0
+top = "light_blue_shirt"
+bottom = "navy_slacks"
+shoes = "brown_loafer"
+bag = "brown_brief"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "18도 출근룩 기준."
+tags = ["temperature", "office"]
+
+[[cases]]
+case_id = "TG010"
+situation = "출근"
+temperature_c = 18.0
+top = "light_blue_shirt"
+bottom = "navy_slacks"
+shoes = "brown_loafer"
+bag = "brown_brief"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Borderline"
+notes = "같은 룩이라도 두께/weight가 가벼움이면 경계."
+tags = ["temperature", "metadata_sensitive"]
+
+# ═══════════════════════════════════════════════════════════════
+# RD — 실데이터 기반 케이스
+# ═══════════════════════════════════════════════════════════════
+
+# RD001-002: military 2 + neutral bridge
+[[cases]]
+case_id = "RD001"
+situation = "캐주얼"
+temperature_c = 18.0
+top = "khaki_utility_shirt"
+bottom = "dark_navy_chino"
+outer = ""
+shoes = "german_trainer"
+bag = "navy_canvas_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "밀리터리 상의 + 네이비 치노(neutral bridge) + 독일군. 실데이터 정상 조합."
+tags = ["real_data", "military_neutral_bridge"]
+
+[[cases]]
+case_id = "RD002"
+situation = "캐주얼"
+temperature_c = 15.0
+top = "olive_pocket_tee"
+bottom = "dark_navy_chino"
+outer = "olive_ma1_jacket"
+shoes = "black_canvas_sneaker"
+bag = "olive_helmet_bag"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "밀리터리 2(상의+아우터) + neutral 하의. 가방 밀리터리여도 pass."
+tags = ["real_data", "military_neutral_bridge"]
+
+# RD003-004: olive overload
+[[cases]]
+case_id = "RD003"
+situation = "캐주얼"
+temperature_c = 18.0
+top = "olive_pocket_tee"
+bottom = "olive_chino_pants"
+shoes = "german_trainer"
+bag = "olive_helmet_bag"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Reject"
+notes = "올리브 과다(상의+하의+가방). 단색 느낌. soft penalty 기대."
+tags = ["real_data", "olive_overload"]
+
+[[cases]]
+case_id = "RD004"
+situation = "캐주얼"
+temperature_c = 15.0
+top = "olive_pocket_tee"
+bottom = "olive_chino_pants"
+outer = "dark_olive_deck_jacket"
+shoes = "sand_desert_boots"
+bag = "olive_helmet_bag"
+expected_hard_pass = false
+expected_today_fit = "Fail"
+expected_preference = "Reject"
+notes = "올리브 5개 아이템 중 4개 — 유니폼 느낌. hard fail 기대."
+tags = ["real_data", "olive_overload"]
+
+# RD005-006: under-formal office/date
+[[cases]]
+case_id = "RD005"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "oatmeal_sweatshirt"
+bottom = "camel_chino"
+shoes = "white_canvas_sneaker"
+bag = "cream_canvas_shoulder"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "캐주얼 스웻+치노+스니커. 정상."
+tags = ["real_data", "under_formal"]
+
+[[cases]]
+case_id = "RD006"
+situation = "데이트"
+temperature_c = 20.0
+top = "oatmeal_sweatshirt"
+bottom = "camel_chino"
+shoes = "gray_running_sneaker"
+bag = "cream_canvas_shoulder"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Reject"
+notes = "데이트에 스웻+러닝 스니커는 부적합."
+tags = ["real_data", "under_formal", "date"]
+
+# RD007-008: warm mono with medium-tone anchor
+[[cases]]
+case_id = "RD007"
+situation = "캐주얼"
+temperature_c = 18.0
+top = "oatmeal_sweatshirt"
+bottom = "brown_corduroy_pants"
+shoes = "dark_brown_work_boots"
+bag = "tan_leather_crossbody"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "전부 warm이지만 워크부츠(어두움) anchor. 정상 어스톤."
+tags = ["real_data", "warm_mono_anchor"]
+
+[[cases]]
+case_id = "RD008"
+situation = "캐주얼"
+temperature_c = 18.0
+top = "oatmeal_sweatshirt"
+bottom = "camel_chino"
+shoes = "german_trainer"
+bag = "tan_leather_crossbody"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "전부 warm + 중간톤. 독일군(중간/warm) + 크로스바디(workwear). weak anchor 검증용."
+tags = ["real_data", "warm_mono_weak_anchor"]
+
+# RD009-010: work + neutral bridge
+[[cases]]
+case_id = "RD009"
+situation = "캐주얼"
+temperature_c = 15.0
+top = "navy_chambray_shirt"
+bottom = "indigo_selvedge_denim"
+outer = "rust_trucker_jacket"
+shoes = "dark_brown_work_boots"
+bag = "tan_leather_crossbody"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "워크웨어 정석. 샴브레이+트러커+데님+워크부츠."
+tags = ["real_data", "work_neutral_bridge"]
+
+[[cases]]
+case_id = "RD010"
+situation = "캐주얼"
+temperature_c = 15.0
+top = "white_crewneck_tee"
+bottom = "indigo_selvedge_denim"
+outer = "charcoal_wool_overshirt"
+shoes = "dark_brown_work_boots"
+bag = "navy_canvas_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "울 오버셔츠(워크 구조템) + 데님 + 워크부츠. neutral top으로 밸런스."
+tags = ["real_data", "work_neutral_bridge"]

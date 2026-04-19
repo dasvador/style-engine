@@ -133,20 +133,32 @@ pub async fn get_outfit_recommendation(
 
 // ─── 1b) get_outfit_candidates (3 candidates for diversity scoring) ───
 
+/// 카테고리별 그룹화된 옷장 데이터. flat list 대신 슬롯별 후보를 분리해 LLM 혼동 방지.
+pub struct GroupedClothes {
+    pub tops: Vec<String>,
+    pub bottoms: Vec<String>,
+    pub outers: Vec<String>,
+    pub shoes: Vec<String>,
+    pub bags: Vec<String>,
+}
+
 pub async fn get_outfit_candidates(
     client: &reqwest::Client,
     api_key: &str,
     weather: &CurrentWeather,
-    clothes: &[String],
+    clothes: &GroupedClothes,
     occasion: Option<&str>,
     style_preference: Option<&str>,
     recent_items_hint: &str,
 ) -> anyhow::Result<AiMultiRecommendation> {
-    let clothes_list = if clothes.is_empty() {
-        "사용자가 등록한 옷이 없습니다. 일반적인 추천을 해주세요.".to_string()
-    } else {
-        clothes.join("\n")
-    };
+    let clothes_grouped = format!(
+        "[상의 후보]\n{tops}\n\n[하의 후보]\n{bottoms}\n\n[아우터 후보]\n{outers}\n\n[신발 후보]\n{shoes}\n\n[가방 후보]\n{bags}",
+        tops = if clothes.tops.is_empty() { "(없음)".to_string() } else { clothes.tops.join("\n") },
+        bottoms = if clothes.bottoms.is_empty() { "(없음)".to_string() } else { clothes.bottoms.join("\n") },
+        outers = if clothes.outers.is_empty() { "(없음)".to_string() } else { clothes.outers.join("\n") },
+        shoes = if clothes.shoes.is_empty() { "(없음)".to_string() } else { clothes.shoes.join("\n") },
+        bags = if clothes.bags.is_empty() { "(없음)".to_string() } else { clothes.bags.join("\n") },
+    );
 
     let occasion_text = occasion.unwrap_or("일상");
     let style_text = style_preference.unwrap_or("편한 스타일");
@@ -155,28 +167,30 @@ pub async fn get_outfit_candidates(
 
     let system_prompt = r#"당신은 아메카지/빈티지/밀리터리 패션에 익숙한 코디 보조 AI입니다.
 
-중요 원칙:
-- 최종 스타일 판단은 별도의 규칙 엔진이 담당합니다.
-- 당신의 역할은 주어진 옷장 후보 안에서 날씨와 상황에 맞는 "후보 코디안"을 조합하는 것입니다.
-- 규칙 엔진처럼 강하게 판정하거나 단정하지 마세요.
-- 옷장에 없는 아이템을 절대 만들어내지 마세요.
-- 반드시 입력으로 제공된 아이템명만 사용하세요.
+역할:
+- 주어진 슬롯별 후보 목록에서만 아이템을 골라 코디를 구성하는 "초안 생성기"입니다.
+- 최종 판단은 별도 규칙 엔진이 합니다. 강하게 단정하지 마세요.
+
+슬롯 규칙 (절대 준수):
+- 상의 슬롯에는 [상의 후보]에서만 선택하라.
+- 하의 슬롯에는 [하의 후보]에서만 선택하라.
+- 아우터 슬롯에는 [아우터 후보]에서만 선택하라.
+- 신발 슬롯에는 [신발 후보]에서만 선택하라.
+- 가방 슬롯에는 [가방 후보]에서만 선택하라.
+- 다른 슬롯의 아이템을 가져오지 마라.
+- 후보 목록에 없는 이름을 만들지 마라.
+- 이름은 후보 목록의 문자열을 그대로 복사하라.
+- 확신이 없으면 해당 슬롯을 빈 문자열로 두어라. 서버가 후처리로 채운다.
 
 추천 원칙:
 1. 날씨와 상황을 우선 고려하세요.
-2. 아우터는 날씨상 필요할 때만 포함하세요.
+2. 아우터는 날씨상 필요할 때만 포함하세요. 불필요하면 빈 문자열.
 3. 강한 포인트 아이템은 1개 이하로 유지하세요.
-4. 하의는 가능하면 안정적인 역할(밥/구조템/연결템) 아이템을 우선 선택하세요.
-5. 이너는 가능하면 중립적이고 활용도 높은 아이템을 우선 선택하세요.
-6. 과하게 비슷한 색/무드로 몰리는 조합은 피하세요.
-7. 설명은 과장하지 말고, 왜 무난하고 안정적인 후보인지 간단히 설명하세요.
+4. 하의는 안정적인 역할(밥/구조템/연결템) 우선.
+5. 이너는 중립적이고 활용도 높은 아이템 우선.
+6. 같은 색/무드로 몰리지 마세요.
 
 5가지 서로 다른 후보 코디를 제안하세요.
-- 각 후보는 반드시 상의 + 하의 + 신발 + 가방을 포함해야 합니다.
-- 각 후보는 반드시 다른 아이템 조합이어야 합니다.
-- 상의와 하의 중 최소 하나는 후보마다 달라야 합니다.
-- 가능하면 다양한 스타일과 무드의 조합을 포함하세요.
-
 반드시 JSON 형식으로 응답하세요."#;
 
     let user_prompt = format!(
@@ -190,14 +204,14 @@ pub async fn get_outfit_candidates(
 - 상황: {occasion}
 - 선호 스타일: {style}
 {recent_section}
-사용자 옷장 후보:
 {clothes}
 
 작업:
-- 위 옷장 안에서만 5가지 서로 다른 코디 후보를 구성하세요.
+- 위 슬롯별 후보 목록에서만 5가지 서로 다른 코디 후보를 구성하세요.
 - 각 후보는 다른 아이템 조합이어야 합니다.
-- 날씨상 불필요하면 아우터를 억지로 넣지 마세요.
-- 존재감 강한 아이템을 여러 개 겹치지 마세요.
+- 상의와 하의 중 최소 하나는 후보마다 달라야 합니다.
+- 신발은 반드시 [신발 후보]에서만 고르세요.
+- 가방은 반드시 [가방 후보]에서만 고르세요.
 
 응답 JSON 형식:
 {{
@@ -238,7 +252,7 @@ pub async fn get_outfit_candidates(
         humidity = weather.humidity,
         wind = weather.wind_speed,
         desc = weather.weather_description,
-        clothes = clothes_list,
+        clothes = clothes_grouped,
         occasion = occasion_text,
         style = style_text,
         today = today,

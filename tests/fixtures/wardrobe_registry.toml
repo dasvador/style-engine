@@ -1,0 +1,1585 @@
+# Wardrobe Item Registry
+# 모든 케이스에서 참조하는 아이템 카탈로그. ID → 속성 매핑.
+
+# ─── 상의 ───
+
+[items.white_crewneck_tee]
+name = "화이트 크루넥 티셔츠"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 1
+
+[items.heather_gray_henley]
+name = "헤더그레이 헨리넥 티셔츠"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 1
+texture_worlds = ["minimal", "sweat"]
+
+[items.khaki_utility_shirt]
+name = "카키 유틸리티 셔츠"
+category = "상의"
+style = "밀리터리"
+role = "연결템"
+tone = "중간"
+saturation = "중간"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+texture_worlds = ["military"]
+
+[items.brick_red_flannel_shirt]
+name = "브릭레드 플란넬 셔츠"
+category = "상의"
+style = "워크"
+role = "반찬"
+tone = "중간"
+saturation = "중간"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+texture_worlds = ["workwear"]
+seasons = ["봄", "가을", "겨울"]
+
+[items.cream_flannel_shirt]
+name = "크림 플란넬 셔츠"
+category = "상의"
+style = "워크"
+role = "반찬"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+texture_worlds = ["workwear"]
+
+[items.white_oxford_shirt]
+name = "화이트 옥스포드 셔츠"
+category = "상의"
+style = "포멀"
+role = "밥"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 4
+
+[items.royal_blue_work_shirt]
+name = "로얄블루 워크 셔츠"
+category = "상의"
+style = "워크"
+role = "반찬"
+tone = "중간"
+saturation = "높음"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 2
+
+[items.black_hoodie]
+name = "블랙 후드티"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 1
+
+[items.black_crewneck_knit]
+name = "블랙 크루넥 니트"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 2
+
+[items.cream_knit]
+name = "크림 니트"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+
+[items.beige_linen_tee]
+name = "베이지 린넨 티셔츠"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "가벼움"
+formality_level = 1
+
+[items.beige_knit]
+name = "베이지 니트"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+
+[items.charcoal_wool_knit]
+name = "차콜 울 니트"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "무거움"
+formality_level = 2
+seasons = ["가을", "겨울"]
+
+[items.oatmeal_sweatshirt]
+name = "오트밀 스웻셔츠"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 1
+texture_worlds = ["sweat"]
+
+# ─── 하의 ───
+
+[items.indigo_selvedge_denim]
+name = "인디고 셀비지 데님"
+category = "하의"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "중간"
+color_temperature = "cool"
+weight = "무거움"
+formality_level = 2
+
+[items.navy_utility_pants]
+name = "네이비 유틸리티 팬츠"
+category = "하의"
+style = "밀리터리"
+role = "연결템"
+tone = "어두움"
+saturation = "중간"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 2
+texture_worlds = ["military"]
+
+[items.olive_cargo_pants]
+name = "올리브 카고 팬츠"
+category = "하의"
+style = "밀리터리"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+texture_worlds = ["military"]
+
+[items.washed_black_denim]
+name = "워시드 블랙 데님"
+category = "하의"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "무거움"
+formality_level = 2
+
+[items.brown_corduroy_pants]
+name = "브라운 코듀로이 팬츠"
+category = "하의"
+style = "워크"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "무거움"
+formality_level = 2
+texture_worlds = ["workwear"]
+
+[items.charcoal_twill_slacks]
+name = "차콜 슬랙스"
+category = "하의"
+style = "포멀"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 4
+
+[items.navy_suit_pants]
+name = "네이비 수트 팬츠"
+category = "하의"
+style = "포멀"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 5
+
+[items.charcoal_sweatpants]
+name = "차콜 스웻팬츠"
+category = "하의"
+style = "베이직"
+role = "밥"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 1
+
+[items.charcoal_wool_slacks]
+name = "차콜 울 슬랙스"
+category = "하의"
+style = "포멀"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 4
+seasons = ["가을", "겨울"]
+
+[items.beige_chino_pants]
+name = "베이지 치노 팬츠"
+category = "하의"
+style = "베이직"
+role = "구조템"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 3
+
+[items.cream_linen_pants]
+name = "크림 린넨 팬츠"
+category = "하의"
+style = "베이직"
+role = "밥"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "가벼움"
+formality_level = 2
+
+[items.brown_chino]
+name = "브라운 치노"
+category = "하의"
+style = "베이직"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+
+[items.cream_chino_pants]
+name = "크림 치노 팬츠"
+category = "하의"
+style = "베이직"
+role = "밥"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+
+# ─── 아우터 ───
+
+[items.olive_m65_jacket]
+name = "올리브 M-65 필드자켓"
+category = "아우터"
+style = "밀리터리"
+role = "약한반찬"
+tone = "중간"
+saturation = "중간"
+color_temperature = "warm"
+weight = "무거움"
+formality_level = 2
+texture_worlds = ["military", "workwear"]
+seasons = ["봄", "가을"]
+
+[items.indigo_coverall_jacket]
+name = "인디고 커버올 자켓"
+category = "아우터"
+style = "워크"
+role = "구조템"
+tone = "어두움"
+saturation = "중간"
+color_temperature = "cool"
+weight = "무거움"
+formality_level = 2
+texture_worlds = ["workwear"]
+
+[items.navy_tailored_coat]
+name = "네이비 테일러드 코트"
+category = "아우터"
+style = "포멀"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "무거움"
+formality_level = 4
+
+[items.navy_wool_coat]
+name = "네이비 울 코트"
+category = "아우터"
+style = "포멀"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "무거움"
+formality_level = 4
+seasons = ["겨울"]
+
+[items.light_indigo_denim_jacket]
+name = "라이트 인디고 데님자켓"
+category = "아우터"
+style = "베이직"
+role = "반찬"
+tone = "중간"
+saturation = "중간"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 2
+
+[items.navy_suit_jacket]
+name = "네이비 수트 자켓"
+category = "아우터"
+style = "포멀"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 5
+
+# ─── 신발 ───
+
+[items.white_canvas_sneaker]
+name = "화이트 캔버스 스니커"
+category = "신발"
+style = "베이직"
+role = "밥"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 2
+
+[items.black_canvas_sneaker]
+name = "블랙 캔버스 스니커"
+category = "신발"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 2
+
+[items.german_trainer]
+name = "타우페 독일군 스니커"
+category = "신발"
+style = "베이직"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "가벼움"
+formality_level = 2
+
+[items.beige_desert_boots]
+name = "베이지 데저트 부츠"
+category = "신발"
+style = "베이직"
+role = "구조템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+
+[items.brown_walker_boots]
+name = "브라운 워커부츠"
+category = "신발"
+style = "워크"
+role = "구조템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+texture_worlds = ["workwear"]
+
+[items.silver_running_shoes]
+name = "실버 러닝화"
+category = "신발"
+style = "스포츠"
+role = "반찬"
+tone = "밝음"
+saturation = "중간"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 1
+
+[items.navy_running_shoes]
+name = "네이비 러닝화"
+category = "신발"
+style = "스포츠"
+role = "반찬"
+tone = "어두움"
+saturation = "중간"
+color_temperature = "cool"
+weight = "가벼움"
+formality_level = 1
+
+[items.black_chelsea_boots]
+name = "블랙 첼시부츠"
+category = "신발"
+style = "베이직"
+role = "연결템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 3
+
+[items.red_running_shoes]
+name = "레드 러닝화"
+category = "신발"
+style = "스포츠"
+role = "반찬"
+tone = "중간"
+saturation = "높음"
+color_temperature = "warm"
+weight = "가벼움"
+formality_level = 1
+
+[items.brown_leather_loafer]
+name = "브라운 레더 로퍼"
+category = "신발"
+style = "베이직"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 3
+
+[items.black_leather_boots]
+name = "블랙 레더 부츠"
+category = "신발"
+style = "베이직"
+role = "연결템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 3
+seasons = ["가을", "겨울"]
+
+[items.dark_brown_leather_boots]
+name = "다크브라운 레더 부츠"
+category = "신발"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 3
+
+[items.tan_suede_loafer]
+name = "탄 스웨이드 로퍼"
+category = "신발"
+style = "베이직"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "가벼움"
+formality_level = 3
+
+# ─── 가방 ───
+
+[items.cream_canvas_tote]
+name = "크림 캔버스 토트"
+category = "가방"
+style = "베이직"
+role = "밥"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 2
+
+[items.olive_helmet_bag]
+name = "올리브 헬멧백"
+category = "가방"
+style = "밀리터리"
+role = "약한반찬"
+tone = "중간"
+saturation = "중간"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 1
+texture_worlds = ["military"]
+
+[items.tan_leather_crossbody]
+name = "탄 레더 크로스바디"
+category = "가방"
+style = "워크"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+texture_worlds = ["workwear"]
+
+[items.yellow_canvas_tote]
+name = "옐로우 캔버스 토트"
+category = "가방"
+style = "베이직"
+role = "반찬"
+tone = "밝음"
+saturation = "높음"
+color_temperature = "warm"
+weight = "가벼움"
+formality_level = 1
+
+[items.beige_canvas_tote]
+name = "베이지 캔버스 토트"
+category = "가방"
+style = "베이직"
+role = "밥"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "가벼움"
+formality_level = 1
+
+[items.pigment_gray_backpack]
+name = "피그먼트 그레이 백팩"
+category = "가방"
+style = "베이직"
+role = "구조템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 2
+
+# ─── HC021-HC040 추가 아이템 ───
+
+[items.olive_fatigue_shirt]
+name = "올리브 파티그 셔츠"
+category = "상의"
+style = "밀리터리"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+texture_worlds = ["military"]
+
+[items.olive_fatigue_pants]
+name = "올리브 파티그 팬츠"
+category = "하의"
+style = "밀리터리"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+texture_worlds = ["military"]
+
+[items.brown_suede_trainer]
+name = "브라운 스웨이드 트레이너"
+category = "신발"
+style = "베이직"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "가벼움"
+formality_level = 2
+
+[items.navy_knit]
+name = "네이비 니트"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 2
+
+[items.beige_slacks]
+name = "베이지 슬랙스"
+category = "하의"
+style = "베이직"
+role = "구조템"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 3
+
+[items.brown_loafer]
+name = "브라운 로퍼"
+category = "신발"
+style = "베이직"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 3
+
+[items.brown_tote]
+name = "브라운 토트백"
+category = "가방"
+style = "베이직"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+
+[items.running_sneaker]
+name = "러닝 스니커"
+category = "신발"
+style = "스포츠"
+role = "반찬"
+tone = "밝음"
+saturation = "중간"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 1
+
+[items.white_tee]
+name = "화이트 티"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 1
+
+[items.white_pants]
+name = "화이트 팬츠"
+category = "하의"
+style = "베이직"
+role = "밥"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 2
+
+[items.light_beige_shirt]
+name = "라이트 베이지 셔츠자켓"
+category = "아우터"
+style = "베이직"
+role = "연결템"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "가벼움"
+formality_level = 2
+
+[items.cream_sneaker]
+name = "크림 스니커"
+category = "신발"
+style = "베이직"
+role = "밥"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "가벼움"
+formality_level = 2
+
+[items.cream_tote]
+name = "크림 토트"
+category = "가방"
+style = "베이직"
+role = "밥"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "가벼움"
+formality_level = 2
+
+[items.black_tee]
+name = "블랙 티"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 1
+
+[items.black_pants]
+name = "블랙 팬츠"
+category = "하의"
+style = "베이직"
+role = "밥"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 2
+
+[items.black_jacket]
+name = "블랙 자켓"
+category = "아우터"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 3
+
+[items.black_sneaker]
+name = "블랙 스니커"
+category = "신발"
+style = "베이직"
+role = "연결템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 2
+
+[items.black_bag]
+name = "블랙 백"
+category = "가방"
+style = "베이직"
+role = "연결템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 2
+
+[items.grey_sweatshirt]
+name = "그레이 스웻셔츠"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 1
+texture_worlds = ["sweat"]
+
+[items.grey_sweatpants]
+name = "그레이 스웻팬츠"
+category = "하의"
+style = "베이직"
+role = "밥"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 1
+texture_worlds = ["sweat"]
+
+[items.white_sneaker]
+name = "화이트 스니커"
+category = "신발"
+style = "베이직"
+role = "밥"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 1
+
+[items.black_backpack]
+name = "블랙 백팩"
+category = "가방"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 2
+
+[items.navy_shirt]
+name = "네이비 셔츠"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 2
+
+[items.navy_pants]
+name = "네이비 팬츠"
+category = "하의"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 2
+
+[items.navy_jacket]
+name = "네이비 자켓"
+category = "아우터"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 3
+
+[items.brown_shoes]
+name = "브라운 슈즈"
+category = "신발"
+style = "베이직"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+
+[items.brown_bag]
+name = "브라운 백"
+category = "가방"
+style = "베이직"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+
+[items.navy_sneaker]
+name = "네이비 스니커"
+category = "신발"
+style = "베이직"
+role = "연결템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 2
+
+[items.navy_bag]
+name = "네이비 백"
+category = "가방"
+style = "베이직"
+role = "연결템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 2
+
+[items.white_shirt]
+name = "화이트 드레스셔츠"
+category = "상의"
+style = "포멀"
+role = "밥"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 3
+
+[items.charcoal_jacket]
+name = "차콜 자켓"
+category = "아우터"
+style = "포멀"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 4
+
+[items.black_derby]
+name = "블랙 더비슈즈"
+category = "신발"
+style = "포멀"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 4
+
+[items.black_tote]
+name = "블랙 토트"
+category = "가방"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 3
+
+[items.olive_shirt]
+name = "올리브 셔츠"
+category = "상의"
+style = "베이직"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+
+[items.camel_sneaker]
+name = "카멜 스니커"
+category = "신발"
+style = "베이직"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "가벼움"
+formality_level = 2
+
+[items.camel_bag]
+name = "카멜 백"
+category = "가방"
+style = "베이직"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "가벼움"
+formality_level = 2
+
+[items.blue_shirt]
+name = "블루 셔츠"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "중간"
+saturation = "중간"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 2
+
+[items.blue_pants]
+name = "블루 팬츠"
+category = "하의"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "중간"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 2
+
+[items.blue_sneaker]
+name = "블루 스니커"
+category = "신발"
+style = "베이직"
+role = "연결템"
+tone = "중간"
+saturation = "중간"
+color_temperature = "cool"
+weight = "가벼움"
+formality_level = 2
+
+[items.blue_bag]
+name = "블루 백"
+category = "가방"
+style = "베이직"
+role = "연결템"
+tone = "중간"
+saturation = "중간"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 2
+
+[items.grey_tee]
+name = "그레이 티셔츠"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 1
+
+[items.leather_jacket]
+name = "레더 자켓"
+category = "아우터"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "무거움"
+formality_level = 3
+
+[items.black_boots]
+name = "블랙 부츠"
+category = "신발"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 3
+
+[items.brown_briefcase]
+name = "브라운 브리프케이스"
+category = "가방"
+style = "포멀"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 4
+
+[items.navy_slacks]
+name = "네이비 슬랙스"
+category = "하의"
+style = "포멀"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 4
+
+# ─── SG/AC/TG 케이스용 추가 아이템 ───
+
+[items.grey_hoodie]
+name = "그레이 후드티"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 1
+texture_worlds = ["sweat"]
+
+[items.grey_tailored_jacket]
+name = "그레이 테일러드 자켓"
+category = "아우터"
+style = "포멀"
+role = "구조템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 4
+texture_worlds = ["tailoring"]
+
+[items.navy_tee]
+name = "네이비 티셔츠"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "가벼움"
+formality_level = 1
+
+[items.beige_chino]
+name = "베이지 치노"
+category = "하의"
+style = "베이직"
+role = "구조템"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+
+[items.indigo_denim]
+name = "인디고 데님"
+category = "하의"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "중간"
+color_temperature = "cool"
+weight = "무거움"
+formality_level = 2
+
+[items.light_blue_shirt]
+name = "라이트 블루 셔츠"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "밝음"
+saturation = "중간"
+color_temperature = "cool"
+weight = "가벼움"
+formality_level = 3
+
+[items.charcoal_slacks]
+name = "차콜 슬랙스"
+category = "하의"
+style = "포멀"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 4
+texture_worlds = ["tailoring"]
+
+[items.navy_blazer]
+name = "네이비 블레이저"
+category = "아우터"
+style = "포멀"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 4
+texture_worlds = ["tailoring"]
+
+[items.black_brief]
+name = "블랙 브리프케이스"
+category = "가방"
+style = "포멀"
+role = "연결템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 4
+
+[items.heather_grey_tee]
+name = "헤더그레이 티셔츠"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 1
+
+[items.stone_beige_pants]
+name = "스톤베이지 팬츠"
+category = "하의"
+style = "베이직"
+role = "구조템"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+
+[items.swedish_blue_parka]
+name = "스웨디시블루 파카"
+category = "아우터"
+style = "밀리터리"
+role = "약한반찬"
+tone = "중간"
+saturation = "중간"
+color_temperature = "cool"
+weight = "무거움"
+formality_level = 2
+texture_worlds = ["military", "outdoor"]
+
+[items.beige_gat]
+name = "베이지 갓"
+category = "신발"
+style = "밀리터리"
+role = "연결템"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "가벼움"
+formality_level = 2
+texture_worlds = ["military", "minimal"]
+
+[items.khaki_field_jacket]
+name = "카키 필드자켓"
+category = "아우터"
+style = "밀리터리"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+texture_worlds = ["military"]
+
+[items.charcoal_denim_type1]
+name = "차콜 데님 자켓 1st"
+category = "아우터"
+style = "워크"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 2
+texture_worlds = ["workwear"]
+
+[items.vintage_red_backpack]
+name = "빈티지 레드 백팩"
+category = "가방"
+style = "베이직"
+role = "약한반찬"
+tone = "중간"
+saturation = "높음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 1
+
+[items.olive_backpack]
+name = "올리브 백팩"
+category = "가방"
+style = "밀리터리"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 1
+texture_worlds = ["military", "outdoor"]
+
+[items.brown_brief]
+name = "브라운 브리프"
+category = "가방"
+style = "포멀"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 4
+
+[items.light_shirt]
+name = "라이트 셔츠"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 2
+
+[items.light_jacket]
+name = "라이트 자켓"
+category = "아우터"
+style = "베이직"
+role = "연결템"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 2
+
+[items.thick_sweatshirt]
+name = "두꺼운 스웻셔츠"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "무거움"
+formality_level = 1
+texture_worlds = ["sweat"]
+
+[items.heavy_chino]
+name = "두꺼운 치노"
+category = "하의"
+style = "베이직"
+role = "구조템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "무거움"
+formality_level = 2
+
+[items.light_tee]
+name = "라이트 티셔츠"
+category = "상의"
+style = "베이직"
+role = "밥"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 1
+
+[items.linen_pants]
+name = "린넨 팬츠"
+category = "하의"
+style = "베이직"
+role = "밥"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "가벼움"
+formality_level = 2
+
+[items.heavy_wool_jacket]
+name = "두꺼운 울 자켓"
+category = "아우터"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "무거움"
+formality_level = 3
+seasons = ["가을", "겨울"]
+
+# ─── 실데이터 기반 추가 (RD 케이스용) ───
+
+[items.olive_pocket_tee]
+name = "올리브드랍 포켓 티셔츠"
+category = "상의"
+style = "밀리터리"
+role = "연결템"
+tone = "중간"
+saturation = "중간"
+color_temperature = "warm"
+weight = "가벼움"
+formality_level = 1
+texture_worlds = ["military"]
+
+[items.dark_olive_deck_jacket]
+name = "다크올리브 데크 자켓"
+category = "아우터"
+style = "밀리터리"
+role = "약한반찬"
+tone = "어두움"
+saturation = "중간"
+color_temperature = "warm"
+weight = "무거움"
+formality_level = 2
+texture_worlds = ["military"]
+
+[items.olive_chino_pants]
+name = "올리브 치노 팬츠"
+category = "하의"
+style = "베이직"
+role = "연결템"
+tone = "중간"
+saturation = "중간"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+texture_worlds = ["military", "workwear"]
+
+[items.khaki_cargo_pants]
+name = "카키 카고 팬츠"
+category = "하의"
+style = "밀리터리"
+role = "연결템"
+tone = "중간"
+saturation = "중간"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 1
+texture_worlds = ["military", "workwear"]
+
+[items.sand_desert_boots]
+name = "샌드 스웨이드 데저트부츠"
+category = "신발"
+style = "밀리터리"
+role = "연결템"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+texture_worlds = ["military", "minimal"]
+
+[items.navy_chambray_shirt]
+name = "네이비 샴브레이 셔츠"
+category = "상의"
+style = "워크"
+role = "연결템"
+tone = "어두움"
+saturation = "중간"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 2
+texture_worlds = ["workwear"]
+
+[items.dark_navy_chino]
+name = "다크네이비 치노 팬츠"
+category = "하의"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "중간"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 3
+texture_worlds = ["minimal", "tailoring"]
+
+[items.sand_harrington]
+name = "샌드 하링턴 자켓"
+category = "아우터"
+style = "베이직"
+role = "연결템"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 3
+texture_worlds = ["minimal", "tailoring"]
+
+[items.dark_brown_work_boots]
+name = "다크브라운 레더 워크부츠"
+category = "신발"
+style = "워크"
+role = "구조템"
+tone = "어두움"
+saturation = "중간"
+color_temperature = "warm"
+weight = "무거움"
+formality_level = 3
+texture_worlds = ["workwear"]
+
+[items.olive_ma1_jacket]
+name = "올리브 나일론 MA-1 봄버 자켓"
+category = "아우터"
+style = "밀리터리"
+role = "구조템"
+tone = "중간"
+saturation = "중간"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 2
+
+[items.camel_chino]
+name = "카멜 브러시드 치노"
+category = "하의"
+style = "베이직"
+role = "밥"
+tone = "중간"
+saturation = "중간"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+texture_worlds = ["minimal"]
+
+[items.navy_canvas_tote]
+name = "네이비 캔버스 토트백"
+category = "가방"
+style = "베이직"
+role = "연결템"
+tone = "어두움"
+saturation = "중간"
+color_temperature = "cool"
+weight = "가벼움"
+formality_level = 2
+texture_worlds = ["minimal"]
+
+[items.cream_canvas_shoulder]
+name = "크림 캔버스 숄더백"
+category = "가방"
+style = "베이직"
+role = "밥"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "가벼움"
+formality_level = 1
+texture_worlds = ["minimal"]
+
+[items.gray_running_sneaker]
+name = "그레이 스웨이드 러닝 스니커"
+category = "신발"
+style = "스포츠"
+role = "구조템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 1
+texture_worlds = ["minimal"]
+
+[items.rust_trucker_jacket]
+name = "러스트 코듀로이 트러커 자켓"
+category = "아우터"
+style = "워크"
+role = "반찬"
+tone = "중간"
+saturation = "높음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+texture_worlds = ["workwear"]
+
+[items.charcoal_wool_overshirt]
+name = "차콜 울 오버셔츠"
+category = "아우터"
+style = "워크"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "무거움"
+formality_level = 2
+texture_worlds = ["workwear"]

@@ -38,3 +38,6 @@ uuid = { version = "1", features = ["v4", "serde"] }
 dotenvy = "0.15"
 thiserror = "2"
 anyhow = "1"
+
+[dev-dependencies]
+toml = "0.8"

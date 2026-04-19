@@ -538,18 +538,6 @@ const HOME_HTML: &str = r#"<!DOCTYPE html>
       <select class="slot-select" id="slot-bag"><option value="">선택 안함</option></select>
     </div>
 
-    <div class="slot-group">
-      <div class="slot-label">상황</div>
-      <select class="slot-select" id="slot-situation">
-        <option value="">선택 안함</option>
-        <option value="출근">출근</option>
-        <option value="데이트">데이트</option>
-        <option value="주말">주말</option>
-        <option value="가벼운외출">가벼운외출</option>
-        <option value="캐주얼">캐주얼</option>
-      </select>
-    </div>
-
     <button class="btn btn-primary btn-lg" id="evaluate-btn" onclick="doEvaluate()">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
       평가하기
@@ -1082,14 +1070,11 @@ async function doEvaluate() {
   const outer = document.getElementById('slot-outer').value;
   const shoes = document.getElementById('slot-shoes').value;
   const bag = document.getElementById('slot-bag').value;
-  const situation = document.getElementById('slot-situation').value;
-
   if (top) body.top = top;
   if (bottom) body.bottom = bottom;
   if (outer) body.outer = outer;
   if (shoes) body.shoes = shoes;
   if (bag) body.bag = bag;
-  if (situation) body.situation = situation;
 
   const filledCount = [top, bottom, outer, shoes, bag].filter(Boolean).length;
   if (filledCount < 2) {

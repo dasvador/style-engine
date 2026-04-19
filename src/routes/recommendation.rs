@@ -55,23 +55,7 @@ async fn get_recommendation(
 
     // 3. Get user's clothes
     let clothes = clothing_repo::list_clothing(&state.db).await?;
-    let clothes_descriptions: Vec<String> = clothes
-        .iter()
-        .map(|c| {
-            format!(
-                "{} | 카테고리:{} | 색상:{} | 톤:{} | 색온도:{} | 역할:{} | 스타일:{} | 무게감:{} | 격식:{}",
-                c.name,
-                c.category,
-                c.color.as_deref().unwrap_or("-"),
-                c.tone.as_deref().unwrap_or("-"),
-                c.color_temperature.as_deref().unwrap_or("-"),
-                c.role.as_deref().unwrap_or("-"),
-                c.style.as_deref().unwrap_or("-"),
-                c.weight.as_deref().unwrap_or("-"),
-                c.formality_level.map(|l| l.to_string()).unwrap_or("-".to_string()),
-            )
-        })
-        .collect();
+    let grouped = build_grouped_clothes(&clothes);
 
     // 4. Build recency hint from recent history
     let recent_hint = build_recent_hint(&state.db, &clothes).await;
@@ -81,7 +65,7 @@ async fn get_recommendation(
         &state.http_client,
         &state.openai_api_key,
         &weather,
-        &clothes_descriptions,
+        &grouped,
         body.occasion.as_deref(),
         body.style_preference.as_deref(),
         &recent_hint,
@@ -144,11 +128,12 @@ async fn get_recommendation(
             if let Err(ref e) = multi_result {
                 warn!("Multi-candidate failed, falling back to single: {e}");
             }
+            let flat_descriptions = build_flat_descriptions(&clothes);
             let ai_result = openai::get_outfit_recommendation(
                 &state.http_client,
                 &state.openai_api_key,
                 &weather,
-                &clothes_descriptions,
+                &flat_descriptions,
                 body.occasion.as_deref(),
                 body.style_preference.as_deref(),
             )
@@ -238,32 +223,17 @@ async fn get_multi_recommendation(
     .map_err(AppError::Internal)?;
 
     let clothes = clothing_repo::list_clothing(&state.db).await?;
-    let clothes_descriptions: Vec<String> = clothes
-        .iter()
-        .map(|c| {
-            format!(
-                "{} | 카테고리:{} | 색상:{} | 톤:{} | 색온도:{} | 역할:{} | 스타일:{} | 무게감:{} | 격식:{}",
-                c.name, c.category,
-                c.color.as_deref().unwrap_or("-"),
-                c.tone.as_deref().unwrap_or("-"),
-                c.color_temperature.as_deref().unwrap_or("-"),
-                c.role.as_deref().unwrap_or("-"),
-                c.style.as_deref().unwrap_or("-"),
-                c.weight.as_deref().unwrap_or("-"),
-                c.formality_level.map(|l| l.to_string()).unwrap_or("-".to_string()),
-            )
-        })
-        .collect();
+    let grouped = build_grouped_clothes(&clothes);
 
     let recent_hint = build_recent_hint(&state.db, &clothes).await;
     let current_season = current_season_label();
 
-    // LLM: 3후보 생성 (1회 호출)
+    // LLM: 5후보 생성 (카테고리별 그룹 입력)
     let ai_candidates = openai::get_outfit_candidates(
         &state.http_client,
         &state.openai_api_key,
         &weather,
-        &clothes_descriptions,
+        &grouped,
         body.occasion.as_deref(),
         body.style_preference.as_deref(),
         &recent_hint,
@@ -443,6 +413,22 @@ async fn get_multi_recommendation(
         .await;
     }
 
+    // ─── SHADOW EXPERIMENT (S2) — log-only, baseline 영향 0 ───
+    // baseline 응답/저장 완료 후 호출. 실패는 모두 swallow.
+    crate::services::recommendation_experiment::run_shadow(
+        &state.db,
+        &reranked,
+        &clothes,
+        body.occasion.as_deref(),
+        current_season.as_deref(),
+        weather.temperature,
+        todays.as_ref().map(|t| t.candidate.ai_candidate_index),
+        variation.as_ref().map(|v| v.candidate.ai_candidate_index),
+        dormant.as_ref().map(|d| d.candidate.ai_candidate_index),
+        &dormant_ids,
+    )
+    .await;
+
     Ok(Json(MultiModeRecommendationResponse {
         modes,
         weather_summary: shared_weather,
@@ -531,6 +517,16 @@ async fn build_outfit_candidate(
             Some(sk) => sk,
             None => continue,
         };
+
+        // LLM이 지정한 카테고리와 DB 실제 카테고리 불일치 → skip
+        let db_slot = category_to_slot(&clothing.category);
+        if db_slot != Some(slot_kind) {
+            tracing::warn!(
+                "LLM slot mismatch: '{}' assigned to {} but DB category is {}",
+                clothing.name, ai_item.category, clothing.category
+            );
+            continue;
+        }
 
         // Assign ID to the right slot
         match slot_kind {
@@ -889,4 +885,40 @@ fn find_matching_clothing<'a>(clothes: &'a [Clothing], name: &str) -> Option<&'a
     clothes
         .iter()
         .find(|c| name.contains(&c.name) || c.name.contains(name))
+}
+
+/// 카테고리별 그룹화된 옷장 데이터를 생성. LLM이 슬롯별 후보만 보게 해서 혼동 방지.
+fn build_grouped_clothes(clothes: &[Clothing]) -> openai::GroupedClothes {
+    let fmt = |c: &Clothing| {
+        format!(
+            "- {} | role:{} | tone:{} | style:{}",
+            c.name,
+            c.role.as_deref().unwrap_or("-"),
+            c.tone.as_deref().unwrap_or("-"),
+            c.style.as_deref().unwrap_or("-"),
+        )
+    };
+    openai::GroupedClothes {
+        tops: clothes.iter().filter(|c| c.category == "상의").map(fmt).collect(),
+        bottoms: clothes.iter().filter(|c| c.category == "하의").map(fmt).collect(),
+        outers: clothes.iter().filter(|c| c.category == "아우터").map(fmt).collect(),
+        shoes: clothes.iter().filter(|c| c.category == "신발").map(fmt).collect(),
+        bags: clothes.iter().filter(|c| c.category == "가방").map(fmt).collect(),
+    }
+}
+
+/// Fallback용 flat description (단일 후보 추천에 사용)
+fn build_flat_descriptions(clothes: &[Clothing]) -> Vec<String> {
+    clothes
+        .iter()
+        .map(|c| {
+            format!(
+                "{} | 카테고리:{} | 톤:{} | 역할:{} | 스타일:{}",
+                c.name, c.category,
+                c.tone.as_deref().unwrap_or("-"),
+                c.role.as_deref().unwrap_or("-"),
+                c.style.as_deref().unwrap_or("-"),
+            )
+        })
+        .collect()
 }
