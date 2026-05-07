@@ -119,7 +119,49 @@ pub fn pairwise_score(a: &Clothing, b: &Clothing) -> i32 {
     let b_mat = b.material_primary.as_deref().unwrap_or("");
     if material_affinity(a_mat, b_mat) { s += 3; }
 
+    // B. same_color_upper_penalty — 이너+아우터 동색
+    let is_upper_pair = (a.category == "상의" && b.category == "아우터")
+        || (a.category == "아우터" && b.category == "상의");
+    if is_upper_pair {
+        let a_color = a.color.as_deref().unwrap_or("");
+        let b_color = b.color.as_deref().unwrap_or("");
+        let same_color_group = !a_color.is_empty() && !b_color.is_empty()
+            && (a_color == b_color || color_group(a_color) == color_group(b_color));
+        if same_color_group {
+            // texture contrast가 있으면 완화
+            let tex_contrast = (a_td - b_td).abs() >= 3;
+            let mat_contrast = a_mat != b_mat;
+            if tex_contrast && mat_contrast {
+                s -= 3; // 소재 차이가 있으면 소폭만
+            } else {
+                s -= 10; // 동색+동소재 → 상체 닫힘
+            }
+        }
+    }
+
+    // 동일 색상+무드 반복 (아우터+가방, 상의+가방 등)
+    let same_style_pair = a.style.as_deref() == b.style.as_deref()
+        && matches!(a.style.as_deref(), Some("밀리터리") | Some("워크"));
+    let same_color = a.color.as_deref().is_some()
+        && a.color.as_deref() == b.color.as_deref();
+    if same_style_pair && same_color {
+        s -= 8; // olive outer + olive bag, navy work + navy work bag
+    } else if same_style_pair {
+        s -= 3; // 같은 스타일 반복 (색은 다름)
+    }
+
     s
+}
+
+fn color_group(color: &str) -> &str {
+    if color.contains("네이비") || color.contains("인디고") || color.contains("잉크") { return "navy"; }
+    if color.contains("올리브") || color.contains("카키") { return "olive"; }
+    if color.contains("차콜") || color.contains("블랙") { return "dark"; }
+    if color.contains("크림") || color.contains("오트밀") || color.contains("화이트") || color.contains("오프") { return "cream"; }
+    if color.contains("브라운") || color.contains("러스트") || color.contains("브릭") { return "brown"; }
+    if color.contains("그레이") || color.contains("그레이지") { return "gray"; }
+    if color.contains("베이지") || color.contains("샌드") || color.contains("스톤") { return "beige"; }
+    "other"
 }
 
 fn material_affinity(a: &str, b: &str) -> bool {
@@ -206,12 +248,39 @@ pub fn outfit_score(items: &[&Clothing], user: Option<&UserStyleProfile>) -> i32
         if all_warm || all_cool { s -= 8; }
     }
 
-    // 7. 스타일 편중 페널티 — 밀리터리/워크 3개 이상이면 유니폼 느낌
-    let strong_styles: usize = items.iter()
+    // 7. A. strong_style_density — cosplay penalty 강화
+    let strong_items: Vec<&&Clothing> = items.iter()
         .filter(|i| matches!(i.style.as_deref(), Some("밀리터리") | Some("워크")))
-        .count();
-    if strong_styles >= 4 { s -= 15; }
-    else if strong_styles >= 3 { s -= 8; }
+        .collect();
+    let strong_count = strong_items.len();
+    if strong_count >= 4 { s -= 20; }      // 거의 유니폼
+    else if strong_count >= 3 { s -= 12; } // 코스프레 경계
+
+    // D. neutralizer 체크 — strong이 2+ 이면 나머지 중 neutralizer 필요
+    if strong_count >= 2 {
+        let neutral_count = items.iter()
+            .filter(|i| is_neutralizer(i))
+            .count();
+        if neutral_count == 0 {
+            s -= 10; // neutralizer 없이 strong 과밀
+        } else if neutral_count == 1 && strong_count >= 3 {
+            s -= 5; // neutralizer 부족
+        }
+    }
+
+    // C. 가방 military/tech overload — military outfit에 military bag 겹침
+    let bag = items.iter().find(|i| i.category == "가방");
+    if let Some(b) = bag {
+        let bag_style = b.style.as_deref().unwrap_or("베이직");
+        if bag_style == "밀리터리" && strong_count >= 2 {
+            s -= 8; // military outfit + military bag = overload
+        }
+        // tech/outdoor bag + military/workwear anchor = 무드 충돌
+        let bag_mat = b.material_primary.as_deref().unwrap_or("");
+        if bag_mat == "nylon" && strong_count >= 2 {
+            s -= 5; // tech bag + rugged outfit
+        }
+    }
 
     // 8. 체형 밸런스
     if let Some(profile) = user {
@@ -219,6 +288,31 @@ pub fn outfit_score(items: &[&Clothing], user: Option<&UserStyleProfile>) -> i32
     }
 
     s
+}
+
+/// neutralizer: 코디의 힘을 빼주는 중립/부드러운 아이템
+fn is_neutralizer(item: &Clothing) -> bool {
+    let style = item.style.as_deref().unwrap_or("");
+    let role = item.role.as_deref().unwrap_or("");
+    let shadow = item.shadow_tone.as_deref().unwrap_or("");
+    let name = &item.name;
+
+    // 베이직 스타일 + 밥/연결 역할
+    if style == "베이직" && (role == "밥" || role == "연결템") {
+        return true;
+    }
+    // 특정 neutralizer 패턴
+    if name.contains("크림") || name.contains("오트밀") || name.contains("헤더")
+        || name.contains("멜란지") || name.contains("그레이지") || name.contains("샴브레이")
+        || name.contains("워시드 블랙") || name.contains("슬러브")
+    {
+        return true;
+    }
+    // faded shadow + 베이직
+    if shadow == "faded" && style == "베이직" {
+        return true;
+    }
+    false
 }
 
 fn body_balance_score(items: &[&Clothing], user: &UserStyleProfile) -> i32 {
