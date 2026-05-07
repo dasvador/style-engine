@@ -774,22 +774,21 @@ const REASON_LABELS = {
   style_overload:'스타일 과다'
 };
 
-function showReasons(type, fbId, itemsJson) {
-  const items = JSON.parse(itemsJson);
+function showReasons(type, fbId) {
   const reasons = type === 'like' ? LIKE_REASONS : DISLIKE_REASONS;
   const el = document.getElementById(fbId);
   if (!el) return;
   let html = `<div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;">`;
   reasons.forEach(r => {
-    html += `<button class="chat-fb-btn" style="font-size:0.75rem;" onclick="submitFeedback('${type}',['${r}'],${JSON.stringify(JSON.stringify(items))},'${fbId}')">${REASON_LABELS[r]||r}</button>`;
+    html += `<button class="chat-fb-btn" style="font-size:0.75rem;" onclick="submitFeedback('${type}',['${r}'],'${fbId}')">${REASON_LABELS[r]||r}</button>`;
   });
-  html += `<button class="chat-fb-btn" style="font-size:0.75rem;" onclick="submitFeedback('${type}',[],${JSON.stringify(JSON.stringify(items))},'${fbId}')">그냥 ${type==='like'?'👍':'👎'}</button>`;
+  html += `<button class="chat-fb-btn" style="font-size:0.75rem;" onclick="submitFeedback('${type}',[],'${fbId}')">그냥 ${type==='like'?'👍':'👎'}</button>`;
   html += `</div>`;
   el.innerHTML = html;
 }
 
-async function submitFeedback(type, reasons, itemsJson, fbId) {
-  const items = JSON.parse(itemsJson);
+async function submitFeedback(type, reasons, fbId) {
+  const items = window['_fb_' + fbId] || [];
   const body = { feedback_type: type, reasons: reasons };
   items.forEach(it => {
     if (it.slot === 'inner') body.inner_name = it.name;
@@ -861,10 +860,11 @@ async function sendChat(e) {
       html += `</div>`;
       // 좋아요/싫어요 버튼 + reason 선택
       const fbId = 'fb-' + Date.now();
+      window['_fb_' + fbId] = r.items; // 전역에 items 저장
       html += `<div class="chat-feedback" id="${fbId}" style="margin-top:8px;">`;
       html += `<div style="display:flex; gap:6px; margin-bottom:4px;">`;
-      html += `<button class="chat-fb-btn" onclick="showReasons('like','${fbId}',${JSON.stringify(JSON.stringify(r.items))})">👍</button>`;
-      html += `<button class="chat-fb-btn" onclick="showReasons('dislike','${fbId}',${JSON.stringify(JSON.stringify(r.items))})">👎</button>`;
+      html += `<button class="chat-fb-btn" onclick="showReasons('like','${fbId}')">👍</button>`;
+      html += `<button class="chat-fb-btn" onclick="showReasons('dislike','${fbId}')">👎</button>`;
       html += `</div>`;
       html += `</div>`;
     }
