@@ -361,6 +361,7 @@ NOT: ecommerce, flat lay, mannequin, AI collage, hyper-stylized, cyberpunk."#,
         "n": 1,
         "size": "1024x1536",
         "quality": "low",
+        "output_format": "url",
     });
 
     let resp = state.http_client
@@ -370,10 +371,15 @@ NOT: ecommerce, flat lay, mannequin, AI collage, hyper-stylized, cyberpunk."#,
         .send().await
         .map_err(|e| AppError::Internal(e.into()))?;
 
-    let resp_json: serde_json::Value = resp.json().await
+    let resp_text = resp.text().await
+        .map_err(|e| AppError::Internal(e.into()))?;
+    tracing::info!("image API response len={}, has_url={}", resp_text.len(), resp_text.contains("\"url\""));
+    let resp_json: serde_json::Value = serde_json::from_str(&resp_text)
         .map_err(|e| AppError::Internal(e.into()))?;
 
-    let url = resp_json["data"][0]["url"].as_str().map(String::from);
+    let url = resp_json["data"][0]["url"].as_str()
+        .or_else(|| resp_json["data"][0]["b64_json"].as_str())
+        .map(String::from);
 
     Ok(Json(ImageResponse { image_url: url }))
 }
