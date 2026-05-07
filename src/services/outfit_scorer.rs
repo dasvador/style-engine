@@ -139,15 +139,31 @@ pub fn pairwise_score(a: &Clothing, b: &Clothing) -> i32 {
         }
     }
 
-    // 동일 색상+무드 반복 (아우터+가방, 상의+가방 등)
-    let same_style_pair = a.style.as_deref() == b.style.as_deref()
-        && matches!(a.style.as_deref(), Some("밀리터리") | Some("워크"));
-    let same_color = a.color.as_deref().is_some()
-        && a.color.as_deref() == b.color.as_deref();
-    if same_style_pair && same_color {
-        s -= 8; // olive outer + olive bag, navy work + navy work bag
-    } else if same_style_pair {
-        s -= 3; // 같은 스타일 반복 (색은 다름)
+    // 2. repeated_color_cluster — 같은 색상군 반복 (모든 슬롯 쌍)
+    let a_cg = color_group(a.color.as_deref().unwrap_or(""));
+    let b_cg = color_group(b.color.as_deref().unwrap_or(""));
+    if a_cg != "other" && a_cg == b_cg {
+        // 같은 색상군 + 같은 강한 스타일이면 강하게
+        let both_strong = matches!(a.style.as_deref(), Some("밀리터리") | Some("워크"))
+            && matches!(b.style.as_deref(), Some("밀리터리") | Some("워크"));
+        if both_strong {
+            s -= 10; // olive fatigue + olive tote = military overload
+        } else {
+            s -= 5; // 같은 색 반복이지만 스타일은 다름
+        }
+    }
+
+    // 9. tech_vs_workwear_conflict — rolltop/nylon bag + fatigue/cargo/workwear
+    let a_is_tech = a.material_primary.as_deref() == Some("nylon")
+        || a.name.contains("롤탑");
+    let b_is_tech = b.material_primary.as_deref() == Some("nylon")
+        || b.name.contains("롤탑");
+    let a_is_rugged = matches!(a.style.as_deref(), Some("밀리터리") | Some("워크"))
+        || a.name.contains("카고") || a.name.contains("퍼티그") || a.name.contains("파티그");
+    let b_is_rugged = matches!(b.style.as_deref(), Some("밀리터리") | Some("워크"))
+        || b.name.contains("카고") || b.name.contains("퍼티그") || b.name.contains("파티그");
+    if (a_is_tech && b_is_rugged) || (b_is_tech && a_is_rugged) {
+        s -= 6; // tech + rugged = 무드 충돌
     }
 
     s
@@ -248,41 +264,100 @@ pub fn outfit_score(items: &[&Clothing], user: Option<&UserStyleProfile>) -> i32
         if all_warm || all_cool { s -= 8; }
     }
 
-    // 7. A. strong_style_density — cosplay penalty 강화
+    // 7. strong_style_density + rugged_overload
     let strong_items: Vec<&&Clothing> = items.iter()
         .filter(|i| matches!(i.style.as_deref(), Some("밀리터리") | Some("워크")))
         .collect();
     let strong_count = strong_items.len();
-    if strong_count >= 4 { s -= 20; }      // 거의 유니폼
-    else if strong_count >= 3 { s -= 12; } // 코스프레 경계
+    if strong_count >= 4 { s -= 25; }      // 거의 유니폼
+    else if strong_count >= 3 { s -= 15; } // 코스프레 경계
 
-    // D. neutralizer 체크 — strong이 2+ 이면 나머지 중 neutralizer 필요
+    // rugged 세부 체크 (cargo + work boots + work jacket 등)
+    let has_cargo = items.iter().any(|i| i.name.contains("카고") || i.name.contains("퍼티그") || i.name.contains("파티그"));
+    let has_work_boots = items.iter().any(|i| i.name.contains("워크부츠"));
+    let has_work_jacket = items.iter().any(|i| {
+        (i.category == "아우터") && matches!(i.style.as_deref(), Some("워크") | Some("밀리터리"))
+    });
+    let rugged_count = has_cargo as i32 + has_work_boots as i32 + has_work_jacket as i32;
+    if rugged_count >= 3 { s -= 12; }
+    else if rugged_count >= 2 && strong_count >= 3 { s -= 8; }
+
+    // neutralizer 요구 — strong anchor일 때 neutralizer 2개 필요
     if strong_count >= 2 {
         let neutral_count = items.iter()
             .filter(|i| is_neutralizer(i))
             .count();
-        if neutral_count == 0 {
-            s -= 10; // neutralizer 없이 strong 과밀
-        } else if neutral_count == 1 && strong_count >= 3 {
-            s -= 5; // neutralizer 부족
+        let required = if strong_count >= 3 { 2 } else { 1 };
+        if neutral_count < required {
+            s -= (required as i32 - neutral_count as i32) * 8;
         }
     }
 
-    // C. 가방 military/tech overload — military outfit에 military bag 겹침
+    // 가방 overload — military outfit에 military/tech bag
     let bag = items.iter().find(|i| i.category == "가방");
     if let Some(b) = bag {
         let bag_style = b.style.as_deref().unwrap_or("베이직");
-        if bag_style == "밀리터리" && strong_count >= 2 {
-            s -= 8; // military outfit + military bag = overload
-        }
-        // tech/outdoor bag + military/workwear anchor = 무드 충돌
         let bag_mat = b.material_primary.as_deref().unwrap_or("");
-        if bag_mat == "nylon" && strong_count >= 2 {
-            s -= 5; // tech bag + rugged outfit
+        let bag_is_rolltop = b.name.contains("롤탑");
+
+        if bag_style == "밀리터리" && strong_count >= 2 {
+            s -= 10;
+        }
+        if (bag_mat == "nylon" || bag_is_rolltop) && strong_count >= 2 {
+            s -= 6; // tech bag + rugged outfit
         }
     }
 
-    // 8. 체형 밸런스
+    // isolated_accent_penalty — 조합 내 다른 아이템과 연결 없는 accent color
+    let color_groups: Vec<&str> = items.iter()
+        .map(|i| color_group(i.color.as_deref().unwrap_or("")))
+        .collect();
+    for (idx, cg) in color_groups.iter().enumerate() {
+        if *cg == "other" { continue; }
+        let count = color_groups.iter().filter(|g| *g == cg).count();
+        if count == 1 {
+            // 이 색상군이 조합 내 유일 → accent color
+            let item = items[idx];
+            let is_accent_color = !matches!(*cg, "cream" | "gray" | "beige" | "dark");
+            let is_bag_or_shoes = item.category == "가방" || item.category == "신발";
+            if is_accent_color && is_bag_or_shoes {
+                s -= 7; // 연결 없는 accent 가방/신발
+            }
+        }
+    }
+
+    // outfit_language_alignment — muted/dusty 조합에 clean accent 충돌
+    let muted_count = items.iter()
+        .filter(|i| matches!(i.shadow_tone.as_deref(), Some("faded" | "washed" | "dusty")))
+        .count();
+    let clean_count = items.iter()
+        .filter(|i| i.shadow_tone.as_deref() == Some("clean"))
+        .count();
+    if items.len() >= 4 && muted_count >= 3 && clean_count == 0 {
+        s += 5; // 전체가 muted 통일 = 좋은 language alignment
+    }
+    // muted 우세 조합에 clean accent가 하나만 있으면
+    if muted_count >= 3 && clean_count == 1 {
+        // clean 아이템이 accent 성격이면 penalty
+        let clean_item = items.iter().find(|i| i.shadow_tone.as_deref() == Some("clean"));
+        if let Some(ci) = clean_item {
+            let ci_cg = color_group(ci.color.as_deref().unwrap_or(""));
+            if !matches!(ci_cg, "cream" | "beige" | "gray") {
+                s -= 5; // muted 조합에 sharp clean accent
+            }
+        }
+    }
+
+    // repeated_color_cluster — 같은 색상군이 3개 이상
+    let mut cg_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for cg in &color_groups {
+        if *cg != "other" { *cg_counts.entry(cg).or_insert(0) += 1; }
+    }
+    for (_cg, count) in &cg_counts {
+        if *count >= 3 { s -= 10; }
+    }
+
+    // 체형 밸런스
     if let Some(profile) = user {
         s += body_balance_score(items, profile);
     }
