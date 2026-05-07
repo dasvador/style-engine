@@ -86,6 +86,7 @@ async fn main() {
     let app = Router::new()
         .merge(routes::home_router())
         .nest("/api", routes::api_router())
+        .nest_service("/static", tower_http::services::ServeDir::new("static"))
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
         .with_state(state);

@@ -343,6 +343,14 @@ async fn generate_image(
     State(state): State<AppState>,
     Json(body): Json<ImageRequest>,
 ) -> Result<Json<ImageResponse>, AppError> {
+    // 캐시 체크: outfit_hash + prompt_hash
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut outfit_hasher = DefaultHasher::new();
+    body.items.hash(&mut outfit_hasher);
+    let outfit_hash = format!("{:016x}", outfit_hasher.finish());
+
     let prompt = format!(
         r#"Full-body fashion editorial photograph of a man wearing: {}
 
@@ -354,6 +362,26 @@ Background: minimal urban, soft bokeh.
 NOT: ecommerce, flat lay, mannequin, AI collage, hyper-stylized, cyberpunk."#,
         body.items
     );
+
+    let mut prompt_hasher = DefaultHasher::new();
+    prompt.hash(&mut prompt_hasher);
+    let prompt_hash = format!("{:016x}", prompt_hasher.finish());
+
+    // DB 캐시 확인
+    let cached: Option<String> = sqlx::query_scalar(
+        "SELECT image_path FROM outfit_image WHERE outfit_hash = ? AND prompt_hash = ? LIMIT 1"
+    )
+    .bind(&outfit_hash)
+    .bind(&prompt_hash)
+    .fetch_optional(&state.db)
+    .await
+    .ok()
+    .flatten();
+
+    if let Some(path) = cached {
+        tracing::info!("image cache hit: {}", path);
+        return Ok(Json(ImageResponse { image_url: Some(path) }));
+    }
 
     let req_body = json!({
         "model": "gpt-image-1",
@@ -373,19 +401,38 @@ NOT: ecommerce, flat lay, mannequin, AI collage, hyper-stylized, cyberpunk."#,
 
     let resp_text = resp.text().await
         .map_err(|e| AppError::Internal(e.into()))?;
-    if resp_text.len() < 1000 {
-        tracing::info!("image API response: {}", resp_text);
-    } else {
-        tracing::info!("image API response len={}, has_url={}", resp_text.len(), resp_text.contains("\"url\""));
-    }
     let resp_json: serde_json::Value = serde_json::from_str(&resp_text)
         .map_err(|e| AppError::Internal(e.into()))?;
 
-    let url = if let Some(u) = resp_json["data"][0]["url"].as_str() {
+    // b64_json → decode → 파일 저장 → URL 반환
+    let url = if let Some(b64) = resp_json["data"][0]["b64_json"].as_str() {
+        use base64::Engine;
+        let bytes = base64::engine::general_purpose::STANDARD.decode(b64)
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("base64 decode error: {e}")))?;
+        let filename = format!("{}.png", uuid::Uuid::new_v4());
+        let path = format!("static/images/{}", filename);
+        std::fs::write(&path, &bytes)
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("file write error: {e}")))?;
+        let url = format!("/static/images/{}", filename);
+        tracing::info!("image saved: {} ({} bytes)", path, bytes.len());
+
+        // DB 캐시 저장
+        let _ = sqlx::query(
+            "INSERT IGNORE INTO outfit_image (id, outfit_hash, prompt_hash, image_path, prompt_text) VALUES (?, ?, ?, ?, ?)"
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(&outfit_hash)
+        .bind(&prompt_hash)
+        .bind(&url)
+        .bind(&prompt[..prompt.len().min(500)])
+        .execute(&state.db)
+        .await;
+
+        Some(url)
+    } else if let Some(u) = resp_json["data"][0]["url"].as_str() {
         Some(u.to_string())
-    } else if let Some(b64) = resp_json["data"][0]["b64_json"].as_str() {
-        Some(format!("data:image/png;base64,{}", b64))
     } else {
+        tracing::warn!("image API: no image in response");
         None
     };
 
