@@ -12,7 +12,9 @@ use crate::services::weather as weather_service;
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/", post(chat))
+    Router::new()
+        .route("/", post(chat))
+        .route("/image", post(generate_image))
 }
 
 #[derive(Debug, Deserialize)]
@@ -321,6 +323,59 @@ async fn chat(
         reply: final_reply,
         items: final_items,
     }))
+}
+
+// ─── Tool implementations ───
+
+// ─── AI 이미지 생성 ───
+
+#[derive(Debug, Deserialize)]
+struct ImageRequest {
+    items: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ImageResponse {
+    image_url: Option<String>,
+}
+
+async fn generate_image(
+    State(state): State<AppState>,
+    Json(body): Json<ImageRequest>,
+) -> Result<Json<ImageResponse>, AppError> {
+    let prompt = format!(
+        r#"Full-body fashion editorial photograph of a man wearing: {}
+
+Style: Japanese premium lookbook, Tokyo street editorial, relaxed natural pose.
+Body: broad shoulders, slightly stocky, relaxed XL fit.
+Photo: cinematic natural lighting, soft shadows, muted warm tones, shallow depth of field.
+Aesthetic: AURALEE / BEAMS / vintage military-workwear mix.
+Background: minimal urban, soft bokeh.
+NOT: ecommerce, flat lay, mannequin, AI collage, hyper-stylized, cyberpunk."#,
+        body.items
+    );
+
+    let req_body = json!({
+        "model": "gpt-image-1",
+        "prompt": prompt,
+        "n": 1,
+        "size": "1024x1536",
+        "quality": "low",
+    });
+
+    let resp = state.http_client
+        .post("https://api.openai.com/v1/images/generations")
+        .header("Authorization", format!("Bearer {}", state.openai_api_key))
+        .json(&req_body)
+        .send().await
+        .map_err(|e| AppError::Internal(e.into()))?;
+
+    let resp_json: serde_json::Value = resp.json().await
+        .map_err(|e| AppError::Internal(e.into()))?;
+
+    let url = resp_json["data"][0]["url"].as_str().map(String::from);
+
+    Ok(Json(ImageResponse { image_url: url }))
 }
 
 // ─── Tool implementations ───

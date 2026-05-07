@@ -85,6 +85,72 @@ const HOME_HTML: &str = r#"<!DOCTYPE html>
   .chat-ai .chat-item-chip.not-owned {
     border-style: dashed; border-color: var(--warning); color: var(--gray-500);
   }
+
+  /* --- Editorial Lookbook Card --- */
+  .lookbook-card {
+    background: #faf9f7; border-radius: 16px; overflow: hidden;
+    max-width: 100%; margin: 8px 0; box-shadow: 0 2px 20px rgba(0,0,0,0.06);
+  }
+  .lookbook-header {
+    padding: 20px 20px 12px; text-align: center;
+  }
+  .lookbook-title {
+    font-size: 1.15rem; font-weight: 700; letter-spacing: 0.5px;
+    color: #2d2a26; margin-bottom: 4px; font-family: Georgia, serif;
+  }
+  .lookbook-subtitle {
+    font-size: 0.78rem; color: #8a8580; letter-spacing: 0.3px;
+  }
+  .lookbook-desc {
+    padding: 0 20px 16px; font-size: 0.82rem; line-height: 1.7;
+    color: #5a5550; text-align: center; font-style: italic;
+  }
+  .lookbook-items {
+    display: flex; gap: 8px; padding: 0 16px 16px; overflow-x: auto;
+    scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
+  }
+  .lookbook-item {
+    flex: 0 0 auto; width: 100px; scroll-snap-align: start;
+    background: #fff; border-radius: 10px; padding: 10px 8px;
+    text-align: center; box-shadow: 0 1px 6px rgba(0,0,0,0.04);
+  }
+  .lookbook-item.not-owned {
+    border: 1.5px dashed #d4a574; background: #fefcfa;
+  }
+  .lookbook-item-slot {
+    font-size: 0.6rem; color: #b0a99f; text-transform: uppercase;
+    letter-spacing: 1px; margin-bottom: 4px;
+  }
+  .lookbook-item-name {
+    font-size: 0.72rem; font-weight: 600; color: #3d3a36; line-height: 1.3;
+  }
+  .lookbook-item-tag {
+    font-size: 0.6rem; color: #c4a882; margin-top: 4px;
+    font-style: italic;
+  }
+  .lookbook-mood {
+    padding: 0 20px 14px; display: flex; flex-wrap: wrap;
+    gap: 6px; justify-content: center;
+  }
+  .lookbook-mood-chip {
+    font-size: 0.65rem; padding: 3px 10px; border-radius: 12px;
+    background: #eae6e0; color: #6b6560; letter-spacing: 0.3px;
+  }
+  .lookbook-actions {
+    padding: 0 16px 16px; display: flex; gap: 8px; justify-content: center;
+  }
+  .lookbook-action-btn {
+    font-size: 0.72rem; padding: 6px 14px; border-radius: 16px;
+    border: 1px solid #d8d3cc; background: #fff; color: #5a5550;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .lookbook-action-btn:hover { background: #f0ede8; }
+  .lookbook-fb {
+    padding: 8px 16px 16px; display: flex; gap: 8px; justify-content: center;
+  }
+  .lookbook-img {
+    width: 100%; max-height: 420px; object-fit: cover; border-radius: 8px;
+  }
   .chat-input-bar { display: flex; gap: 8px; padding: 12px 0; }
   .chat-input {
     flex: 1; border: 1.5px solid var(--gray-200); border-radius: 20px;
@@ -763,6 +829,56 @@ let activeCategory = '전체';
 let activeRole = '전체';
 let previousScreen = 'wardrobe';
 
+/* ===== LOOKBOOK HELPERS ===== */
+function generateLookbookTitle(items) {
+  const styles = items.map(i => i.name).join(' ');
+  if (styles.includes('워크') || styles.includes('데님')) return 'Soft Workwear Casual';
+  if (styles.includes('밀리터리') || styles.includes('올리브') || styles.includes('유틸리티')) return 'Muted Utility Layers';
+  if (styles.includes('니트') || styles.includes('하링턴')) return 'Faded Ivy Mood';
+  if (styles.includes('슬랙스') || styles.includes('옥스포드')) return 'Clean Minimal Silhouette';
+  if (styles.includes('부츠') || styles.includes('코듀로이')) return 'Grounded Vintage';
+  return 'Curated Daily Style';
+}
+
+function extractMoodChips(items) {
+  const chips = new Set();
+  items.forEach(i => {
+    const n = i.name;
+    if (n.includes('워시드') || n.includes('페이디드')) chips.add('washed');
+    if (n.includes('슬러브') || n.includes('멜란지')) chips.add('slubby');
+    if (n.includes('스웨이드')) chips.add('suede');
+    if (n.includes('데님')) chips.add('denim');
+    if (n.includes('캔버스')) chips.add('canvas');
+    if (n.includes('린넨') || n.includes('리넨')) chips.add('linen');
+    if (n.includes('나일론')) chips.add('nylon');
+    if (n.includes('레더')) chips.add('leather');
+    if (n.includes('니트')) chips.add('knit');
+    if (n.includes('코듀로이')) chips.add('corduroy');
+    if (n.includes('울')) chips.add('wool');
+    if (n.includes('올리브')) chips.add('muted olive');
+    if (n.includes('인디고')) chips.add('indigo');
+    if (n.includes('차콜')) chips.add('charcoal');
+    if (n.includes('크림') || n.includes('오트밀')) chips.add('cream');
+    if (n.includes('네이비')) chips.add('navy');
+  });
+  return [...chips].slice(0, 6);
+}
+
+async function generateOutfitImage(items) {
+  try {
+    const itemDescs = items.map(i => {
+      const slot = {inner:'top/inner',outer:'outerwear',bottom:'pants',shoes:'shoes',bag:'bag'}[i.slot] || i.slot;
+      return slot + ': ' + i.name;
+    }).join(', ');
+    const r = await fetchJSON(API + '/chat/image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: itemDescs }),
+    });
+    return r.image_url || null;
+  } catch (e) { return null; }
+}
+
 /* ===== FEEDBACK ===== */
 const LIKE_REASONS = ['good_texture_balance','good_grounding','good_color_depth','good_denim_bridge','good_body_balance'];
 const DISLIKE_REASONS = ['too_military','too_dark','too_flat','too_light','floating_balance','color_repetition','style_overload'];
@@ -846,29 +962,83 @@ async function sendChat(e) {
     const el = document.getElementById(typingId);
     if (el) el.remove();
 
-    // AI 응답 렌더링
-    let html = `<div class="chat-bubble chat-ai">`;
-    html += r.reply.replace(/\n/g, '<br>');
+    // AI 응답 렌더링 — editorial lookbook card
+    let html = '';
     if (r.items && r.items.length > 0) {
-      html += `<div style="margin-top:8px;">`;
-      r.items.forEach(it => {
-        const cls = it.owned === false ? 'chat-item-chip not-owned' : 'chat-item-chip';
-        const tag = it.owned === false ? ' (미보유)' : '';
-        const label = it.slot === 'inner' ? '이너' : it.slot === 'outer' ? '아우터' : it.category;
-        html += `<span class="${cls}">${escHtml(label)}: ${escHtml(it.name)}${tag}</span>`;
+      const fbId = 'fb-' + Date.now();
+      window['_fb_' + fbId] = r.items;
+
+      // archetype 제목 생성
+      const title = generateLookbookTitle(r.items);
+      const desc = r.reply || '';
+
+      html += `<div class="lookbook-card">`;
+
+      // 헤더
+      html += `<div class="lookbook-header">`;
+      html += `<div class="lookbook-title">${escHtml(title)}</div>`;
+      if (weatherData) {
+        html += `<div class="lookbook-subtitle">${weatherData.temperature || ''}°C · ${weatherData.weather_description || ''}</div>`;
+      }
+      html += `</div>`;
+
+      // AI 이미지 (비동기 로딩)
+      const imgId = 'img-' + Date.now();
+      html += `<div id="${imgId}" style="text-align:center; padding:8px 20px;">`;
+      html += `<div style="color:#b0a99f; font-size:0.75rem; padding:30px 0;">이미지 생성 중...</div>`;
+      html += `</div>`;
+
+      // 스타일 설명
+      if (desc) {
+        html += `<div class="lookbook-desc">${escHtml(desc)}</div>`;
+      }
+
+      // 이미지 비동기 생성
+      setTimeout(async () => {
+        const url = await generateOutfitImage(r.items);
+        const el = document.getElementById(imgId);
+        if (el && url) {
+          el.innerHTML = `<img src="${url}" style="width:100%; border-radius:8px; max-height:400px; object-fit:cover;" alt="outfit">`;
+        } else if (el) {
+          el.innerHTML = '';
+        }
+      }, 100);
+
+      // 아이템 카드 스크롤
+      html += `<div class="lookbook-items">`;
+      const slotOrder = ['inner','outer','bottom','shoes','bag'];
+      const slotLabel = {inner:'INNER',outer:'OUTER',bottom:'BOTTOM',shoes:'SHOES',bag:'BAG'};
+      slotOrder.forEach(slot => {
+        const it = r.items.find(i => i.slot === slot);
+        if (!it) return;
+        const cls = it.owned === false ? 'lookbook-item not-owned' : 'lookbook-item';
+        const tag = it.owned === false ? '미보유' : '';
+        html += `<div class="${cls}">`;
+        html += `<div class="lookbook-item-slot">${slotLabel[slot] || slot}</div>`;
+        html += `<div class="lookbook-item-name">${escHtml(it.name)}</div>`;
+        if (tag) html += `<div class="lookbook-item-tag">${tag}</div>`;
+        html += `</div>`;
       });
       html += `</div>`;
-      // 좋아요/싫어요 버튼 + reason 선택
-      const fbId = 'fb-' + Date.now();
-      window['_fb_' + fbId] = r.items; // 전역에 items 저장
-      html += `<div class="chat-feedback" id="${fbId}" style="margin-top:8px;">`;
-      html += `<div style="display:flex; gap:6px; margin-bottom:4px;">`;
-      html += `<button class="chat-fb-btn" onclick="showReasons('like','${fbId}')">👍</button>`;
-      html += `<button class="chat-fb-btn" onclick="showReasons('dislike','${fbId}')">👎</button>`;
+
+      // 무드 칩
+      html += `<div class="lookbook-mood">`;
+      const moods = extractMoodChips(r.items);
+      moods.forEach(m => {
+        html += `<span class="lookbook-mood-chip">${escHtml(m)}</span>`;
+      });
       html += `</div>`;
+
+      // 피드백
+      html += `<div class="lookbook-fb" id="${fbId}">`;
+      html += `<button class="lookbook-action-btn" onclick="showReasons('like','${fbId}')">👍 좋아요</button>`;
+      html += `<button class="lookbook-action-btn" onclick="showReasons('dislike','${fbId}')">👎 아쉬워요</button>`;
       html += `</div>`;
+
+      html += `</div>`;
+    } else {
+      html = `<div class="chat-bubble chat-ai">${r.reply ? r.reply.replace(/\n/g, '<br>') : '추천 결과가 없습니다.'}</div>`;
     }
-    html += `</div>`;
     container.innerHTML += html;
   } catch (err) {
     const el = document.getElementById(typingId);
