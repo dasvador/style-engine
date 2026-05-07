@@ -123,6 +123,27 @@ fn score_item(item: &Clothing, ctx: &ShortlistContext) -> i32 {
     s
 }
 
+/// 온도 기반 아이템 필터 — 계절에 맞지 않는 아이템 제외
+fn is_temp_appropriate(item: &Clothing, temp: f64) -> bool {
+    let weight = item.weight.as_deref().unwrap_or("중간");
+    let mat = item.material_primary.as_deref().unwrap_or("");
+    let name = &item.name;
+
+    if temp >= 20.0 {
+        if mat == "wool" || mat == "flannel" { return false; }
+        if name.contains("니트") && !name.contains("가벼") { return false; }
+        if name.contains("울 ") { return false; }
+        if item.category == "아우터" && weight == "무거움" { return false; }
+        if name.contains("코트") || name.contains("파카") { return false; }
+    }
+    if temp >= 25.0 {
+        if item.category == "아우터" && weight != "가벼움" { return false; }
+        if name.contains("코듀로이") { return false; }
+        if weight == "무거움" { return false; }
+    }
+    true
+}
+
 /// 슬롯별 shortlist를 생성.
 /// 단순 top-k가 아니라 role bucket을 섞어 다양성을 확보.
 pub fn build_shortlist<'a>(
@@ -134,6 +155,7 @@ pub fn build_shortlist<'a>(
     let mut candidates: Vec<(&Clothing, i32)> = clothes
         .iter()
         .filter(|c| c.category == category)
+        .filter(|c| is_temp_appropriate(c, ctx.temperature))
         .map(|c| (c, score_item(c, ctx)))
         .collect();
 

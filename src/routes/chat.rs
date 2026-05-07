@@ -44,6 +44,7 @@ async fn chat(
     let clothes = clothing_repo::list_clothing(&state.db).await?;
 
     // 날씨
+    let mut temperature: Option<f64> = None;
     let weather_hint = match crate::db::region_repo::get_region(&state.db).await {
         Ok(Some(region)) => {
             match weather_service::fetch_weather(
@@ -54,10 +55,13 @@ async fn chat(
             )
             .await
             {
-                Ok(w) => format!(
-                    "현재 날씨: {}°C (체감 {}°C), {}, 습도 {}%",
-                    w.temperature, w.apparent_temperature, w.weather_description, w.humidity
-                ),
+                Ok(w) => {
+                    temperature = Some(w.temperature);
+                    format!(
+                        "현재 날씨: {}°C (체감 {}°C), {}, 습도 {}%",
+                        w.temperature, w.apparent_temperature, w.weather_description, w.humidity
+                    )
+                }
                 Err(_) => String::new(),
             }
         }
@@ -80,7 +84,7 @@ async fn chat(
     let outfit_hint = if anchors.is_empty() {
         String::new()
     } else {
-        build_outfit_candidates(anchors[0], &clothes, user_profile.as_ref())
+        build_outfit_candidates(anchors[0], &clothes, user_profile.as_ref(), temperature)
     };
 
     let wardrobe_summary = build_wardrobe_summary(&clothes);
@@ -220,14 +224,17 @@ fn build_outfit_candidates(
     anchor: &Clothing,
     clothes: &[Clothing],
     user: Option<&crate::models::user_profile::UserStyleProfile>,
+    temperature: Option<f64>,
 ) -> String {
     let anchor_cat = &anchor.category;
+    let temp = temperature.unwrap_or(20.0);
 
-    // 슬롯별 item-level top-k 추출
+    // 슬롯별 item-level top-k 추출 (온도 기반 필터 포함)
     let slot_candidates = |cat: &str, k: usize| -> Vec<&Clothing> {
         let mut scored: Vec<(&Clothing, i32)> = clothes
             .iter()
             .filter(|c| c.category == cat && c.id != anchor.id)
+            .filter(|c| is_weather_appropriate(c, temp))
             .map(|c| (c, outfit_scorer::complement_score(anchor, c)))
             .collect();
         scored.sort_by(|a, b| b.1.cmp(&a.1));
@@ -295,6 +302,35 @@ fn build_outfit_candidates(
     }
 
     lines.join("\n")
+}
+
+// ─── 온도 기반 아이템 필터 ───
+
+fn is_weather_appropriate(item: &Clothing, temp: f64) -> bool {
+    let weight = item.weight.as_deref().unwrap_or("중간");
+    let mat = item.material_primary.as_deref().unwrap_or("");
+    let name = &item.name;
+
+    // 20도 이상: 울/니트/무거운 아우터 제외
+    if temp >= 20.0 {
+        if mat == "wool" || mat == "flannel" { return false; }
+        if name.contains("니트") && !name.contains("가벼") { return false; }
+        if name.contains("울 ") { return false; }
+        if item.category == "아우터" && weight == "무거움" { return false; }
+        if name.contains("코트") || name.contains("파카") { return false; }
+    }
+
+    // 25도 이상: 아우터 대부분 제외, 가벼운 것만
+    if temp >= 25.0 {
+        if item.category == "아우터" && weight != "가벼움" { return false; }
+        if name.contains("코듀로이") { return false; }
+        if weight == "무거움" { return false; }
+    }
+
+    // 10도 이하: 린넨/가벼운 반팔 단독 비추 (필터까지는 아니고 shortlist에서 하향)
+    // → 이건 scoring에서 처리
+
+    true
 }
 
 // ─── 나머지 (옷장 요약, 파싱, OpenAI 호출) ───
