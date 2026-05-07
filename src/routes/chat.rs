@@ -287,6 +287,12 @@ fn build_outfit_candidates(
         return String::new();
     }
 
+    // 디버그: 상위 조합 로그
+    for (i, (outfit, score)) in combos.iter().enumerate() {
+        let names: Vec<&str> = outfit.iter().map(|c| c.name.as_str()).collect();
+        tracing::info!("combo#{}: score={} → {}", i + 1, score, names.join(" / "));
+    }
+
     let mut lines = Vec::new();
     for (i, (outfit, _score)) in combos.iter().enumerate() {
         let mut parts = Vec::new();

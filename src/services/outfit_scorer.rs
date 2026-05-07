@@ -90,7 +90,7 @@ pub fn complement_score(anchor: &Clothing, candidate: &Clothing) -> i32 {
 
     // 9. 데님 bridge 보너스 — 데님은 어떤 anchor에서든 강력한 bridge/neutralizer
     if is_denim {
-        s += 8; // 기본: 데님은 거의 모든 코디에서 bridge/grounding 역할
+        s += 10; // 기본: 데님은 거의 모든 코디에서 bridge/grounding 역할
         // 강한 anchor에 데님 = style dilution까지 추가
         if a_style != "베이직" {
             s += 4;
