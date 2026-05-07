@@ -141,7 +141,7 @@ async fn chat(
     ]);
 
     let system_prompt = format!(
-        r#"너는 아메카지/밀리터리 빈티지/워크웨어 믹스 전문 코디 상담 AI다.
+        r#"너는 프리미엄 셀렉샵 에디토리얼 스타일리스트다. AURALEE, BEAMS, HAVEN 같은 감성으로 코디를 설명한다.
 
 역할:
 - 유저의 질문을 이해하고, 도구를 호출해서 답변한다.
@@ -153,9 +153,16 @@ async fn chat(
 1. 유저가 아이템을 언급하면 → search_wardrobe로 anchor 찾기
 2. anchor가 확정되면 → get_outfit으로 서버 추천 받기
 3. get_outfit 결과를 evaluate_outfit으로 검증
-4. 검증 통과 → 결과를 자연스럽게 설명
+4. 검증 통과 → 착장을 설명
 5. 검증 실패 → get_outfit을 avoid_tags와 함께 재호출
 6. 유저가 피드백 주면 → submit_feedback 후 get_outfit 재호출
+
+착장 설명 규칙 (중요):
+- 아이템 리스트를 나열하지 마라 (UI에서 이미 표시됨)
+- '색상 조화가 좋습니다' 같은 generic 표현 금지
+- texture(질감), silhouette(실루엣), visual weight(시각적 무게), grounding(하체 안정감) 중심으로 2~3문장 작성
+- 마크다운/볼드/리스트 없이 순수 텍스트로 답변
+- 예시: '블루종의 드라이한 면 질감이 상체를 부드럽게 정리하고, 린넨 셔츠가 레이어링에 가벼운 깊이를 만듭니다. 캔버스 스니커로 하체 대비를 잡았습니다.'
 
 날씨: {weather}
 답변은 한국어로."#,
@@ -172,7 +179,7 @@ async fn chat(
     let mut first_search_query: Option<String> = None; // 유저 최초 검색어 (덮어쓰기 불가)
     let mut anchor_category: Option<String> = None;
 
-    for _turn in 0..5 {
+    for _turn in 0..8 {
         let req_body = json!({
             "model": "gpt-4o-mini",
             "messages": messages,
@@ -319,10 +326,79 @@ async fn chat(
         }
     }
 
+    // ─── final_reply가 비어있으면 추가 LLM 호출로 설명 생성 ───
+    if final_reply.is_empty() && !final_items.is_empty() {
+        tracing::warn!("final_reply empty after tool loop — requesting style note");
+
+        let items_desc = final_items.iter()
+            .map(|i| format!("{}: {}", i.slot, i.name))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let note_messages = vec![
+            json!({"role": "system", "content": "너는 프리미엄 셀렉샵 룩북을 쓰는 에디토리얼 스타일리스트다. 주어진 착장의 Style Note를 2~3문장으로 작성해라.\n\n규칙:\n- 색상 나열이나 '조화가 좋습니다' 같은 generic 표현 금지\n- texture(질감), silhouette(실루엣), visual weight(시각적 무게), grounding(하체 안정감) 중심으로 설명\n- 예시: '블루종의 드라이한 면 질감이 상체를 부드럽게 정리하고, 린넨 셔츠가 레이어링에 가벼운 깊이를 만듭니다. 캔버스 스니커로 하체 대비를 잡고, 워시드 토트가 muted palette에 자연스러운 무게를 추가했습니다.'\n- 마크다운/볼드/리스트 없이 순수 텍스트로"}),
+            json!({"role": "user", "content": format!("착장: {}\n날씨: {}\n\nStyle Note:", items_desc, if weather_hint.is_empty() { "정보 없음" } else { &weather_hint })}),
+        ];
+
+        let note_body = json!({
+            "model": "gpt-4o-mini",
+            "messages": note_messages,
+            "temperature": 0.7,
+            "max_tokens": 300,
+        });
+
+        match state.http_client
+            .post("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", state.openai_api_key))
+            .json(&note_body)
+            .send().await
+        {
+            Ok(resp) => {
+                if let Ok(j) = resp.json::<serde_json::Value>().await {
+                    final_reply = j["choices"][0]["message"]["content"]
+                        .as_str().unwrap_or("").to_string();
+                }
+            }
+            Err(e) => tracing::warn!("style note fallback failed: {e}"),
+        }
+
+        // 그래도 비어있으면 서버 사이드 기본 설명
+        if final_reply.is_empty() {
+            final_reply = generate_fallback_note(&final_items);
+        }
+    }
+
     Ok(Json(ChatResponse {
         reply: final_reply,
         items: final_items,
     }))
+}
+
+// ─── Fallback style note (LLM 실패 시) ───
+fn generate_fallback_note(items: &[ChatItem]) -> String {
+    let outer = items.iter().find(|i| i.slot == "outer").map(|i| i.name.as_str());
+    let inner = items.iter().find(|i| i.slot == "inner").map(|i| i.name.as_str());
+    let bottom = items.iter().find(|i| i.slot == "bottom").map(|i| i.name.as_str());
+    let shoes = items.iter().find(|i| i.slot == "shoes").map(|i| i.name.as_str());
+
+    let mut note = String::new();
+    if let Some(o) = outer {
+        note.push_str(&format!("{}의 질감이 상체 실루엣을 잡아주고, ", o));
+    }
+    if let Some(i) = inner {
+        note.push_str(&format!("{}가 이너 레이어에 가벼운 깊이를 더합니다. ", i));
+    }
+    if let Some(b) = bottom {
+        note.push_str(&format!("{}로 하체 무게감을 안정시키고, ", b));
+    }
+    if let Some(s) = shoes {
+        note.push_str(&format!("{}가 전체 grounding을 완성합니다.", s));
+    }
+    if note.is_empty() {
+        "muted tone의 레이어드 밸런스를 잡은 착장입니다.".to_string()
+    } else {
+        note
+    }
 }
 
 // ─── Tool implementations ───
@@ -352,13 +428,13 @@ async fn generate_image(
     let outfit_hash = format!("{:016x}", outfit_hasher.finish());
 
     let prompt = format!(
-        r#"Realistic full-body fashion editorial photo of an adult Korean male in his early 40s with an athletic but natural build, wearing: {}
+        r#"Premium editorial fashion photography. Adult Korean male, early 40s, athletic but natural build, mature casual style, clean relaxed silhouette. Wearing: {}
 
-3/4 front view, natural standing pose, full body visible from head to toe, outfit clearly visible. Clean relaxed proportions, mature casual styling, not oversized, not skinny, not bulky.
+Subtle candid pose with slight walking motion, one hand in pocket or adjusting sleeve. Natural body movement, not stiff. Wide full-length shot framed from head to below shoes with visible ground — shoes and full silhouette must be clearly visible.
 
-Japanese select shop lookbook aesthetic, Seoul quiet street background, soft natural daylight, muted color palette, subtle shadows, realistic fabric texture, natural wrinkles, premium fashion magazine styling.
+Shallow depth of field, soft cinematic framing, muted tonal palette, warm desaturated color grading. Japanese select shop lookbook aesthetic — AURALEE, BEAMS, HAVEN seasonal editorial mood. Quiet Seoul or Tokyo backstreet, soft overcast natural daylight, long gentle shadows. Realistic fabric texture with visible weave, subtle fading, natural wrinkles, slightly worn-in fabrics, washed cotton texture. Premium fashion magazine composition with editorial breathing space.
 
-Avoid back view, avoid cropped body, avoid overweight body, avoid bulky silhouette, avoid mannequin, avoid flat lay, avoid runway, avoid extreme streetwear, avoid distorted body, avoid zoomed-in framing."#,
+Avoid catalog pose, avoid ecommerce posture, avoid stiff standing, avoid direct frontal symmetry, avoid mannequin, avoid flat lay, avoid runway, avoid generic streetwear influencer shot, avoid distorted body, avoid overweight body, avoid bulky silhouette, avoid broad upper body, avoid stocky build, avoid cropped body, avoid cropped legs, avoid cutting off at ankles, avoid tight framing, avoid zoomed-in framing, avoid oversaturated colors, avoid harsh lighting."#,
         body.items
     );
 

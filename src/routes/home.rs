@@ -88,79 +88,101 @@ const HOME_HTML: &str = r#"<!DOCTYPE html>
 
   /* --- Editorial Lookbook Card --- */
   .lookbook-card {
-    background: #faf9f7; border-radius: 16px; overflow: hidden;
-    max-width: 100%; margin: 8px 0; box-shadow: 0 2px 20px rgba(0,0,0,0.06);
+    background: #faf9f7; border-radius: 20px; overflow: hidden;
+    max-width: 100%; margin: 12px 0; box-shadow: 0 4px 30px rgba(0,0,0,0.05);
   }
   .lookbook-header {
-    padding: 20px 20px 12px; text-align: center;
+    padding: 28px 24px 8px; text-align: center;
   }
   .lookbook-title {
-    font-size: 1.15rem; font-weight: 700; letter-spacing: 0.5px;
-    color: #2d2a26; margin-bottom: 4px; font-family: Georgia, serif;
+    font-size: 1.2rem; font-weight: 300; letter-spacing: 2px;
+    color: #2d2a26; margin-bottom: 6px; font-family: Georgia, 'Times New Roman', serif;
+    text-transform: uppercase;
   }
   .lookbook-subtitle {
-    font-size: 0.78rem; color: #8a8580; letter-spacing: 0.3px;
-  }
-  .lookbook-desc {
-    padding: 0 20px 16px; font-size: 0.82rem; line-height: 1.7;
-    color: #5a5550; text-align: center; font-style: italic;
-  }
-  .lookbook-items {
-    display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
-    padding: 0 12px 16px;
-  }
-  .lookbook-item {
-    background: #fff; border-radius: 10px; padding: 10px 6px;
-    text-align: center; box-shadow: 0 1px 6px rgba(0,0,0,0.04);
-    min-width: 0;
-  }
-  .lookbook-item.not-owned {
-    border: 1.5px dashed #d4a574; background: #fefcfa;
-  }
-  .lookbook-item-slot {
-    font-size: 0.6rem; color: #b0a99f; text-transform: uppercase;
-    letter-spacing: 1px; margin-bottom: 4px;
-  }
-  .lookbook-item-name {
-    font-size: 0.72rem; font-weight: 600; color: #3d3a36; line-height: 1.3;
-  }
-  .lookbook-item-tag {
-    font-size: 0.6rem; color: #c4a882; margin-top: 4px;
+    font-size: 0.72rem; color: #a09888; letter-spacing: 0.5px;
     font-style: italic;
   }
+  .lookbook-mood-subtitle {
+    font-size: 0.75rem; color: #8a8580; letter-spacing: 0.3px;
+    margin-top: 6px; font-style: italic; line-height: 1.4;
+  }
+  .lookbook-desc {
+    padding: 0 24px 20px; font-size: 0.82rem; line-height: 1.7;
+    color: #5a5550; text-align: center; font-style: italic;
+  }
+  .lookbook-img-wrap {
+    padding: 12px 20px 0; text-align: center;
+  }
+  .lookbook-items {
+    display: flex; gap: 0; padding: 24px 20px 0;
+    border-top: 1px solid #ece9e4;
+  }
+  .lookbook-item {
+    flex: 1; padding: 14px 8px; text-align: center;
+    position: relative; min-width: 0;
+  }
+  .lookbook-item:not(:last-child)::after {
+    content: ''; position: absolute; right: 0; top: 20%; height: 60%;
+    border-right: 1px solid #e8e4df;
+  }
+  .lookbook-item.not-owned {
+    opacity: 0.7;
+  }
+  .lookbook-item-slot {
+    font-size: 0.55rem; color: #b8b0a6; text-transform: uppercase;
+    letter-spacing: 1.5px; margin-bottom: 6px; font-weight: 500;
+  }
+  .lookbook-item-name {
+    font-size: 0.7rem; font-weight: 500; color: #4a4540; line-height: 1.35;
+  }
+  .lookbook-item-tag {
+    font-size: 0.55rem; color: #c4a882; margin-top: 5px;
+    font-style: italic; letter-spacing: 0.3px;
+  }
   .lookbook-note {
-    margin: 0 20px 14px; padding: 14px 16px; background: #f5f3ef;
-    border-radius: 10px; border-left: 3px solid #c4b9a8;
+    margin: 20px 24px 0; padding: 18px 20px;
+    background: transparent; border-top: 1px solid #ece9e4;
   }
   .lookbook-note-title {
-    font-size: 0.7rem; font-weight: 700; color: #a09888;
-    letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px;
+    font-size: 0.6rem; font-weight: 500; color: #b8b0a6;
+    letter-spacing: 2px; text-transform: uppercase; margin-bottom: 10px;
   }
   .lookbook-note-text {
-    font-size: 0.8rem; line-height: 1.6; color: #5a5550;
+    font-size: 0.82rem; line-height: 1.75; color: #5a5550;
+    font-family: Georgia, 'Times New Roman', serif;
   }
-  .lookbook-mood {
-    padding: 0 20px 14px; display: flex; flex-wrap: wrap;
+  .lookbook-tags {
+    padding: 16px 24px 0; display: flex; flex-wrap: wrap;
     gap: 6px; justify-content: center;
+    border-top: 1px solid #ece9e4;
+  }
+  .lookbook-tag {
+    font-size: 0.6rem; padding: 4px 12px; border-radius: 20px;
+    border: 1px solid #ddd8d2; color: #8a8580; letter-spacing: 0.5px;
+    background: transparent; font-weight: 400;
+  }
+  .lookbook-tag.texture { border-color: #c9c0b4; color: #7a756e; }
+  .lookbook-tag.silhouette { border-color: #b8c4c0; color: #6a7a75; }
+  .lookbook-mood {
+    padding: 10px 24px 0; display: flex; flex-wrap: wrap;
+    gap: 5px; justify-content: center;
   }
   .lookbook-mood-chip {
-    font-size: 0.65rem; padding: 3px 10px; border-radius: 12px;
-    background: #eae6e0; color: #6b6560; letter-spacing: 0.3px;
+    font-size: 0.6rem; padding: 3px 10px; border-radius: 12px;
+    background: #f0ede8; color: #8a8580; letter-spacing: 0.3px;
   }
   .lookbook-actions {
     padding: 0 16px 16px; display: flex; gap: 8px; justify-content: center;
   }
   .lookbook-action-btn {
-    font-size: 0.72rem; padding: 6px 14px; border-radius: 16px;
-    border: 1px solid #d8d3cc; background: #fff; color: #5a5550;
-    cursor: pointer; transition: all 0.2s;
+    font-size: 0.7rem; padding: 8px 18px; border-radius: 20px;
+    border: 1px solid #ddd8d2; background: transparent; color: #6b6560;
+    cursor: pointer; transition: all 0.2s; letter-spacing: 0.3px;
   }
-  .lookbook-action-btn:hover { background: #f0ede8; }
+  .lookbook-action-btn:hover { background: #f0ede8; border-color: #c4bfb8; }
   .lookbook-fb {
-    padding: 8px 16px 16px; display: flex; gap: 8px; justify-content: center;
-  }
-  .lookbook-img {
-    width: 100%; max-height: 420px; object-fit: cover; border-radius: 8px;
+    padding: 16px 20px 24px; display: flex; gap: 8px; justify-content: center;
   }
   .chat-input-bar { display: flex; gap: 8px; padding: 12px 0; }
   .chat-input {
@@ -842,37 +864,72 @@ let previousScreen = 'wardrobe';
 
 /* ===== LOOKBOOK HELPERS ===== */
 function generateLookbookTitle(items) {
-  const styles = items.map(i => i.name).join(' ');
-  if (styles.includes('워크') || styles.includes('데님')) return 'Soft Workwear Casual';
-  if (styles.includes('밀리터리') || styles.includes('올리브') || styles.includes('유틸리티')) return 'Muted Utility Layers';
-  if (styles.includes('니트') || styles.includes('하링턴')) return 'Faded Ivy Mood';
-  if (styles.includes('슬랙스') || styles.includes('옥스포드')) return 'Clean Minimal Silhouette';
-  if (styles.includes('부츠') || styles.includes('코듀로이')) return 'Grounded Vintage';
-  return 'Curated Daily Style';
+  const s = items.map(i => i.name).join(' ');
+  if (s.includes('워크') && s.includes('데님')) return 'Worn-In Workwear';
+  if (s.includes('밀리터리') || s.includes('유틸리티')) return 'Muted Utility';
+  if (s.includes('워크')) return 'Soft Workwear';
+  if (s.includes('코듀로이') || s.includes('부츠')) return 'Grounded Vintage';
+  if (s.includes('니트') || s.includes('하링턴')) return 'Faded Ivy';
+  if (s.includes('슬랙스') || s.includes('옥스포드')) return 'Clean Minimal';
+  if (s.includes('린넨') || s.includes('리넨')) return 'Dry Linen Layer';
+  if (s.includes('올리브') || s.includes('카키')) return 'Olive Field';
+  if (s.includes('데님')) return 'Washed Indigo';
+  return 'Curated Daily';
 }
 
-function extractMoodChips(items) {
-  const chips = new Set();
+function generateMoodSubtitle(items) {
+  const s = items.map(i => i.name).join(' ');
+  const tones = [];
+  if (s.includes('네이비') || s.includes('인디고')) tones.push('navy');
+  if (s.includes('올리브') || s.includes('카키')) tones.push('olive');
+  if (s.includes('베이지') || s.includes('크림') || s.includes('오트밀')) tones.push('warm neutral');
+  if (s.includes('차콜') || s.includes('그레이')) tones.push('charcoal');
+  if (s.includes('블랙')) tones.push('black');
+  const textures = [];
+  if (s.includes('워시드') || s.includes('페이디드')) textures.push('washed');
+  if (s.includes('데님')) textures.push('denim');
+  if (s.includes('캔버스')) textures.push('canvas');
+  if (s.includes('린넨') || s.includes('리넨')) textures.push('linen');
+  if (s.includes('코튼')) textures.push('cotton');
+  if (s.includes('니트') || s.includes('스웻')) textures.push('knit');
+  const tone = tones.slice(0, 2).join(' + ') || 'muted tone';
+  const tex = textures.slice(0, 2).join(' · ') || 'natural texture';
+  return `${tone} balance · ${tex}`;
+}
+
+function extractTextureTags(items) {
+  const tags = new Set();
   items.forEach(i => {
     const n = i.name;
-    if (n.includes('워시드') || n.includes('페이디드')) chips.add('washed');
-    if (n.includes('슬러브') || n.includes('멜란지')) chips.add('slubby');
-    if (n.includes('스웨이드')) chips.add('suede');
-    if (n.includes('데님')) chips.add('denim');
-    if (n.includes('캔버스')) chips.add('canvas');
-    if (n.includes('린넨') || n.includes('리넨')) chips.add('linen');
-    if (n.includes('나일론')) chips.add('nylon');
-    if (n.includes('레더')) chips.add('leather');
-    if (n.includes('니트')) chips.add('knit');
-    if (n.includes('코듀로이')) chips.add('corduroy');
-    if (n.includes('울')) chips.add('wool');
-    if (n.includes('올리브')) chips.add('muted olive');
-    if (n.includes('인디고')) chips.add('indigo');
-    if (n.includes('차콜')) chips.add('charcoal');
-    if (n.includes('크림') || n.includes('오트밀')) chips.add('cream');
-    if (n.includes('네이비')) chips.add('navy');
+    if (n.includes('워시드') || n.includes('페이디드')) tags.add('washed');
+    if (n.includes('슬러브') || n.includes('멜란지')) tags.add('slubby');
+    if (n.includes('스웨이드')) tags.add('suede');
+    if (n.includes('데님')) tags.add('denim');
+    if (n.includes('캔버스')) tags.add('canvas');
+    if (n.includes('린넨') || n.includes('리넨')) tags.add('dry linen');
+    if (n.includes('코튼')) tags.add('cotton');
+    if (n.includes('나일론')) tags.add('nylon');
+    if (n.includes('레더')) tags.add('leather');
+    if (n.includes('코듀로이')) tags.add('corduroy');
+    if (n.includes('울')) tags.add('wool');
+    if (n.includes('니트')) tags.add('knit');
+    if (n.includes('스웻')) tags.add('fleece');
+    if (n.includes('트윌')) tags.add('twill');
   });
-  return [...chips].slice(0, 6);
+  return [...tags].slice(0, 5);
+}
+
+function extractSilhouetteTags(items) {
+  const tags = new Set();
+  const s = items.map(i => i.name).join(' ');
+  if (s.includes('부츠') || s.includes('워크')) tags.add('grounded');
+  if (s.includes('블루종') || s.includes('코치') || s.includes('자켓')) tags.add('structured');
+  if (s.includes('슬랙스') || s.includes('치노')) tags.add('clean line');
+  if (s.includes('스니커') || s.includes('슬립온') || s.includes('트레이너')) tags.add('lightweight');
+  if (s.includes('스웻') || s.includes('후디')) tags.add('relaxed');
+  if (s.includes('가디건') || s.includes('셔츠')) tags.add('layered');
+  if (items.some(i => i.slot === 'bag')) tags.add('utility carry');
+  return [...tags].slice(0, 4);
 }
 
 async function generateOutfitImage(items) {
@@ -985,49 +1042,31 @@ async function sendChat(e) {
 
       html += `<div class="lookbook-card">`;
 
-      // 헤더
+      // 헤더: 타이틀 + mood subtitle
+      const moodSub = generateMoodSubtitle(r.items);
       html += `<div class="lookbook-header">`;
       html += `<div class="lookbook-title">${escHtml(title)}</div>`;
+      html += `<div class="lookbook-mood-subtitle">${escHtml(moodSub)}</div>`;
       if (weatherData && weatherData.current) {
-        html += `<div class="lookbook-subtitle">${weatherData.current.temperature}°C · ${weatherData.current.weather_description || ''}</div>`;
+        html += `<div class="lookbook-subtitle" style="margin-top:4px;">${weatherData.current.temperature}°C · ${weatherData.current.weather_description || ''}</div>`;
       }
       html += `</div>`;
 
       // AI 이미지 (비동기 로딩)
       const imgId = 'img-' + Date.now();
-      html += `<div id="${imgId}" style="text-align:center; padding:8px 20px;">`;
-      html += `<div style="color:#b0a99f; font-size:0.75rem; padding:30px 0;">이미지 생성 중...</div>`;
+      html += `<div class="lookbook-img-wrap" id="${imgId}">`;
+      html += `<div style="color:#b8b0a6; font-size:0.7rem; padding:40px 0; letter-spacing:1px;">GENERATING LOOK...</div>`;
       html += `</div>`;
 
-      // Style Note 카드
-      if (desc) {
-        const clean = desc.replace(/\*\*/g,'').replace(/- /g,'· ').replace(/\n\n/g,'\n').trim();
-        html += `<div class="lookbook-note">`;
-        html += `<div class="lookbook-note-title">Style Note</div>`;
-        html += `<div class="lookbook-note-text">${clean.replace(/\n/g,'<br>')}</div>`;
-        html += `</div>`;
-      }
-
-      // 이미지 비동기 생성
-      setTimeout(async () => {
-        const url = await generateOutfitImage(r.items);
-        const el = document.getElementById(imgId);
-        if (el && url) {
-          el.innerHTML = `<img src="${url}" style="width:100%; border-radius:8px; max-height:400px; object-fit:cover;" alt="outfit">`;
-        } else if (el) {
-          el.innerHTML = '';
-        }
-      }, 100);
-
-      // 아이템 카드 스크롤
+      // 아이템 리스트
       html += `<div class="lookbook-items">`;
       const slotOrder = ['inner','outer','bottom','shoes','bag'];
-      const slotLabel = {inner:'INNER',outer:'OUTER',bottom:'BOTTOM',shoes:'SHOES',bag:'BAG'};
+      const slotLabel = {inner:'BASE',outer:'LAYER',bottom:'BOTTOM',shoes:'FOOTWEAR',bag:'CARRY'};
       slotOrder.forEach(slot => {
         const it = r.items.find(i => i.slot === slot);
         if (!it) return;
         const cls = it.owned === false ? 'lookbook-item not-owned' : 'lookbook-item';
-        const tag = it.owned === false ? '미보유' : '';
+        const tag = it.owned === false ? 'wish' : '';
         html += `<div class="${cls}">`;
         html += `<div class="lookbook-item-slot">${slotLabel[slot] || slot}</div>`;
         html += `<div class="lookbook-item-name">${escHtml(it.name)}</div>`;
@@ -1036,21 +1075,47 @@ async function sendChat(e) {
       });
       html += `</div>`;
 
-      // 무드 칩
-      html += `<div class="lookbook-mood">`;
-      const moods = extractMoodChips(r.items);
-      moods.forEach(m => {
-        html += `<span class="lookbook-mood-chip">${escHtml(m)}</span>`;
-      });
-      html += `</div>`;
+      // Style Note
+      if (desc) {
+        const clean = desc.replace(/\*\*/g,'').replace(/- /g,'').replace(/\n\n/g,'\n')
+          .replace(/^.*?[:：]\s*/gm, (m) => m.includes('상의') || m.includes('하의') || m.includes('신발') || m.includes('가방') || m.includes('아우터') ? '' : m)
+          .split('\n').filter(l => !l.match(/^[·•]\s*(상의|하의|아우터|신발|가방)/)).join('\n').trim();
+        if (clean) {
+          html += `<div class="lookbook-note">`;
+          html += `<div class="lookbook-note-title">Style Note</div>`;
+          html += `<div class="lookbook-note-text">${clean.replace(/\n/g,'<br>')}</div>`;
+          html += `</div>`;
+        }
+      }
+
+      // Texture + Silhouette tags
+      const texTags = extractTextureTags(r.items);
+      const silTags = extractSilhouetteTags(r.items);
+      if (texTags.length > 0 || silTags.length > 0) {
+        html += `<div class="lookbook-tags">`;
+        texTags.forEach(t => { html += `<span class="lookbook-tag texture">${escHtml(t)}</span>`; });
+        silTags.forEach(t => { html += `<span class="lookbook-tag silhouette">${escHtml(t)}</span>`; });
+        html += `</div>`;
+      }
 
       // 피드백
       html += `<div class="lookbook-fb" id="${fbId}">`;
-      html += `<button class="lookbook-action-btn" onclick="showReasons('like','${fbId}')">👍 좋아요</button>`;
-      html += `<button class="lookbook-action-btn" onclick="showReasons('dislike','${fbId}')">👎 아쉬워요</button>`;
+      html += `<button class="lookbook-action-btn" onclick="showReasons('like','${fbId}')">좋아요</button>`;
+      html += `<button class="lookbook-action-btn" onclick="showReasons('dislike','${fbId}')">아쉬워요</button>`;
       html += `</div>`;
 
       html += `</div>`;
+
+      // 이미지 비동기 생성 (카드 렌더 후)
+      setTimeout(async () => {
+        const url = await generateOutfitImage(r.items);
+        const el = document.getElementById(imgId);
+        if (el && url) {
+          el.innerHTML = `<img src="${url}" style="width:100%; border-radius:12px; object-fit:contain;" alt="outfit">`;
+        } else if (el) {
+          el.innerHTML = '';
+        }
+      }, 100);
     } else {
       html = `<div class="chat-bubble chat-ai">${r.reply ? r.reply.replace(/\n/g, '<br>') : '추천 결과가 없습니다.'}</div>`;
     }
