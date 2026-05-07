@@ -27,19 +27,23 @@ pub fn complement_score(anchor: &Clothing, candidate: &Clothing) -> i32 {
     let a_shadow = anchor.shadow_tone.as_deref().unwrap_or("faded");
     let c_shadow = candidate.shadow_tone.as_deref().unwrap_or("faded");
 
-    // 1. 톤 대비
-    if a_tone != c_tone { s += 10; } else { s -= 5; }
+    let c_mat = candidate.material_primary.as_deref().unwrap_or("");
+    let is_denim = c_mat == "denim" || candidate.name.contains("데님");
 
-    // 2. 색온도 믹스
+    // 1. 톤 대비 — 약화 (이전 ±10/5 → ±6/2)
+    // shadow continuity가 톤 대비와 경쟁할 수 있도록 톤 대비 독주 완화
+    if a_tone != c_tone { s += 6; } else { s -= 2; }
+
+    // 2. 색온도 믹스 — 약간 약화
     if a_temp != c_temp && a_temp != "neutral" && c_temp != "neutral" {
-        s += 6;
+        s += 4;
     } else if a_temp == c_temp && a_temp != "neutral" {
-        s -= 3;
+        s -= 2;
     }
 
-    // 3. 스타일 희석
+    // 3. 스타일 희석 — 강한 anchor에 베이직 후보 보너스
     if a_style != "베이직" && c_style == "베이직" { s += 8; }
-    if a_style != "베이직" && a_style == c_style { s -= 6; }
+    if a_style != "베이직" && a_style == c_style { s -= 8; } // 같은 강스타일 반복 강화
 
     // 4. role 밸런스
     if (a_role == "반찬" || a_role == "약한반찬") && (c_role == "밥" || c_role == "연결템") {
@@ -52,24 +56,26 @@ pub fn complement_score(anchor: &Clothing, candidate: &Clothing) -> i32 {
     }
     if c_role == "밥" || c_role == "연결템" { s += 3; }
 
-    // 5. 질감 연속성 (1-10 스케일)
+    // 5. 질감 연속성
     let tex_gap = (a_td - c_td).abs();
-    if tex_gap <= 2 { s += 6; }       // 부드러운 연결
-    else if tex_gap >= 5 { s -= 6; }  // 질감 단절
+    if tex_gap <= 2 { s += 6; }
+    else if tex_gap >= 5 { s -= 6; }
 
     // 6. 시각적 무게 밸런스
     let wt_gap = (a_vw - c_vw).abs();
-    if (a_vw <= 2 && c_vw <= 2) { s -= 5; }           // 둘 다 ultra-light
-    else if (a_vw >= 7 && c_vw >= 7) { s -= 3; }      // 둘 다 heavy
-    else if wt_gap >= 4 && wt_gap <= 6 { s += 5; }    // 좋은 경중 대비
+    if a_vw <= 2 && c_vw <= 2 { s -= 5; }
+    else if a_vw >= 7 && c_vw >= 7 { s -= 3; }
+    else if wt_gap >= 4 && wt_gap <= 6 { s += 5; }
     else { s += 2; }
 
-    // 7. shadow 흐름
+    // 7. shadow 흐름 — 강화 (continuity가 contrast와 경쟁)
     let shadow_pair = (a_shadow, c_shadow);
     match shadow_pair {
-        ("faded", "washed") | ("washed", "faded") => s += 5,
-        ("washed", "dusty") | ("dusty", "washed") => s += 4,
-        ("faded", "dusty") | ("dusty", "faded") => s += 4,
+        ("faded", "washed") | ("washed", "faded") => s += 7,
+        ("washed", "washed") => s += 5,  // 같은 washed도 continuity
+        ("washed", "dusty") | ("dusty", "washed") => s += 6,
+        ("faded", "dusty") | ("dusty", "faded") => s += 5,
+        ("faded", "faded") => s += 4,    // faded 통일도 OK
         ("clean", "faded") | ("faded", "clean") => s += 2,
         ("clean", "clean") => s -= 4,
         _ => {}
@@ -80,6 +86,22 @@ pub fn complement_score(anchor: &Clothing, candidate: &Clothing) -> i32 {
         let ground = candidate.grounding_score.unwrap_or(3) as i32;
         if ground >= 5 { s += 3; }
         if ground <= 2 { s -= 2; }
+    }
+
+    // 9. 데님 bridge 보너스 — military/workwear anchor에 데님은 강력한 neutralizer/bridge
+    if is_denim {
+        // 강한 anchor에 데님 = style dilution + texture bridge
+        if a_style != "베이직" {
+            s += 10; // 핵심: 워크/밀리터리 anchor에 데님은 최고의 bridge
+        }
+        // shadow continuity 추가 보너스 (데님은 대부분 washed)
+        if c_shadow == "washed" {
+            s += 3;
+        }
+        // 질감 깊이 보너스 (데님은 texture_depth 6 보통)
+        if c_td >= 5 {
+            s += 2;
+        }
     }
 
     s
@@ -370,8 +392,13 @@ fn is_neutralizer(item: &Clothing) -> bool {
     let style = item.style.as_deref().unwrap_or("");
     let role = item.role.as_deref().unwrap_or("");
     let shadow = item.shadow_tone.as_deref().unwrap_or("");
+    let mat = item.material_primary.as_deref().unwrap_or("");
     let name = &item.name;
 
+    // 데님은 강력한 neutralizer/bridge
+    if mat == "denim" || name.contains("데님") {
+        return true;
+    }
     // 베이직 스타일 + 밥/연결 역할
     if style == "베이직" && (role == "밥" || role == "연결템") {
         return true;
@@ -383,8 +410,8 @@ fn is_neutralizer(item: &Clothing) -> bool {
     {
         return true;
     }
-    // faded shadow + 베이직
-    if shadow == "faded" && style == "베이직" {
+    // faded/washed shadow + 베이직
+    if (shadow == "faded" || shadow == "washed") && style == "베이직" {
         return true;
     }
     false
