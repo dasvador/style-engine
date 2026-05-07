@@ -26,34 +26,6 @@ impl FeedbackContext {
     }
 }
 
-/// 피드백 3층 적용한 total score
-pub fn total_outfit_score_with_feedback(
-    anchor: &Clothing,
-    outfit: &[&Clothing],
-    user: Option<&UserStyleProfile>,
-    feedback: &FeedbackContext,
-) -> i32 {
-    let mut total = total_outfit_score(anchor, outfit, user);
-
-    // Layer 1: item-level 보정 (작음)
-    for item in outfit {
-        if let Some(&adj) = feedback.item_adj.get(&item.name) {
-            total += adj;
-        }
-    }
-
-    // Layer 3: reason/tag 기반 패턴 보정 (큼)
-    // 조합의 특성을 분석해서 유저 선호 태그와 매칭
-    let outfit_tags = detect_outfit_tags(outfit);
-    for tag in &outfit_tags {
-        if let Some(&pref) = feedback.preference.get(tag.as_str()) {
-            total += pref; // 누적 선호/비선호 직접 반영
-        }
-    }
-
-    total
-}
-
 /// 조합에서 피드백 태그를 자동 감지
 fn detect_outfit_tags(outfit: &[&Clothing]) -> Vec<String> {
     let mut tags = Vec::new();
@@ -729,31 +701,291 @@ fn body_balance_score(items: &[&Clothing], user: &UserStyleProfile) -> i32 {
     s
 }
 
-// ─── 전체 조합 점수: item + pairwise + outfit ───
+// ═══════════════════════════════════════════════════════════════
+// Stage 1: Hard Reject — 성립 안 되는 조합 즉시 탈락
+// ═══════════════════════════════════════════════════════════════
+
+pub fn is_hard_rejected(outfit: &[&Clothing]) -> bool {
+    let upper_strong: i32 = outfit.iter()
+        .filter(|i| i.category == "상의" || i.category == "아우터")
+        .map(|i| i.strong_style_score.unwrap_or(1) as i32)
+        .sum();
+    let shoe_float = outfit.iter()
+        .filter(|i| i.category == "신발")
+        .filter_map(|i| i.floating_score)
+        .max().unwrap_or(0) as i32;
+
+    // 무거운 상체 + 떠있는 신발
+    if upper_strong >= 10 && shoe_float >= 6 { return true; }
+
+    // 같은 색상군 4개 이상
+    let mut cg_counts: HashMap<&str, usize> = HashMap::new();
+    for i in outfit {
+        let cg = color_group(i.color.as_deref().unwrap_or(&i.name));
+        if cg != "other" { *cg_counts.entry(cg).or_insert(0) += 1; }
+    }
+    if cg_counts.values().any(|&v| v >= 4) { return true; }
+
+    // strong_style 4개 이상
+    let strong_count = outfit.iter()
+        .filter(|i| i.strong_style_score.unwrap_or(1) >= 5)
+        .count();
+    if strong_count >= 4 { return true; }
+
+    // 같은 소재 4개 이상 (cotton 제외)
+    let mut mat_counts: HashMap<&str, usize> = HashMap::new();
+    for i in outfit {
+        let m = i.material_primary.as_deref().unwrap_or("cotton");
+        if m != "cotton" { *mat_counts.entry(m).or_insert(0) += 1; }
+    }
+    if mat_counts.values().any(|&v| v >= 4) { return true; }
+
+    false
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Stage 2: Archetype — 방향성 결정 + scoring modifier
+// ═══════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OutfitArchetype {
+    SoftWorkwear,
+    LightweightUtility,
+    GroundedVintage,
+    WashedMinimal,
+    FadedIvy,
+    RuggedCasual,
+}
+
+impl OutfitArchetype {
+    /// anchor 특성에서 적합한 archetype 후보
+    pub fn candidates_for_anchor(anchor: &Clothing) -> Vec<Self> {
+        let vw = anchor.visual_weight_v2.unwrap_or(3);
+        let strong = anchor.strong_style_score.unwrap_or(1);
+        let float = anchor.floating_score.unwrap_or(3);
+
+        let mut archs = Vec::new();
+        if float >= 5 || vw <= 3 {
+            archs.push(Self::WashedMinimal);
+            archs.push(Self::LightweightUtility);
+        }
+        if vw >= 5 {
+            archs.push(Self::GroundedVintage);
+        }
+        if vw >= 7 {
+            archs.push(Self::RuggedCasual);
+        }
+        if strong <= 3 {
+            archs.push(Self::FadedIvy);
+        }
+        if strong >= 4 && strong <= 7 {
+            archs.push(Self::SoftWorkwear);
+        }
+        if archs.is_empty() {
+            archs.push(Self::LightweightUtility);
+        }
+        archs.dedup();
+        archs
+    }
+
+    /// archetype별 아이템 적합도 보너스
+    pub fn item_bonus(&self, item: &Clothing) -> i32 {
+        let strong = item.strong_style_score.unwrap_or(1) as i32;
+        let td = item.texture_depth_v2.unwrap_or(3) as i32;
+        let vw = item.visual_weight_v2.unwrap_or(3) as i32;
+        let float = item.floating_score.unwrap_or(3) as i32;
+        let is_neutral = is_neutralizer(item);
+        let is_denim = item.material_primary.as_deref() == Some("denim") || item.name.contains("데님");
+
+        match self {
+            Self::WashedMinimal => {
+                let mut s = 0;
+                if strong <= 2 { s += 6; }
+                if strong >= 5 { s -= 8; } // rugged 아이템 강력 감점
+                if td <= 4 { s += 2; }
+                if is_neutral { s += 3; }
+                s
+            }
+            Self::LightweightUtility => {
+                let mut s = 0;
+                if vw <= 4 { s += 4; }
+                if vw >= 6 { s -= 4; }
+                if float <= 4 { s += 2; }
+                if is_neutral { s += 2; }
+                s
+            }
+            Self::GroundedVintage => {
+                let mut s = 0;
+                if td >= 5 { s += 4; }
+                if is_denim { s += 3; }
+                if vw >= 4 { s += 2; }
+                s
+            }
+            Self::SoftWorkwear => {
+                let mut s = 0;
+                if is_neutral { s += 5; }
+                if is_denim { s += 3; }
+                if strong >= 6 { s -= 4; } // workwear 과밀 방지
+                s
+            }
+            Self::FadedIvy => {
+                let mut s = 0;
+                if item.formality_level.unwrap_or(2) >= 3 { s += 3; }
+                if strong >= 5 { s -= 5; }
+                if is_neutral { s += 3; }
+                s
+            }
+            Self::RuggedCasual => {
+                let mut s = 0;
+                if td >= 5 { s += 3; }
+                if vw >= 5 { s += 3; }
+                if item.category == "신발" && vw >= 6 { s += 3; } // grounded shoes
+                s
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Stage 3: Visual Gravity — 시각적 무게중심 평가
+// ═══════════════════════════════════════════════════════════════
+
+fn visual_gravity_score(outfit: &[&Clothing]) -> i32 {
+    let upper_weight: f32 = outfit.iter()
+        .filter(|i| i.category == "상의" || i.category == "아우터")
+        .map(|i| i.visual_weight_v2.unwrap_or(3) as f32)
+        .sum();
+    let lower_weight: f32 = outfit.iter()
+        .filter(|i| i.category == "하의" || i.category == "신발")
+        .map(|i| i.visual_weight_v2.unwrap_or(3) as f32)
+        .sum();
+
+    let ratio = if lower_weight > 0.0 { upper_weight / lower_weight } else { 3.0 };
+
+    let mut s = 0;
+    if ratio > 2.0 { s -= 15; }       // 상체 과중
+    else if ratio > 1.5 { s -= 8; }
+    else if (0.6..=1.3).contains(&ratio) { s += 6; } // 안정적 균형
+
+    // shoe grounding 직접 체크
+    let shoe_ground: i32 = outfit.iter()
+        .filter(|i| i.category == "신발")
+        .filter_map(|i| i.grounding_score)
+        .map(|g| g as i32)
+        .sum();
+    if shoe_ground <= 2 && upper_weight >= 6.0 { s -= 8; }
+
+    s
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Diversity Penalty — 아이템 반복 사용 감점
+// ═══════════════════════════════════════════════════════════════
+
+pub struct RecentHistory {
+    pub item_freq: HashMap<String, usize>,
+}
+
+impl RecentHistory {
+    pub fn empty() -> Self { Self { item_freq: HashMap::new() } }
+}
+
+fn diversity_penalty(outfit: &[&Clothing], recent: &RecentHistory) -> i32 {
+    let mut p = 0;
+    for item in outfit {
+        if let Some(&freq) = recent.item_freq.get(&item.name) {
+            if freq >= 3 { p -= 10; }
+            else if freq >= 2 { p -= 5; }
+            else if freq >= 1 { p -= 2; }
+        }
+    }
+    p
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 최종 파이프라인: reject → archetype → score → diversity
+// ═══════════════════════════════════════════════════════════════
 
 pub fn total_outfit_score(
     anchor: &Clothing,
     outfit: &[&Clothing],
     user: Option<&UserStyleProfile>,
 ) -> i32 {
-    let mut total = 0;
+    // Stage 1: hard reject
+    if is_hard_rejected(outfit) {
+        return -999;
+    }
 
-    // Layer 1: 각 아이템의 anchor 대비 complement score
+    // Stage 2: archetype scoring
+    let archetypes = OutfitArchetype::candidates_for_anchor(anchor);
+    let best_arch = archetypes.first().copied().unwrap_or(OutfitArchetype::LightweightUtility);
+    let arch_bonus: i32 = outfit.iter()
+        .map(|item| best_arch.item_bonus(item))
+        .sum();
+
+    // Stage 3: 기존 scoring (축소)
+    let mut item_total = 0;
     for item in outfit {
         if item.id != anchor.id {
-            total += complement_score(anchor, item);
+            item_total += complement_score(anchor, item);
         }
     }
 
-    // Layer 2: 인접 쌍 pairwise
+    let mut pair_total = 0;
     for i in 0..outfit.len() {
         for j in (i + 1)..outfit.len() {
-            total += pairwise_score(outfit[i], outfit[j]);
+            pair_total += pairwise_score(outfit[i], outfit[j]);
         }
     }
 
-    // Layer 3: outfit-level
-    total += outfit_score(outfit, user);
+    let outfit_total = outfit_score(outfit, user);
+    let gravity = visual_gravity_score(outfit);
+
+    // 가중치: archetype 30% + gravity 25% + outfit 20% + item 15% + pair 10%
+    let weighted = (arch_bonus * 3) + (gravity * 3) + (outfit_total * 2) + item_total + pair_total;
+
+    weighted
+}
+
+/// 피드백 + diversity 적용 버전
+pub fn total_outfit_score_with_feedback(
+    anchor: &Clothing,
+    outfit: &[&Clothing],
+    user: Option<&UserStyleProfile>,
+    feedback: &FeedbackContext,
+) -> i32 {
+    let base = total_outfit_score(anchor, outfit, user);
+    if base <= -900 { return base; } // hard rejected
+
+    let mut total = base;
+
+    // feedback item adjustment
+    for item in outfit {
+        if let Some(&adj) = feedback.item_adj.get(&item.name) {
+            total += adj;
+        }
+    }
+
+    // feedback tag preference
+    let outfit_tags = detect_outfit_tags(outfit);
+    for tag in &outfit_tags {
+        if let Some(&pref) = feedback.preference.get(tag.as_str()) {
+            total += pref;
+        }
+    }
 
     total
+}
+
+/// 피드백 + diversity 적용 (recent history 포함)
+pub fn total_outfit_score_full(
+    anchor: &Clothing,
+    outfit: &[&Clothing],
+    user: Option<&UserStyleProfile>,
+    feedback: &FeedbackContext,
+    recent: &RecentHistory,
+) -> i32 {
+    let base = total_outfit_score_with_feedback(anchor, outfit, user, feedback);
+    if base <= -900 { return base; }
+    base + diversity_penalty(outfit, recent)
 }
