@@ -977,8 +977,8 @@ async function sendChat(e) {
       // 헤더
       html += `<div class="lookbook-header">`;
       html += `<div class="lookbook-title">${escHtml(title)}</div>`;
-      if (weatherData) {
-        html += `<div class="lookbook-subtitle">${weatherData.temperature || ''}°C · ${weatherData.weather_description || ''}</div>`;
+      if (weatherData && weatherData.current) {
+        html += `<div class="lookbook-subtitle">${weatherData.current.temperature}°C · ${weatherData.current.weather_description || ''}</div>`;
       }
       html += `</div>`;
 
