@@ -953,8 +953,8 @@ pub fn total_outfit_score(
     let outfit_total = outfit_score(outfit, user);
     let gravity = visual_gravity_score(outfit);
 
-    // 가중치: archetype 30% + gravity 25% + outfit 20% + item 15% + pair 10%
-    let weighted = (arch_bonus * 3) + (gravity * 3) + (outfit_total * 2) + item_total + pair_total;
+    // 가중치: archetype 40% + gravity 25% + outfit 15% + item 10% + pair 10%
+    let weighted = (arch_bonus * 5) + (gravity * 3) + outfit_total + item_total + pair_total;
 
     weighted
 }
