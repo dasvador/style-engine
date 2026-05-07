@@ -107,6 +107,20 @@ async fn chat(
         {
             "type": "function",
             "function": {
+                "name": "evaluate_outfit",
+                "description": "서버가 착장 조합의 품질을 검증한다. 문제가 있으면 이유와 함께 실패를 반환한다. get_outfit 결과를 검증할 때 사용.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "item_names": { "type": "array", "items": { "type": "string" }, "description": "검증할 아이템 이름 목록" }
+                    },
+                    "required": ["item_names"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "submit_feedback",
                 "description": "유저가 대화 중 표현한 선호/비선호를 저장한다.",
                 "parameters": {
@@ -134,8 +148,10 @@ async fn chat(
 흐름:
 1. 유저가 아이템을 언급하면 → search_wardrobe로 anchor 찾기
 2. anchor가 확정되면 → get_outfit으로 서버 추천 받기
-3. 결과를 자연스럽게 설명
-4. 유저가 피드백 주면 → submit_feedback 후 get_outfit 재호출
+3. get_outfit 결과를 evaluate_outfit으로 검증
+4. 검증 통과 → 결과를 자연스럽게 설명
+5. 검증 실패 → get_outfit을 avoid_tags와 함께 재호출
+6. 유저가 피드백 주면 → submit_feedback 후 get_outfit 재호출
 
 날씨: {weather}
 답변은 한국어로."#,
@@ -189,7 +205,7 @@ async fn chat(
                 let result = match fn_name {
                     "search_wardrobe" => {
                         let query = fn_args["query"].as_str().unwrap_or("");
-                        tool_search_wardrobe(query, &clothes)
+                        tool_search_wardrobe(query, &clothes, &state.embedding)
                     }
                     "get_outfit" => {
                         let anchor_name = fn_args["anchor_name"].as_str().unwrap_or("");
@@ -202,6 +218,12 @@ async fn chat(
                         );
                         final_items = items;
                         outfit_json
+                    }
+                    "evaluate_outfit" => {
+                        let names: Vec<String> = fn_args["item_names"].as_array()
+                            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                            .unwrap_or_default();
+                        tool_evaluate_outfit(&names, &clothes, user_profile.as_ref())
                     }
                     "submit_feedback" => {
                         let fb_type = fn_args["feedback_type"].as_str().unwrap_or("dislike");
@@ -248,38 +270,38 @@ async fn chat(
 
 // ─── Tool implementations ───
 
-fn tool_search_wardrobe(query: &str, clothes: &[Clothing]) -> String {
-    let q = query.to_lowercase();
-    let mut results: Vec<serde_json::Value> = Vec::new();
-
-    for c in clothes {
-        let name_lower = c.name.to_lowercase();
-        let color = c.color.as_deref().unwrap_or("").to_lowercase();
-
-        // 이름 포함 매칭
-        let name_match = q.split_whitespace().all(|word| {
-            name_lower.contains(word) || color.contains(word)
-        });
-        // 부분 매칭
-        let partial = q.split_whitespace().any(|word| {
-            name_lower.contains(word) || color.contains(word)
-        });
-
-        if name_match {
-            results.push(json!({"name": c.name, "category": c.category, "confidence": 0.95}));
-        } else if partial {
-            results.push(json!({"name": c.name, "category": c.category, "confidence": 0.6}));
+fn tool_search_wardrobe(
+    query: &str,
+    clothes: &[Clothing],
+    embedding: &std::sync::Arc<crate::services::embedding::EmbeddingService>,
+) -> String {
+    // 임베딩 기반 시맨틱 검색
+    match embedding.search_wardrobe(query, clothes, 5) {
+        Ok(matches) => {
+            let results: Vec<serde_json::Value> = matches.iter().map(|m| {
+                json!({
+                    "name": m.name,
+                    "category": m.category,
+                    "confidence": (m.similarity * 100.0).round() / 100.0,
+                })
+            }).collect();
+            serde_json::to_string(&results).unwrap_or("[]".to_string())
+        }
+        Err(e) => {
+            tracing::warn!("embedding search failed: {e}, falling back to keyword");
+            // 폴백: 키워드 매칭
+            let q = query.to_lowercase();
+            let mut results: Vec<serde_json::Value> = Vec::new();
+            for c in clothes {
+                let name_lower = c.name.to_lowercase();
+                if q.split_whitespace().any(|w| name_lower.contains(w)) {
+                    results.push(json!({"name": c.name, "category": c.category, "confidence": 0.6}));
+                }
+            }
+            results.truncate(5);
+            serde_json::to_string(&results).unwrap_or("[]".to_string())
         }
     }
-
-    results.sort_by(|a, b| {
-        b["confidence"].as_f64().unwrap_or(0.0)
-            .partial_cmp(&a["confidence"].as_f64().unwrap_or(0.0))
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    results.truncate(5);
-
-    serde_json::to_string(&results).unwrap_or("[]".to_string())
 }
 
 fn tool_get_outfit(
@@ -309,6 +331,73 @@ fn tool_get_outfit(
         }
         None => (json!({"error": "no suitable outfit found"}).to_string(), Vec::new()),
     }
+}
+
+fn tool_evaluate_outfit(
+    names: &[String],
+    clothes: &[Clothing],
+    user: Option<&crate::models::user_profile::UserStyleProfile>,
+) -> String {
+    let items: Vec<&Clothing> = names.iter()
+        .filter_map(|n| clothes.iter().find(|c| c.name == *n))
+        .collect();
+
+    if items.len() < 2 {
+        return json!({"pass": false, "issues": ["아이템을 2개 이상 찾을 수 없습니다"]}).to_string();
+    }
+
+    let mut issues: Vec<String> = Vec::new();
+
+    // military/workwear 과밀
+    let strong_count = items.iter()
+        .filter(|i| i.strong_style_score.unwrap_or(1) >= 5)
+        .count();
+    if strong_count >= 3 { issues.push("too_military: 강한 스타일 아이템이 3개 이상".to_string()); }
+
+    // 같은 색상군 3+
+    let mut cg_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for i in &items {
+        let cg = outfit_scorer::color_group(i.color.as_deref().unwrap_or(""));
+        if cg != "other" { *cg_counts.entry(cg).or_insert(0) += 1; }
+    }
+    for (cg, count) in &cg_counts {
+        if *count >= 3 { issues.push(format!("color_repetition: {} 색상이 {}개 반복", cg, count)); }
+    }
+
+    // 전부 어두움
+    let dark_count = items.iter().filter(|i| i.tone.as_deref() == Some("어두움")).count();
+    if dark_count >= 3 { issues.push("too_dark: 어두운 톤이 3개 이상".to_string()); }
+
+    // floating
+    let avg_float: f32 = items.iter()
+        .filter_map(|i| i.floating_score)
+        .map(|f| f as f32)
+        .sum::<f32>() / items.len().max(1) as f32;
+    if avg_float >= 5.0 { issues.push("floating_balance: 전체적으로 떠보임".to_string()); }
+
+    // texture 단조
+    let avg_tex: f32 = items.iter()
+        .filter_map(|i| i.texture_depth_v2)
+        .map(|t| t as f32)
+        .sum::<f32>() / items.len().max(1) as f32;
+    if avg_tex < 2.5 { issues.push("too_flat: 질감이 너무 밋밋함".to_string()); }
+
+    // grounding 부족 (신발+가방)
+    let grounding: i32 = items.iter()
+        .filter(|i| i.category == "신발" || i.category == "가방")
+        .filter_map(|i| i.grounding_score)
+        .map(|g| g as i32)
+        .sum();
+    if grounding <= 3 { issues.push("low_grounding: 접지감 부족".to_string()); }
+
+    let pass = issues.is_empty();
+    json!({"pass": pass, "issues": issues, "score_summary": {
+        "strong_style_count": strong_count,
+        "dark_tone_count": dark_count,
+        "avg_floating": avg_float,
+        "avg_texture": avg_tex,
+        "grounding": grounding,
+    }}).to_string()
 }
 
 // ─── 서버 확정 조합 생성 (기존 로직 유지) ───

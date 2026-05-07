@@ -183,6 +183,53 @@ impl EmbeddingService {
     }
 }
 
+/// Wardrobe 아이템 시맨틱 검색 결과
+pub struct WardrobeMatch {
+    pub name: String,
+    pub category: String,
+    pub similarity: f32,
+}
+
+impl EmbeddingService {
+    /// Wardrobe 아이템을 시맨틱 검색. clothing 목록에서 query와 가장 유사한 아이템 top-k 반환.
+    pub fn search_wardrobe(
+        &self,
+        query: &str,
+        clothes: &[crate::models::clothing::Clothing],
+        top_n: usize,
+    ) -> anyhow::Result<Vec<WardrobeMatch>> {
+        let query_emb = self.embed_text(query)?;
+
+        let mut scored: Vec<(f32, &crate::models::clothing::Clothing)> = clothes
+            .iter()
+            .map(|c| {
+                // 아이템 설명 텍스트 구성
+                let desc = format!(
+                    "{} {} {} {} {}",
+                    c.name,
+                    c.color.as_deref().unwrap_or(""),
+                    c.style.as_deref().unwrap_or(""),
+                    c.material_primary.as_deref().unwrap_or(""),
+                    c.sub_category.as_deref().unwrap_or(""),
+                );
+                let item_emb = self.embed_text(&desc).unwrap_or_default();
+                let sim = if item_emb.is_empty() { 0.0 } else { cosine_similarity(&query_emb, &item_emb) };
+                (sim, c)
+            })
+            .collect();
+
+        scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+        Ok(scored.into_iter().take(top_n).map(|(sim, c)| {
+            WardrobeMatch {
+                name: c.name.clone(),
+                category: c.category.clone(),
+                similarity: sim,
+            }
+        }).collect())
+    }
+}
+
 /// Cosine similarity between two vectors
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() || a.is_empty() {

@@ -328,7 +328,7 @@ pub fn pairwise_score(a: &Clothing, b: &Clothing) -> i32 {
     s
 }
 
-fn color_group(color: &str) -> &str {
+pub fn color_group(color: &str) -> &str {
     if color.contains("네이비") || color.contains("인디고") || color.contains("잉크") { return "navy"; }
     if color.contains("올리브") || color.contains("카키") { return "olive"; }
     if color.contains("차콜") || color.contains("블랙") { return "dark"; }
