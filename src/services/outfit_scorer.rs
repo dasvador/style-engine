@@ -753,24 +753,35 @@ pub enum OutfitArchetype {
 }
 
 impl OutfitArchetype {
-    /// anchor 특성에서 적합한 archetype 후보
+    /// anchor 특성에서 적합한 archetype 후보 — 색온도/톤도 반영
     pub fn candidates_for_anchor(anchor: &Clothing) -> Vec<Self> {
         let vw = anchor.visual_weight_v2.unwrap_or(3);
         let strong = anchor.strong_style_score.unwrap_or(1);
         let float = anchor.floating_score.unwrap_or(3);
+        let tone = anchor.tone.as_deref().unwrap_or("중간");
+        let temp = anchor.color_temperature.as_deref().unwrap_or("neutral");
 
         let mut archs = Vec::new();
+
+        // 가벼운/떠있는 anchor
         if float >= 5 || vw <= 3 {
-            archs.push(Self::WashedMinimal);
-            archs.push(Self::LightweightUtility);
+            if temp == "warm" {
+                archs.push(Self::LightweightUtility); // warm → utility 방향
+            } else if tone == "밝음" {
+                archs.push(Self::FadedIvy); // 밝은 neutral/cool → ivy 방향
+            } else {
+                archs.push(Self::WashedMinimal);
+            }
         }
+        // 무거운 anchor
         if vw >= 5 {
             archs.push(Self::GroundedVintage);
         }
         if vw >= 7 {
             archs.push(Self::RuggedCasual);
         }
-        if strong <= 3 {
+        // 중립 anchor
+        if strong <= 3 && tone != "어두움" {
             archs.push(Self::FadedIvy);
         }
         if strong >= 4 && strong <= 7 {
@@ -828,6 +839,12 @@ impl OutfitArchetype {
                 if item.formality_level.unwrap_or(2) >= 3 { s += 3; }
                 if strong >= 5 { s -= 5; }
                 if is_neutral { s += 3; }
+                // 밝은/중간 톤 하의 선호 (어두운 데님 독주 방지)
+                if item.category == "하의" {
+                    let t = item.tone.as_deref().unwrap_or("중간");
+                    if t == "밝음" { s += 4; }
+                    else if t == "중간" { s += 2; }
+                }
                 s
             }
             Self::RuggedCasual => {
