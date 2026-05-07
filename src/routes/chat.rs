@@ -98,11 +98,10 @@ async fn chat(
 3. role 밸런스: 밥 위주, 반찬은 1개 이하
 
 규칙:
-- 옷장에 적절한 아이템이 있으면 이름을 정확히 복사해서 추천.
-- 옷장에 마땅한 아이템이 없으면 억지로 넣지 말고, 어떤 아이템이 있으면 좋을지 제안. 이 경우 owned: false로 표시.
-- 사용자가 지정한 아이템은 반드시 그대로 포함. 다른 아이템으로 교체 금지.
-- 나머지 슬롯을 지정 아이템 기준으로 맞춘다.
-- 서버가 제시한 추천 조합이 있으면 그 중에서 선택.
+- 서버가 추천 조합을 제시하면, 반드시 그 중에서 하나를 선택하라. 자체 조합을 만들지 마라.
+- 서버 조합이 없을 때만 옷장에서 직접 선택 가능.
+- 옷장에 마땅한 아이템이 없으면 어떤 아이템이 좋을지 제안 (owned: false).
+- 사용자가 지정한 아이템은 반드시 그대로 포함. 교체 금지.
 - 반드시 아래 JSON 형식으로만 응답. 다른 텍스트 금지.
 
 응답 JSON:
@@ -133,7 +132,7 @@ async fn chat(
             String::new()
         } else {
             format!(
-                "\n서버가 사전 분석한 추천 조합 (이 중에서 선택하거나 참고):\n{}\n",
+                "\n아래 조합 중 하나를 반드시 선택하라. 자체 조합을 만들지 마라:\n{}\n",
                 outfit_hint
             )
         },
@@ -286,19 +285,20 @@ fn build_outfit_candidates(
     }
 
     let mut lines = Vec::new();
-    for (i, (outfit, score)) in combos.iter().enumerate() {
-        let items: Vec<String> = outfit.iter().map(|c| {
+    for (i, (outfit, _score)) in combos.iter().enumerate() {
+        let mut parts = Vec::new();
+        for c in outfit.iter() {
             let slot = match c.category.as_str() {
                 "상의" => "inner",
                 "하의" => "bottom",
                 "아우터" => "outer",
                 "신발" => "shoes",
                 "가방" => "bag",
-                _ => "?",
+                _ => continue,
             };
-            format!("{}:{}", slot, c.name)
-        }).collect();
-        lines.push(format!("조합{} (score:{}) → {}", i + 1, score, items.join(" / ")));
+            parts.push(format!("\"{}\":\"{}\"", slot, c.name));
+        }
+        lines.push(format!("조합{}: {{{}}}", i + 1, parts.join(",")));
     }
 
     lines.join("\n")
