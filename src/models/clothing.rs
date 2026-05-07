@@ -28,6 +28,10 @@ pub struct Clothing {
     pub shadow_tone: Option<String>,
     pub silhouette_volume: Option<String>,
     pub material_primary: Option<String>,
+    pub sub_category: Option<String>,
+    pub floating_score: Option<i8>,
+    pub strong_style_score: Option<i8>,
+    pub texture_keywords: Option<String>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
 }

@@ -184,6 +184,20 @@ pub fn complement_score(anchor: &Clothing, candidate: &Clothing) -> i32 {
         let ground = candidate.grounding_score.unwrap_or(3) as i32;
         if ground >= 5 { s += 3; }
         if ground <= 2 { s -= 2; }
+
+        // floating penalty — 떠보이는 아이템 감점
+        let float = candidate.floating_score.unwrap_or(3) as i32;
+        if float >= 7 { s -= 4; }
+    }
+
+    // 10. strong_style_score 기반 — anchor가 강하면 중립 후보 보너스 강화
+    let c_strong = candidate.strong_style_score.unwrap_or(1) as i32;
+    let a_strong = anchor.strong_style_score.unwrap_or(1) as i32;
+    if a_strong >= 6 && c_strong <= 2 {
+        s += 4; // 강한 anchor + 중립 후보 = 좋은 희석
+    }
+    if a_strong >= 6 && c_strong >= 6 {
+        s -= 5; // 둘 다 강함 = 과밀
     }
 
     // 9. 데님 bridge 보너스 — 데님은 어떤 anchor에서든 강력한 bridge/neutralizer
@@ -385,11 +399,17 @@ pub fn outfit_score(items: &[&Clothing], user: Option<&UserStyleProfile>) -> i32
         if all_warm || all_cool { s -= 8; }
     }
 
-    // 7. strong_style_density + rugged_overload
+    // 7. strong_style_density (strong_style_score 기반으로 정밀화)
+    let strong_sum: i32 = items.iter()
+        .map(|i| i.strong_style_score.unwrap_or(1) as i32)
+        .sum();
     let strong_items: Vec<&&Clothing> = items.iter()
-        .filter(|i| matches!(i.style.as_deref(), Some("밀리터리") | Some("워크")))
+        .filter(|i| i.strong_style_score.unwrap_or(1) >= 5)
         .collect();
     let strong_count = strong_items.len();
+    // 전체 strong 합산이 높으면 추가 penalty
+    if strong_sum >= 25 { s -= 10; }
+    else if strong_sum >= 20 { s -= 5; }
     if strong_count >= 4 { s -= 25; }      // 거의 유니폼
     else if strong_count >= 3 { s -= 15; } // 코스프레 경계
 
