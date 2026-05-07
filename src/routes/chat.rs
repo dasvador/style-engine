@@ -167,7 +167,7 @@ async fn chat(
     ];
     let mut final_items: Vec<ChatItem> = Vec::new();
     let mut final_reply = String::new();
-    let mut user_anchor_query: Option<String> = None; // 유저 원문 보존
+    let mut first_search_query: Option<String> = None; // 유저 최초 검색어 (덮어쓰기 불가)
     let mut anchor_category: Option<String> = None;
 
     for _turn in 0..5 {
@@ -211,9 +211,11 @@ async fn chat(
                     "search_wardrobe" => {
                         let query = fn_args["query"].as_str().unwrap_or("");
                         let category = fn_args["category"].as_str();
-                        // 유저 원문 보존
-                        user_anchor_query = Some(query.to_string());
-                        anchor_category = category.map(|c| c.to_string());
+                        // 유저 최초 검색어만 저장 (두 번째 호출로 덮어쓰기 방지)
+                        if first_search_query.is_none() {
+                            first_search_query = Some(query.to_string());
+                            anchor_category = category.map(|c| c.to_string());
+                        }
                         let result = tool_search_wardrobe(query, category, &clothes, &state.embedding);
                         tracing::info!("search_wardrobe(cat={:?}): {}", category, &result[..result.len().min(300)]);
                         result
@@ -271,7 +273,7 @@ async fn chat(
             final_reply = msg["content"].as_str().unwrap_or("").to_string();
 
             // 유저 원문이 DB에 없으면 anchor 슬롯을 원문으로 교체
-            if let Some(ref uq) = user_anchor_query {
+            if let Some(ref uq) = first_search_query {
                 let is_in_db = clothes.iter().any(|c| c.name == *uq);
                 if !is_in_db {
                     let slot_key = match anchor_category.as_deref() {

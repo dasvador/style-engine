@@ -283,8 +283,11 @@ pub fn pairwise_score(a: &Clothing, b: &Clothing) -> i32 {
     }
 
     // 2. repeated_color_cluster — 같은 색상군 반복 (모든 슬롯 쌍)
-    let a_cg = color_group(a.color.as_deref().unwrap_or(""));
-    let b_cg = color_group(b.color.as_deref().unwrap_or(""));
+    // color 필드가 없으면 이름에서 추출
+    let a_color_src = a.color.as_deref().unwrap_or(&a.name);
+    let b_color_src = b.color.as_deref().unwrap_or(&b.name);
+    let a_cg = color_group(a_color_src);
+    let b_cg = color_group(b_color_src);
     if a_cg != "other" && a_cg == b_cg {
         // 같은 색상군 + 같은 강한 스타일이면 강하게
         let both_strong = matches!(a.style.as_deref(), Some("밀리터리") | Some("워크"))
@@ -329,7 +332,8 @@ pub fn pairwise_score(a: &Clothing, b: &Clothing) -> i32 {
 }
 
 pub fn color_group(color: &str) -> &str {
-    if color.contains("네이비") || color.contains("인디고") || color.contains("잉크") { return "navy"; }
+    if color.is_empty() { return "other"; }
+    if color.contains("네이비") || color.contains("인디고") || color.contains("잉크") || color.contains("다크네이비") { return "navy"; }
     if color.contains("올리브") || color.contains("카키") { return "olive"; }
     if color.contains("차콜") || color.contains("블랙") { return "dark"; }
     if color.contains("크림") || color.contains("오트밀") || color.contains("화이트") || color.contains("오프") { return "cream"; }
@@ -502,7 +506,7 @@ pub fn outfit_score(items: &[&Clothing], user: Option<&UserStyleProfile>) -> i32
 
     // isolated_accent_penalty — 조합 내 다른 아이템과 연결 없는 accent color
     let color_groups: Vec<&str> = items.iter()
-        .map(|i| color_group(i.color.as_deref().unwrap_or("")))
+        .map(|i| color_group(i.color.as_deref().unwrap_or(&i.name)))
         .collect();
     for (idx, cg) in color_groups.iter().enumerate() {
         if *cg == "other" { continue; }
