@@ -389,7 +389,6 @@ NOT: ecommerce, flat lay, mannequin, AI collage, hyper-stylized, cyberpunk."#,
         "n": 1,
         "size": "1024x1536",
         "quality": "low",
-        "output_format": "url",
     });
 
     let resp = state.http_client
