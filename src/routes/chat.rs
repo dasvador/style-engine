@@ -225,10 +225,26 @@ async fn chat(
                             fn_args["anchor_name"].as_str().unwrap_or("")
                         );
                         let anchor_name = fn_args["anchor_name"].as_str().unwrap_or(user_query);
-                        let (outfit_json, items) = tool_get_outfit(
+                        let (outfit_json, mut items) = tool_get_outfit(
                             user_query, anchor_name, &clothes, user_profile.as_ref(),
                             temperature, &feedback_ctx, &state.embedding,
                         );
+                        // 유저 원문으로 anchor 슬롯 즉시 교체
+                        if let Some(ref uq) = first_search_query {
+                            let is_in_db = clothes.iter().any(|c| c.name == *uq);
+                            if !is_in_db {
+                                if let Some(ref cat) = anchor_category {
+                                    let sk = match cat.as_str() {
+                                        "신발" => "shoes", "아우터" => "outer", "하의" => "bottom",
+                                        "가방" => "bag", "상의" => "inner", _ => "",
+                                    };
+                                    if let Some(item) = items.iter_mut().find(|i| i.slot == sk) {
+                                        item.name = uq.clone();
+                                        item.owned = false;
+                                    }
+                                }
+                            }
+                        }
                         final_items = items;
                         outfit_json
                     }
