@@ -214,7 +214,7 @@ async fn chat(
                             .unwrap_or_default();
                         let (outfit_json, items) = tool_get_outfit(
                             anchor_name, &clothes, user_profile.as_ref(),
-                            temperature, &feedback_ctx,
+                            temperature, &feedback_ctx, &state.embedding,
                         );
                         final_items = items;
                         outfit_json
@@ -310,11 +310,43 @@ fn tool_get_outfit(
     user: Option<&crate::models::user_profile::UserStyleProfile>,
     temperature: Option<f64>,
     feedback: &outfit_scorer::FeedbackContext,
+    embedding: &std::sync::Arc<crate::services::embedding::EmbeddingService>,
 ) -> (String, Vec<ChatItem>) {
-    let anchor = match clothes.iter().find(|c| c.name == anchor_name) {
-        Some(a) => a,
-        None => return (json!({"error": "anchor not found"}).to_string(), Vec::new()),
+    // 정확한 이름 매칭 → 부분 매칭 → 임베딩 검색 폴백
+    let anchor = if let Some(a) = clothes.iter().find(|c| c.name == anchor_name) {
+        a
+    } else {
+        // 부분 매칭
+        let q = anchor_name.to_lowercase();
+        let partial = clothes.iter().find(|c| {
+            let n = c.name.to_lowercase();
+            q.split_whitespace().all(|w| n.contains(w)) || n.contains(&q)
+        });
+        if let Some(a) = partial {
+            tracing::info!("get_outfit: fuzzy matched '{}' → '{}'", anchor_name, a.name);
+            a
+        } else {
+            // 임베딩 검색 폴백
+            match embedding.search_wardrobe(anchor_name, clothes, 1) {
+                Ok(matches) if !matches.is_empty() && matches[0].similarity > 0.5 => {
+                    let best = &matches[0];
+                    let found = clothes.iter().find(|c| c.name == best.name);
+                    if let Some(a) = found {
+                        tracing::info!("get_outfit: embedding matched '{}' → '{}' (sim={:.2})", anchor_name, a.name, best.similarity);
+                        a
+                    } else {
+                        tracing::warn!("get_outfit: anchor '{}' not found", anchor_name);
+                        return (json!({"error": format!("anchor '{}' not found", anchor_name)}).to_string(), Vec::new());
+                    }
+                }
+                _ => {
+                    tracing::warn!("get_outfit: anchor '{}' not found", anchor_name);
+                    return (json!({"error": format!("anchor '{}' not found", anchor_name)}).to_string(), Vec::new());
+                }
+            }
+        }
     };
+    tracing::info!("get_outfit: anchor='{}' category='{}'", anchor.name, anchor.category);
 
     let result = build_final_outfit(anchor, clothes, user, temperature, feedback);
     match result {
