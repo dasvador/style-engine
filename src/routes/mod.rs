@@ -1,5 +1,6 @@
 pub mod chat;
 pub mod clothes;
+pub mod feedback;
 pub mod health;
 pub mod home;
 pub mod outfit;
@@ -22,6 +23,7 @@ pub fn api_router() -> Router<AppState> {
         .nest("/references", reference::router())
         .nest("/outfit", outfit::router())
         .nest("/chat", chat::router())
+        .nest("/feedback", feedback::router())
 }
 
 pub fn home_router() -> Router<AppState> {

@@ -100,6 +100,12 @@ const HOME_HTML: &str = r#"<!DOCTYPE html>
   }
   .chat-send-btn:disabled { opacity: 0.5; cursor: default; }
   .chat-typing { color: var(--gray-400); font-style: italic; font-size: 0.85rem; }
+  .chat-fb-btn {
+    border: 1px solid var(--gray-200); background: #fff; border-radius: 16px;
+    padding: 4px 12px; font-size: 0.85rem; cursor: pointer;
+  }
+  .chat-fb-btn:hover { background: var(--gray-100); }
+  .chat-fb-btn.selected { background: var(--primary); color: #fff; border-color: var(--primary); }
 
   /* --- Bottom Tab Bar --- */
   .tab-bar {
@@ -753,6 +759,31 @@ let activeCategory = '전체';
 let activeRole = '전체';
 let previousScreen = 'wardrobe';
 
+/* ===== FEEDBACK ===== */
+async function sendFeedback(type, items, fbId) {
+  const body = { feedback_type: type };
+  items.forEach(it => {
+    if (it.slot === 'inner') body.inner_name = it.name;
+    else if (it.slot === 'outer') body.outer_name = it.name;
+    else if (it.slot === 'bottom') body.bottom_name = it.name;
+    else if (it.slot === 'shoes') body.shoes_name = it.name;
+    else if (it.slot === 'bag') body.bag_name = it.name;
+  });
+  try {
+    await fetchJSON(API + '/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const el = document.getElementById(fbId);
+    if (el) {
+      el.innerHTML = type === 'like' ? '👍 반영됨' : '👎 반영됨';
+      el.style.color = 'var(--gray-400)';
+      el.style.fontSize = '0.8rem';
+    }
+  } catch (e) { console.error('feedback error', e); }
+}
+
 /* ===== CHAT ===== */
 async function sendChat(e) {
   e.preventDefault();
@@ -793,6 +824,12 @@ async function sendChat(e) {
         const label = it.slot === 'inner' ? '이너' : it.slot === 'outer' ? '아우터' : it.category;
         html += `<span class="${cls}">${escHtml(label)}: ${escHtml(it.name)}${tag}</span>`;
       });
+      html += `</div>`;
+      // 좋아요/싫어요 버튼
+      const fbId = 'fb-' + Date.now();
+      html += `<div class="chat-feedback" id="${fbId}" style="margin-top:8px; display:flex; gap:6px;">`;
+      html += `<button class="chat-fb-btn" onclick="sendFeedback('like', ${JSON.stringify(r.items)}, '${fbId}')">👍</button>`;
+      html += `<button class="chat-fb-btn" onclick="sendFeedback('dislike', ${JSON.stringify(r.items)}, '${fbId}')">👎</button>`;
       html += `</div>`;
     }
     html += `</div>`;

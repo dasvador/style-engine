@@ -1,4 +1,5 @@
 pub mod clothing;
+pub mod feedback;
 pub mod outfit;
 pub mod user_profile;
 pub mod recommendation;

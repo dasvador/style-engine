@@ -4,8 +4,29 @@
 //! Layer 2: pairwise_score (인접 아이템 쌍)
 //! Layer 3: outfit_score (전체 조합 + 체형)
 
+use std::collections::HashMap;
+
 use crate::models::clothing::Clothing;
 use crate::models::user_profile::UserStyleProfile;
+
+/// 피드백 기반 아이템별 보정을 적용한 total score
+pub fn total_outfit_score_with_feedback(
+    anchor: &Clothing,
+    outfit: &[&Clothing],
+    user: Option<&UserStyleProfile>,
+    feedback_adjustments: &HashMap<String, i32>,
+) -> i32 {
+    let mut total = total_outfit_score(anchor, outfit, user);
+
+    // 피드백 보정: 좋아요 아이템은 +, 싫어요 아이템은 -
+    for item in outfit {
+        if let Some(&adj) = feedback_adjustments.get(&item.name) {
+            total += adj;
+        }
+    }
+
+    total
+}
 
 // ─── Layer 1: Item-level complement score ───
 
