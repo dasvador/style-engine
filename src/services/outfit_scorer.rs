@@ -9,23 +9,100 @@ use std::collections::HashMap;
 use crate::models::clothing::Clothing;
 use crate::models::user_profile::UserStyleProfile;
 
-/// 피드백 기반 아이템별 보정을 적용한 total score
+/// 3층 피드백 보정
+pub struct FeedbackContext {
+    /// Layer 1: 아이템별 보정 (±1씩 누적)
+    pub item_adj: HashMap<String, i32>,
+    /// Layer 3: reason tag 선호도 (too_military → -9, good_texture → +6 등)
+    pub preference: HashMap<String, i32>,
+}
+
+impl FeedbackContext {
+    pub fn empty() -> Self {
+        Self {
+            item_adj: HashMap::new(),
+            preference: HashMap::new(),
+        }
+    }
+}
+
+/// 피드백 3층 적용한 total score
 pub fn total_outfit_score_with_feedback(
     anchor: &Clothing,
     outfit: &[&Clothing],
     user: Option<&UserStyleProfile>,
-    feedback_adjustments: &HashMap<String, i32>,
+    feedback: &FeedbackContext,
 ) -> i32 {
     let mut total = total_outfit_score(anchor, outfit, user);
 
-    // 피드백 보정: 좋아요 아이템은 +, 싫어요 아이템은 -
+    // Layer 1: item-level 보정 (작음)
     for item in outfit {
-        if let Some(&adj) = feedback_adjustments.get(&item.name) {
+        if let Some(&adj) = feedback.item_adj.get(&item.name) {
             total += adj;
         }
     }
 
+    // Layer 3: reason/tag 기반 패턴 보정 (큼)
+    // 조합의 특성을 분석해서 유저 선호 태그와 매칭
+    let outfit_tags = detect_outfit_tags(outfit);
+    for tag in &outfit_tags {
+        if let Some(&pref) = feedback.preference.get(tag.as_str()) {
+            total += pref; // 누적 선호/비선호 직접 반영
+        }
+    }
+
     total
+}
+
+/// 조합에서 피드백 태그를 자동 감지
+fn detect_outfit_tags(outfit: &[&Clothing]) -> Vec<String> {
+    let mut tags = Vec::new();
+
+    let strong_count = outfit.iter()
+        .filter(|i| matches!(i.style.as_deref(), Some("밀리터리") | Some("워크")))
+        .count();
+    if strong_count >= 3 { tags.push("too_military".to_string()); }
+
+    let dark_count = outfit.iter()
+        .filter(|i| i.tone.as_deref() == Some("어두움"))
+        .count();
+    if dark_count >= 3 { tags.push("too_dark".to_string()); }
+
+    let light_count = outfit.iter()
+        .filter(|i| i.tone.as_deref() == Some("밝음"))
+        .count();
+    if light_count >= 3 { tags.push("too_light".to_string()); }
+
+    let avg_td = outfit.iter()
+        .filter_map(|i| i.texture_depth_v2)
+        .map(|t| t as f32)
+        .sum::<f32>() / outfit.len().max(1) as f32;
+    if avg_td < 3.0 { tags.push("too_flat".to_string()); }
+    if avg_td >= 5.0 { tags.push("good_texture_balance".to_string()); }
+
+    let has_denim = outfit.iter().any(|i| {
+        i.material_primary.as_deref() == Some("denim") || i.name.contains("데님")
+    });
+    if has_denim { tags.push("good_denim_bridge".to_string()); }
+
+    let grounding: i32 = outfit.iter()
+        .filter(|i| i.category == "신발" || i.category == "가방")
+        .filter_map(|i| i.grounding_score)
+        .map(|g| g as i32)
+        .sum();
+    if grounding >= 8 { tags.push("good_grounding".to_string()); }
+    if grounding <= 3 { tags.push("floating_balance".to_string()); }
+
+    let color_groups: Vec<&str> = outfit.iter()
+        .map(|i| color_group(i.color.as_deref().unwrap_or("")))
+        .collect();
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for cg in &color_groups {
+        if *cg != "other" { *counts.entry(cg).or_insert(0) += 1; }
+    }
+    if counts.values().any(|&v| v >= 3) { tags.push("color_repetition".to_string()); }
+
+    tags
 }
 
 // ─── Layer 1: Item-level complement score ───

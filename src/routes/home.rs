@@ -760,8 +760,33 @@ let activeRole = '전체';
 let previousScreen = 'wardrobe';
 
 /* ===== FEEDBACK ===== */
-async function sendFeedback(type, items, fbId) {
-  const body = { feedback_type: type };
+const LIKE_REASONS = ['good_texture_balance','good_grounding','good_color_depth','good_denim_bridge','good_body_balance'];
+const DISLIKE_REASONS = ['too_military','too_dark','too_flat','too_light','floating_balance','color_repetition','style_overload'];
+const REASON_LABELS = {
+  good_texture_balance:'질감 좋음', good_grounding:'안정감 좋음', good_color_depth:'색감 좋음',
+  good_denim_bridge:'데님 조합 좋음', good_body_balance:'체형 밸런스 좋음',
+  too_military:'너무 군복 같음', too_dark:'너무 어두움', too_flat:'너무 밋밋함',
+  too_light:'너무 가벼움', floating_balance:'떠 보임', color_repetition:'색 반복',
+  style_overload:'스타일 과다'
+};
+
+function showReasons(type, fbId, itemsJson) {
+  const items = JSON.parse(itemsJson);
+  const reasons = type === 'like' ? LIKE_REASONS : DISLIKE_REASONS;
+  const el = document.getElementById(fbId);
+  if (!el) return;
+  let html = `<div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;">`;
+  reasons.forEach(r => {
+    html += `<button class="chat-fb-btn" style="font-size:0.75rem;" onclick="submitFeedback('${type}',['${r}'],${JSON.stringify(JSON.stringify(items))},'${fbId}')">${REASON_LABELS[r]||r}</button>`;
+  });
+  html += `<button class="chat-fb-btn" style="font-size:0.75rem;" onclick="submitFeedback('${type}',[],${JSON.stringify(JSON.stringify(items))},'${fbId}')">그냥 ${type==='like'?'👍':'👎'}</button>`;
+  html += `</div>`;
+  el.innerHTML = html;
+}
+
+async function submitFeedback(type, reasons, itemsJson, fbId) {
+  const items = JSON.parse(itemsJson);
+  const body = { feedback_type: type, reasons: reasons };
   items.forEach(it => {
     if (it.slot === 'inner') body.inner_name = it.name;
     else if (it.slot === 'outer') body.outer_name = it.name;
@@ -777,9 +802,9 @@ async function sendFeedback(type, items, fbId) {
     });
     const el = document.getElementById(fbId);
     if (el) {
-      el.innerHTML = type === 'like' ? '👍 반영됨' : '👎 반영됨';
-      el.style.color = 'var(--gray-400)';
-      el.style.fontSize = '0.8rem';
+      const label = type === 'like' ? '👍' : '👎';
+      const reasonText = reasons.length > 0 ? ` (${reasons.map(r=>REASON_LABELS[r]||r).join(', ')})` : '';
+      el.innerHTML = `<span style="color:var(--gray-400); font-size:0.8rem;">${label} 반영됨${reasonText}</span>`;
     }
   } catch (e) { console.error('feedback error', e); }
 }
@@ -825,11 +850,13 @@ async function sendChat(e) {
         html += `<span class="${cls}">${escHtml(label)}: ${escHtml(it.name)}${tag}</span>`;
       });
       html += `</div>`;
-      // 좋아요/싫어요 버튼
+      // 좋아요/싫어요 버튼 + reason 선택
       const fbId = 'fb-' + Date.now();
-      html += `<div class="chat-feedback" id="${fbId}" style="margin-top:8px; display:flex; gap:6px;">`;
-      html += `<button class="chat-fb-btn" onclick="sendFeedback('like', ${JSON.stringify(r.items)}, '${fbId}')">👍</button>`;
-      html += `<button class="chat-fb-btn" onclick="sendFeedback('dislike', ${JSON.stringify(r.items)}, '${fbId}')">👎</button>`;
+      html += `<div class="chat-feedback" id="${fbId}" style="margin-top:8px;">`;
+      html += `<div style="display:flex; gap:6px; margin-bottom:4px;">`;
+      html += `<button class="chat-fb-btn" onclick="showReasons('like','${fbId}',${JSON.stringify(JSON.stringify(r.items))})">👍</button>`;
+      html += `<button class="chat-fb-btn" onclick="showReasons('dislike','${fbId}',${JSON.stringify(JSON.stringify(r.items))})">👎</button>`;
+      html += `</div>`;
       html += `</div>`;
     }
     html += `</div>`;

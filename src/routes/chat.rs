@@ -80,17 +80,21 @@ async fn chat(
     .ok()
     .flatten();
 
-    // 피드백 보정 로드
-    let feedback_adj: std::collections::HashMap<String, i32> = {
-        let scores = crate::db::feedback_repo::get_item_adjustments(&state.db, "default")
-            .await
-            .unwrap_or_default();
-        scores.into_iter().map(|s| (s.item_name, s.score_adjustment)).collect()
+    // 피드백 3층 로드
+    let feedback_ctx = {
+        let item_scores = crate::db::feedback_repo::get_item_adjustments(&state.db, "default")
+            .await.unwrap_or_default();
+        let pref_scores = crate::db::feedback_repo::get_preference_scores(&state.db, "default")
+            .await.unwrap_or_default();
+        outfit_scorer::FeedbackContext {
+            item_adj: item_scores.into_iter().map(|s| (s.item_name, s.score_adjustment)).collect(),
+            preference: pref_scores.into_iter().map(|s| (s.reason_tag, s.score)).collect(),
+        }
     };
 
     // ─── 서버가 최종 조합 결정 (LLM 선택권 없음) ───
     let (fixed_outfit, outfit_items) = if !anchors.is_empty() {
-        let result = build_final_outfit(anchors[0], &clothes, user_profile.as_ref(), temperature, &feedback_adj);
+        let result = build_final_outfit(anchors[0], &clothes, user_profile.as_ref(), temperature, &feedback_ctx);
         match result {
             Some((outfit_desc, items)) => (outfit_desc, items),
             None => (String::new(), Vec::new()),
@@ -195,7 +199,7 @@ fn build_final_outfit(
     clothes: &[Clothing],
     user: Option<&crate::models::user_profile::UserStyleProfile>,
     temperature: Option<f64>,
-    feedback_adj: &std::collections::HashMap<String, i32>,
+    feedback: &outfit_scorer::FeedbackContext,
 ) -> Option<(String, Vec<ChatItem>)> {
     let anchor_cat = &anchor.category;
     let temp = temperature.unwrap_or(20.0);
@@ -226,7 +230,7 @@ fn build_final_outfit(
             for shoe in &shoes {
                 for bag in &bags {
                     let outfit = vec![*top, *bottom, *shoe, *bag];
-                    let score = outfit_scorer::total_outfit_score_with_feedback(anchor, &outfit, user, feedback_adj);
+                    let score = outfit_scorer::total_outfit_score_with_feedback(anchor, &outfit, user, feedback);
                     combos.push((outfit, score));
                 }
             }
@@ -239,7 +243,7 @@ fn build_final_outfit(
                 for shoe in &shoes {
                     for bag in &bags {
                         let outfit = vec![*top, *outer, *bottom, *shoe, *bag];
-                        let score = outfit_scorer::total_outfit_score_with_feedback(anchor, &outfit, user, feedback_adj);
+                        let score = outfit_scorer::total_outfit_score_with_feedback(anchor, &outfit, user, feedback);
                         combos.push((outfit, score));
                     }
                 }
