@@ -278,14 +278,13 @@ fn tool_search_wardrobe(
     clothes: &[Clothing],
     embedding: &std::sync::Arc<crate::services::embedding::EmbeddingService>,
 ) -> String {
-    // 카테고리 힌트로 필터
-    let cat_filter = extract_category_hint(query);
-    let filtered: Vec<&Clothing> = if let Some(cat) = cat_filter {
-        clothes.iter().filter(|c| c.category == cat).collect()
+    // 카테고리 힌트로 필터 (DB sub_category 기반 동적 매칭)
+    let cat_filter = extract_category_from_wardrobe(query, clothes);
+    let search_clothes: Vec<Clothing> = if let Some(ref cat) = cat_filter {
+        clothes.iter().filter(|c| c.category == *cat).cloned().collect()
     } else {
-        clothes.iter().collect()
+        clothes.to_vec()
     };
-    let search_clothes: Vec<Clothing> = filtered.into_iter().cloned().collect();
 
     // 임베딩 기반 시맨틱 검색
     match embedding.search_wardrobe(query, &search_clothes, 5) {
@@ -324,68 +323,83 @@ fn tool_get_outfit(
     feedback: &outfit_scorer::FeedbackContext,
     embedding: &std::sync::Arc<crate::services::embedding::EmbeddingService>,
 ) -> (String, Vec<ChatItem>) {
-    // 카테고리 힌트 추출 (이름에서)
-    let cat_hint = if anchor_name.contains("스니커") || anchor_name.contains("슬립온") || anchor_name.contains("부츠") || anchor_name.contains("로퍼") || anchor_name.contains("신발") || anchor_name.contains("슈즈") {
-        Some("신발")
-    } else if anchor_name.contains("자켓") || anchor_name.contains("코트") || anchor_name.contains("파카") || anchor_name.contains("아우터") {
-        Some("아우터")
-    } else if anchor_name.contains("팬츠") || anchor_name.contains("데님") || anchor_name.contains("바지") || anchor_name.contains("하의") {
-        Some("하의")
-    } else if anchor_name.contains("백팩") || anchor_name.contains("가방") || anchor_name.contains("토트") {
-        Some("가방")
-    } else {
-        None
+    let cat_hint_str = extract_category_from_wardrobe(anchor_name, clothes);
+    let cat_hint = cat_hint_str.as_deref();
+
+    // anchor 탐색: 정확 → fuzzy → 임베딩. 못 찾아도 유저 원문 유지.
+    let exact = clothes.iter().find(|c| c.name == anchor_name);
+    let q = anchor_name.to_lowercase();
+    let fuzzy = || clothes.iter()
+        .filter(|c| cat_hint.map_or(true, |cat| c.category == cat))
+        .find(|c| {
+            let n = c.name.to_lowercase();
+            q.split_whitespace().filter(|w| *w != "신발" && *w != "색").all(|w| n.contains(w))
+        });
+    let emb_match = || {
+        let filtered: Vec<Clothing> = clothes.iter()
+            .filter(|c| cat_hint.map_or(true, |cat| c.category == cat))
+            .cloned().collect();
+        embedding.search_wardrobe(anchor_name, &filtered, 1).ok()
+            .and_then(|m| m.into_iter().next())
+            .filter(|m| m.similarity > 0.5)
+            .and_then(|m| clothes.iter().find(|c| c.name == m.name))
     };
 
-    // 정확한 이름 매칭 → 부분 매칭 (카테고리 우선) → 임베딩 검색 폴백
-    let anchor = if let Some(a) = clothes.iter().find(|c| c.name == anchor_name) {
-        a
+    // scoring용 proxy anchor (DB에서 가장 유사한 아이템)
+    let proxy_anchor = exact.or_else(fuzzy).or_else(emb_match);
+    let anchor_owned = proxy_anchor.is_some() && exact.is_some();
+    let display_anchor_name = if exact.is_some() { anchor_name.to_string() } else { anchor_name.to_string() };
+    let display_anchor_cat = cat_hint.unwrap_or("상의");
+
+    if let Some(pa) = proxy_anchor {
+        tracing::info!("get_outfit: proxy anchor='{}' for query='{}'", pa.name, anchor_name);
     } else {
-        // 부분 매칭 (카테고리 힌트 우선)
-        let q = anchor_name.to_lowercase();
-        let partial = clothes.iter()
-            .filter(|c| cat_hint.map_or(true, |cat| c.category == cat))
-            .find(|c| {
-                let n = c.name.to_lowercase();
-                q.split_whitespace().filter(|w| *w != "신발" && *w != "색").all(|w| n.contains(w)) || n.contains(&q)
-            });
-        if let Some(a) = partial {
-            tracing::info!("get_outfit: fuzzy matched '{}' → '{}'", anchor_name, a.name);
-            a
-        } else {
-            // 임베딩 검색 폴백
-            match embedding.search_wardrobe(anchor_name, clothes, 1) {
-                Ok(matches) if !matches.is_empty() && matches[0].similarity > 0.5 => {
-                    let best = &matches[0];
-                    let found = clothes.iter().find(|c| c.name == best.name);
-                    if let Some(a) = found {
-                        tracing::info!("get_outfit: embedding matched '{}' → '{}' (sim={:.2})", anchor_name, a.name, best.similarity);
-                        a
-                    } else {
-                        tracing::warn!("get_outfit: anchor '{}' not found", anchor_name);
-                        return (json!({"error": format!("anchor '{}' not found", anchor_name)}).to_string(), Vec::new());
-                    }
-                }
-                _ => {
-                    tracing::warn!("get_outfit: anchor '{}' not found", anchor_name);
-                    return (json!({"error": format!("anchor '{}' not found", anchor_name)}).to_string(), Vec::new());
-                }
+        tracing::info!("get_outfit: no DB match for '{}', using as unowned anchor", anchor_name);
+    }
+
+    // proxy anchor로 조합 생성 (DB에 없어도 유사 아이템 기준으로 scoring)
+    let scoring_anchor = match proxy_anchor {
+        Some(pa) => pa,
+        None => {
+            // DB에 유사 아이템도 없으면 첫 번째 아이템 기준으로 폴백
+            match clothes.first() {
+                Some(c) => c,
+                None => return (json!({"error": "wardrobe empty"}).to_string(), Vec::new()),
             }
         }
     };
-    tracing::info!("get_outfit: anchor='{}' category='{}'", anchor.name, anchor.category);
 
-    let result = build_final_outfit(anchor, clothes, user, temperature, feedback);
+    let result = build_final_outfit(scoring_anchor, clothes, user, temperature, feedback);
     match result {
-        Some((desc, items)) => {
+        Some((_desc, mut items)) => {
+            // anchor 슬롯을 유저 원문으로 교체 (DB에 없어도 원문 유지)
+            let anchor_slot = display_anchor_cat;
+            let slot_key = match anchor_slot {
+                "상의" => "inner", "아우터" => "outer", "하의" => "bottom",
+                "신발" => "shoes", "가방" => "bag", _ => "shoes",
+            };
+
+            // proxy anchor가 있으면 해당 슬롯의 아이템을 유저 원문으로 덮어쓰기
+            if let Some(item) = items.iter_mut().find(|i| i.slot == slot_key) {
+                if !anchor_owned {
+                    item.name = display_anchor_name.clone();
+                    item.owned = false;
+                }
+            } else {
+                // anchor 슬롯이 결과에 없으면 추가
+                items.push(ChatItem {
+                    slot: slot_key.to_string(),
+                    category: anchor_slot.to_string(),
+                    name: display_anchor_name.clone(),
+                    owned: anchor_owned,
+                });
+            }
+
+            let desc = items.iter().map(|i| format!("{}: {}", i.slot, i.name)).collect::<Vec<_>>().join("\n");
             let items_json: Vec<serde_json::Value> = items.iter().map(|i| {
                 json!({"slot": i.slot, "name": i.name, "category": i.category, "owned": i.owned})
             }).collect();
-            let response = json!({
-                "outfit": desc,
-                "items": items_json,
-                "note": "서버가 확정한 착장입니다. 아이템을 변경하지 마세요."
-            });
+            let response = json!({ "outfit": desc, "items": items_json });
             (response.to_string(), items)
         }
         None => (json!({"error": "no suitable outfit found"}).to_string(), Vec::new()),
@@ -544,31 +558,56 @@ fn build_final_outfit(
     Some((desc_parts.join("\n"), items))
 }
 
-fn extract_category_hint(query: &str) -> Option<&'static str> {
+/// DB 아이템의 이름/sub_category와 매칭해서 카테고리를 동적으로 추출
+fn extract_category_from_wardrobe(query: &str, clothes: &[Clothing]) -> Option<String> {
     let q = query.to_lowercase();
-    if q.contains("스니커") || q.contains("슬립온") || q.contains("부츠") || q.contains("로퍼")
-        || q.contains("신발") || q.contains("슈즈") || q.contains("러너") || q.contains("트레이너")
-    {
-        Some("신발")
-    } else if q.contains("자켓") || q.contains("코트") || q.contains("파카") || q.contains("아우터")
-        || q.contains("블루종") || q.contains("오버셔츠") || q.contains("집업")
-    {
-        Some("아우터")
-    } else if q.contains("팬츠") || q.contains("데님") || q.contains("바지") || q.contains("하의")
-        || q.contains("치노") || q.contains("슬랙스") || q.contains("카고")
-    {
-        Some("하의")
-    } else if q.contains("백팩") || q.contains("가방") || q.contains("토트") || q.contains("숄더")
-        || q.contains("크로스바디")
-    {
-        Some("가방")
-    } else if q.contains("셔츠") || q.contains("티셔츠") || q.contains("니트") || q.contains("헨리넥")
-        || q.contains("스웻셔츠") || q.contains("후드")
-    {
-        Some("상의")
-    } else {
-        None
+
+    // 1. sub_category 매칭 (DB 데이터 기반, 하드코딩 없음)
+    for c in clothes {
+        if let Some(sub) = &c.sub_category {
+            let sub_lower = sub.to_lowercase();
+            // sub_category를 한국어화해서 비교
+            let sub_kr = match sub_lower.as_str() {
+                "canvas_sneaker" | "sneaker" => "스니커",
+                "slip_on" => "슬립온",
+                "trainer" => "트레이너",
+                "runner" => "러너",
+                "work_boots" => "워크부츠",
+                "desert_boots" => "데저트부츠",
+                "loafer" => "로퍼",
+                "derby" => "더비",
+                "chelsea" => "첼시",
+                "denim" => "데님",
+                "chino" => "치노",
+                "cargo" => "카고",
+                "slacks" => "슬랙스",
+                "tote" => "토트",
+                "backpack" => "백팩",
+                "crossbody" => "크로스바디",
+                "shoulder" => "숄더",
+                "helmet" => "헬멧",
+                _ => "",
+            };
+            if !sub_kr.is_empty() && q.contains(sub_kr) {
+                return Some(c.category.clone());
+            }
+        }
+        // 2. 아이템 이름의 일부가 쿼리에 포함
+        let name_words: Vec<&str> = c.name.split_whitespace().collect();
+        let matched_words = name_words.iter().filter(|w| q.contains(&w.to_lowercase())).count();
+        if matched_words >= 2 {
+            return Some(c.category.clone());
+        }
     }
+
+    // 3. 기본 키워드 폴백 (최소한만)
+    if q.contains("신발") || q.contains("슈즈") || q.contains("부츠") { return Some("신발".to_string()); }
+    if q.contains("아우터") || q.contains("자켓") || q.contains("코트") { return Some("아우터".to_string()); }
+    if q.contains("하의") || q.contains("바지") { return Some("하의".to_string()); }
+    if q.contains("가방") { return Some("가방".to_string()); }
+    if q.contains("상의") { return Some("상의".to_string()); }
+
+    None
 }
 
 fn is_weather_appropriate(item: &Clothing, temp: f64) -> bool {
