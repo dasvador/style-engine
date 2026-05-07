@@ -201,11 +201,14 @@ async fn chat(
                     tc["function"]["arguments"].as_str().unwrap_or("{}")
                 ).unwrap_or(json!({}));
                 let tc_id = tc["id"].as_str().unwrap_or("");
+                tracing::info!("tool_call: {}({})", fn_name, fn_args);
 
                 let result = match fn_name {
                     "search_wardrobe" => {
                         let query = fn_args["query"].as_str().unwrap_or("");
-                        tool_search_wardrobe(query, &clothes, &state.embedding)
+                        let result = tool_search_wardrobe(query, &clothes, &state.embedding);
+                        tracing::info!("search_wardrobe result: {}", &result[..result.len().min(300)]);
+                        result
                     }
                     "get_outfit" => {
                         let anchor_name = fn_args["anchor_name"].as_str().unwrap_or("");
@@ -275,8 +278,17 @@ fn tool_search_wardrobe(
     clothes: &[Clothing],
     embedding: &std::sync::Arc<crate::services::embedding::EmbeddingService>,
 ) -> String {
+    // 카테고리 힌트로 필터
+    let cat_filter = extract_category_hint(query);
+    let filtered: Vec<&Clothing> = if let Some(cat) = cat_filter {
+        clothes.iter().filter(|c| c.category == cat).collect()
+    } else {
+        clothes.iter().collect()
+    };
+    let search_clothes: Vec<Clothing> = filtered.into_iter().cloned().collect();
+
     // 임베딩 기반 시맨틱 검색
-    match embedding.search_wardrobe(query, clothes, 5) {
+    match embedding.search_wardrobe(query, &search_clothes, 5) {
         Ok(matches) => {
             let results: Vec<serde_json::Value> = matches.iter().map(|m| {
                 json!({
@@ -530,6 +542,33 @@ fn build_final_outfit(
         });
     }
     Some((desc_parts.join("\n"), items))
+}
+
+fn extract_category_hint(query: &str) -> Option<&'static str> {
+    let q = query.to_lowercase();
+    if q.contains("스니커") || q.contains("슬립온") || q.contains("부츠") || q.contains("로퍼")
+        || q.contains("신발") || q.contains("슈즈") || q.contains("러너") || q.contains("트레이너")
+    {
+        Some("신발")
+    } else if q.contains("자켓") || q.contains("코트") || q.contains("파카") || q.contains("아우터")
+        || q.contains("블루종") || q.contains("오버셔츠") || q.contains("집업")
+    {
+        Some("아우터")
+    } else if q.contains("팬츠") || q.contains("데님") || q.contains("바지") || q.contains("하의")
+        || q.contains("치노") || q.contains("슬랙스") || q.contains("카고")
+    {
+        Some("하의")
+    } else if q.contains("백팩") || q.contains("가방") || q.contains("토트") || q.contains("숄더")
+        || q.contains("크로스바디")
+    {
+        Some("가방")
+    } else if q.contains("셔츠") || q.contains("티셔츠") || q.contains("니트") || q.contains("헨리넥")
+        || q.contains("스웻셔츠") || q.contains("후드")
+    {
+        Some("상의")
+    } else {
+        None
+    }
 }
 
 fn is_weather_appropriate(item: &Clothing, temp: f64) -> bool {
