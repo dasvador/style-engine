@@ -208,21 +208,16 @@ pub fn complement_score(anchor: &Clothing, candidate: &Clothing) -> i32 {
         s -= 5; // 둘 다 강함 = 과밀
     }
 
-    // 9. 데님 bridge 보너스 — 데님은 어떤 anchor에서든 강력한 bridge/neutralizer
+    // 9. 데님 bridge 보너스 — 축소 (데님끼리 몰림 방지)
     if is_denim {
-        s += 10; // 기본: 데님은 거의 모든 코디에서 bridge/grounding 역할
-        // 강한 anchor에 데님 = style dilution까지 추가
-        if a_style != "베이직" {
-            s += 4;
-        }
-        // shadow continuity (데님은 대부분 washed)
-        if c_shadow == "washed" {
-            s += 3;
-        }
-        // 질감 깊이 (데님은 texture_depth 5~6)
-        if c_td >= 5 {
-            s += 2;
-        }
+        s += 5; // 기본 bridge 보너스 (10→5로 축소)
+        if a_style != "베이직" { s += 2; }
+    }
+
+    // 11. style dilution 강화 — anchor와 다른 장르면 보너스
+    let a_mat = anchor.material_primary.as_deref().unwrap_or("");
+    if a_mat != c_mat && a_mat != "cotton" && c_mat != "cotton" {
+        s += 3; // 소재 다양성 보너스
     }
 
     s
@@ -544,13 +539,54 @@ pub fn outfit_score(items: &[&Clothing], user: Option<&UserStyleProfile>) -> i32
         }
     }
 
-    // repeated_color_cluster — 같은 색상군이 3개 이상
+    // repeated_color_cluster — 같은 색상군이 3개 이상 강화
     let mut cg_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
     for cg in &color_groups {
         if *cg != "other" { *cg_counts.entry(cg).or_insert(0) += 1; }
     }
-    for (_cg, count) in &cg_counts {
-        if *count >= 3 { s -= 10; }
+    for (cg, count) in &cg_counts {
+        if *count >= 4 { s -= 20; }      // 4개 이상 = 답답
+        else if *count >= 3 { s -= 12; } // 3개 = 반복 (10→12)
+    }
+
+    // anchor bridge 요구 — anchor 색상군과 같은 아이템이 최소 1개 더 있어야
+    // (올리브 신발인데 올리브 연결 아이템 없으면 isolated)
+    // 이건 anchor가 outfit에 있을 때만 체크
+    // → complement_score에서 이미 처리되므로 여기선 skip
+
+    // low_profile vs rugged 충돌
+    let upper_strong: i32 = items.iter()
+        .filter(|i| i.category == "상의" || i.category == "아우터")
+        .map(|i| i.strong_style_score.unwrap_or(1) as i32)
+        .sum();
+    let shoe_float = items.iter()
+        .filter(|i| i.category == "신발")
+        .filter_map(|i| i.floating_score)
+        .map(|f| f as i32)
+        .sum::<i32>();
+    if upper_strong >= 10 && shoe_float >= 6 {
+        s -= 10; // 무거운 상체 + 가벼운 신발 = 시각적 불균형
+    }
+
+    // bag reinforcement penalty — 가방이 outfit 방향을 더 강화만 하면 감점
+    if let Some(b) = items.iter().find(|i| i.category == "가방") {
+        let bag_cg = color_group(b.color.as_deref().unwrap_or(&b.name));
+        let bag_strong = b.strong_style_score.unwrap_or(1);
+        // 가방 색상이 outfit 주류 색상과 같고 + 가방도 strong이면 reinforcement
+        if let Some((&dominant_cg, &dominant_count)) = cg_counts.iter().max_by_key(|(_, c)| *c) {
+            if bag_cg == dominant_cg && dominant_count >= 2 && bag_strong >= 4 {
+                s -= 6; // bag이 이미 과한 방향을 더 강화
+            }
+        }
+    }
+
+    // 소재 다양성 — 전부 같은 소재면 단조
+    let materials: Vec<&str> = items.iter()
+        .filter_map(|i| i.material_primary.as_deref())
+        .collect();
+    let unique_mats: std::collections::HashSet<&&str> = materials.iter().collect();
+    if materials.len() >= 4 && unique_mats.len() <= 2 {
+        s -= 8; // 소재가 2종 이하 = 단조
     }
 
     // 체형 밸런스
