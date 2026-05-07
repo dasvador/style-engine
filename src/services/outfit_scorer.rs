@@ -88,17 +88,18 @@ pub fn complement_score(anchor: &Clothing, candidate: &Clothing) -> i32 {
         if ground <= 2 { s -= 2; }
     }
 
-    // 9. 데님 bridge 보너스 — military/workwear anchor에 데님은 강력한 neutralizer/bridge
+    // 9. 데님 bridge 보너스 — 데님은 어떤 anchor에서든 강력한 bridge/neutralizer
     if is_denim {
-        // 강한 anchor에 데님 = style dilution + texture bridge
+        s += 8; // 기본: 데님은 거의 모든 코디에서 bridge/grounding 역할
+        // 강한 anchor에 데님 = style dilution까지 추가
         if a_style != "베이직" {
-            s += 10; // 핵심: 워크/밀리터리 anchor에 데님은 최고의 bridge
+            s += 4;
         }
-        // shadow continuity 추가 보너스 (데님은 대부분 washed)
+        // shadow continuity (데님은 대부분 washed)
         if c_shadow == "washed" {
             s += 3;
         }
-        // 질감 깊이 보너스 (데님은 texture_depth 6 보통)
+        // 질감 깊이 (데님은 texture_depth 5~6)
         if c_td >= 5 {
             s += 2;
         }
