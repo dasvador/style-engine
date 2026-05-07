@@ -312,16 +312,31 @@ fn tool_get_outfit(
     feedback: &outfit_scorer::FeedbackContext,
     embedding: &std::sync::Arc<crate::services::embedding::EmbeddingService>,
 ) -> (String, Vec<ChatItem>) {
-    // 정확한 이름 매칭 → 부분 매칭 → 임베딩 검색 폴백
+    // 카테고리 힌트 추출 (이름에서)
+    let cat_hint = if anchor_name.contains("스니커") || anchor_name.contains("슬립온") || anchor_name.contains("부츠") || anchor_name.contains("로퍼") || anchor_name.contains("신발") || anchor_name.contains("슈즈") {
+        Some("신발")
+    } else if anchor_name.contains("자켓") || anchor_name.contains("코트") || anchor_name.contains("파카") || anchor_name.contains("아우터") {
+        Some("아우터")
+    } else if anchor_name.contains("팬츠") || anchor_name.contains("데님") || anchor_name.contains("바지") || anchor_name.contains("하의") {
+        Some("하의")
+    } else if anchor_name.contains("백팩") || anchor_name.contains("가방") || anchor_name.contains("토트") {
+        Some("가방")
+    } else {
+        None
+    };
+
+    // 정확한 이름 매칭 → 부분 매칭 (카테고리 우선) → 임베딩 검색 폴백
     let anchor = if let Some(a) = clothes.iter().find(|c| c.name == anchor_name) {
         a
     } else {
-        // 부분 매칭
+        // 부분 매칭 (카테고리 힌트 우선)
         let q = anchor_name.to_lowercase();
-        let partial = clothes.iter().find(|c| {
-            let n = c.name.to_lowercase();
-            q.split_whitespace().all(|w| n.contains(w)) || n.contains(&q)
-        });
+        let partial = clothes.iter()
+            .filter(|c| cat_hint.map_or(true, |cat| c.category == cat))
+            .find(|c| {
+                let n = c.name.to_lowercase();
+                q.split_whitespace().filter(|w| *w != "신발" && *w != "색").all(|w| n.contains(w)) || n.contains(&q)
+            });
         if let Some(a) = partial {
             tracing::info!("get_outfit: fuzzy matched '{}' → '{}'", anchor_name, a.name);
             a
