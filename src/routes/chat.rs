@@ -352,15 +352,15 @@ async fn generate_image(
     let outfit_hash = format!("{:016x}", outfit_hasher.finish());
 
     let prompt = format!(
-        r#"Full-body fashion editorial photograph of a man wearing: {}
+        r#"Realistic full-body fashion editorial photo of an adult male with a solid build and broad upper body, wearing: {}
 
-Style: Japanese premium lookbook, Tokyo street editorial.
-Body: average athletic build, 174cm, relaxed fit clothing.
-Pose: photographed from slightly behind or side angle, face not visible, focus on outfit silhouette and texture.
-Photo: cinematic natural lighting, soft shadows, muted warm tones, shallow depth of field.
-Aesthetic: AURALEE / BEAMS / vintage military-workwear mix.
-Background: minimal urban, soft bokeh.
-NOT: ecommerce, flat lay, mannequin, AI collage, hyper-stylized, cyberpunk, front-facing portrait."#,
+3/4 front view, natural standing pose, outfit clearly visible from head to toe. Show inner layer, outer layer, pants, shoes, and bag clearly.
+
+Japanese select shop lookbook aesthetic, Seoul quiet street background, soft natural daylight, muted colors, gentle shadows, realistic fabric texture, relaxed XL silhouette, grounded proportions, premium magazine styling. Shallow depth of field but outfit must stay sharp. Natural wrinkles and matte texture on fabrics.
+
+Adult male, 174cm, solid build, broad upper body, relaxed XL fit, natural realistic body proportions.
+
+No back view, no fashion runway, no cyberpunk, no luxury campaign, no extreme streetwear, no mannequin, no flat lay, no product collage, no distorted body, no overly skinny model, no blurry outfit, no cropped body."#,
         body.items
     );
 

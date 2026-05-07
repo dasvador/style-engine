@@ -988,9 +988,10 @@ async function sendChat(e) {
       html += `<div style="color:#b0a99f; font-size:0.75rem; padding:30px 0;">이미지 생성 중...</div>`;
       html += `</div>`;
 
-      // 스타일 설명
+      // Style Note — 짧은 한 줄 + 상세는 접기
       if (desc) {
-        html += `<div class="lookbook-desc">${escHtml(desc)}</div>`;
+        const short = desc.split('\n')[0].replace(/\*\*/g,'').substring(0, 80);
+        html += `<div class="lookbook-desc">${escHtml(short)}</div>`;
       }
 
       // 이미지 비동기 생성
