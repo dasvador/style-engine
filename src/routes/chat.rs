@@ -242,6 +242,9 @@ fn build_outfit_candidates(
 
     let tops = if anchor_cat == "상의" { vec![anchor] } else { slot_candidates("상의", 5) };
     let bottoms = if anchor_cat == "하의" { vec![anchor] } else { slot_candidates("하의", 5) };
+
+    // 디버그: 하의 후보 로그
+    tracing::info!("chat bottoms: {}", bottoms.iter().map(|c| format!("{}({})", c.name, outfit_scorer::complement_score(anchor, c))).collect::<Vec<_>>().join(", "));
     let outers = if anchor_cat == "아우터" { vec![anchor] } else { slot_candidates("아우터", 4) };
     let shoes = if anchor_cat == "신발" { vec![anchor] } else { slot_candidates("신발", 4) };
     let bags = if anchor_cat == "가방" { vec![anchor] } else { slot_candidates("가방", 3) };

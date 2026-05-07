@@ -30,15 +30,15 @@ pub fn complement_score(anchor: &Clothing, candidate: &Clothing) -> i32 {
     let c_mat = candidate.material_primary.as_deref().unwrap_or("");
     let is_denim = c_mat == "denim" || candidate.name.contains("데님");
 
-    // 1. 톤 대비 — 약화 (이전 ±10/5 → ±6/2)
-    // shadow continuity가 톤 대비와 경쟁할 수 있도록 톤 대비 독주 완화
-    if a_tone != c_tone { s += 6; } else { s -= 2; }
+    // 1. 톤 — 대비도 좋지만 continuity도 좋음. 둘 다 보상.
+    if a_tone != c_tone {
+        s += 4; // 대비 보너스 (약화)
+    }
+    // 동일 톤은 페널티가 아니라 0 (shadow continuity가 별도 보상)
 
-    // 2. 색온도 믹스 — 약간 약화
+    // 2. 색온도 — 동일이어도 페널티 없음 (continuity 허용)
     if a_temp != c_temp && a_temp != "neutral" && c_temp != "neutral" {
-        s += 4;
-    } else if a_temp == c_temp && a_temp != "neutral" {
-        s -= 2;
+        s += 3; // 믹스 보너스 (약화)
     }
 
     // 3. 스타일 희석 — 강한 anchor에 베이직 후보 보너스
