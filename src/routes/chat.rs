@@ -93,14 +93,15 @@ async fn chat(
             "type": "function",
             "function": {
                 "name": "get_outfit",
-                "description": "anchor 아이템 기준으로 서버가 최적의 착장을 생성한다. 서버가 scoring/penalty/body balance를 적용해 최종 착장을 확정한다.",
+                "description": "anchor 아이템 기준으로 서버가 최적의 착장을 생성한다. user_query는 유저 원문, anchor_name은 search_wardrobe에서 찾은 정확한 DB 이름.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "anchor_name": { "type": "string", "description": "anchor 아이템 이름 (search_wardrobe 결과에서 선택)" },
-                        "avoid_tags": { "type": "array", "items": { "type": "string" }, "description": "피할 스타일 태그 (예: too_military, too_dark)" }
+                        "user_query": { "type": "string", "description": "유저가 언급한 원래 아이템 표현 (예: 올리브 슬립온)" },
+                        "anchor_name": { "type": "string", "description": "search_wardrobe 결과에서 선택한 정확한 DB 이름" },
+                        "avoid_tags": { "type": "array", "items": { "type": "string" }, "description": "피할 스타일 태그" }
                     },
-                    "required": ["anchor_name"]
+                    "required": ["user_query", "anchor_name"]
                 }
             }
         },
@@ -211,12 +212,12 @@ async fn chat(
                         result
                     }
                     "get_outfit" => {
-                        let anchor_name = fn_args["anchor_name"].as_str().unwrap_or("");
-                        let avoid: Vec<String> = fn_args["avoid_tags"].as_array()
-                            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-                            .unwrap_or_default();
+                        let user_query = fn_args["user_query"].as_str().unwrap_or(
+                            fn_args["anchor_name"].as_str().unwrap_or("")
+                        );
+                        let anchor_name = fn_args["anchor_name"].as_str().unwrap_or(user_query);
                         let (outfit_json, items) = tool_get_outfit(
-                            anchor_name, &clothes, user_profile.as_ref(),
+                            user_query, anchor_name, &clothes, user_profile.as_ref(),
                             temperature, &feedback_ctx, &state.embedding,
                         );
                         final_items = items;
@@ -316,6 +317,7 @@ fn tool_search_wardrobe(
 }
 
 fn tool_get_outfit(
+    user_query: &str,
     anchor_name: &str,
     clothes: &[Clothing],
     user: Option<&crate::models::user_profile::UserStyleProfile>,
@@ -347,8 +349,8 @@ fn tool_get_outfit(
 
     // scoring용 proxy anchor (DB에서 가장 유사한 아이템)
     let proxy_anchor = exact.or_else(fuzzy).or_else(emb_match);
-    let anchor_owned = proxy_anchor.is_some() && exact.is_some();
-    let display_anchor_name = if exact.is_some() { anchor_name.to_string() } else { anchor_name.to_string() };
+    let anchor_owned = exact.is_some(); // 정확히 DB에 있는 경우만 owned
+    let display_anchor_name = user_query.to_string(); // 항상 유저 원문 유지
     let display_anchor_cat = cat_hint.unwrap_or("상의");
 
     if let Some(pa) = proxy_anchor {
