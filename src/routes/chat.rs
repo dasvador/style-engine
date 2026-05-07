@@ -167,6 +167,8 @@ async fn chat(
     ];
     let mut final_items: Vec<ChatItem> = Vec::new();
     let mut final_reply = String::new();
+    let mut user_anchor_query: Option<String> = None; // 유저 원문 보존
+    let mut anchor_category: Option<String> = None;
 
     for _turn in 0..5 {
         let req_body = json!({
@@ -209,6 +211,9 @@ async fn chat(
                     "search_wardrobe" => {
                         let query = fn_args["query"].as_str().unwrap_or("");
                         let category = fn_args["category"].as_str();
+                        // 유저 원문 보존
+                        user_anchor_query = Some(query.to_string());
+                        anchor_category = category.map(|c| c.to_string());
                         let result = tool_search_wardrobe(query, category, &clothes, &state.embedding);
                         tracing::info!("search_wardrobe(cat={:?}): {}", category, &result[..result.len().min(300)]);
                         result
@@ -264,6 +269,28 @@ async fn chat(
         } else {
             // finish_reason == "stop" → 최종 응답
             final_reply = msg["content"].as_str().unwrap_or("").to_string();
+
+            // 유저 원문이 DB에 없으면 anchor 슬롯을 원문으로 교체
+            if let Some(ref uq) = user_anchor_query {
+                let is_in_db = clothes.iter().any(|c| c.name == *uq);
+                if !is_in_db {
+                    let slot_key = match anchor_category.as_deref() {
+                        Some("신발") => "shoes",
+                        Some("아우터") => "outer",
+                        Some("하의") => "bottom",
+                        Some("가방") => "bag",
+                        Some("상의") => "inner",
+                        _ => "",
+                    };
+                    if !slot_key.is_empty() {
+                        if let Some(item) = final_items.iter_mut().find(|i| i.slot == slot_key) {
+                            item.name = uq.clone();
+                            item.owned = false;
+                        }
+                    }
+                }
+            }
+
             break;
         }
     }
