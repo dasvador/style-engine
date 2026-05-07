@@ -352,15 +352,13 @@ async fn generate_image(
     let outfit_hash = format!("{:016x}", outfit_hasher.finish());
 
     let prompt = format!(
-        r#"Realistic full-body fashion editorial photo of a young man wearing: {}
+        r#"Realistic full-body fashion editorial photo of an adult Korean male in his early 40s with an athletic but natural build, wearing: {}
 
-3/4 front view, natural standing pose, outfit clearly visible from head to toe.
+3/4 front view, natural standing pose, full body visible from head to toe, outfit clearly visible. Clean relaxed proportions, mature casual styling, not oversized, not skinny, not bulky.
 
-Japanese select shop lookbook aesthetic. Seoul quiet street background. Soft natural daylight, muted colors, gentle shadows. Realistic fabric texture, natural wrinkles. Shallow depth of field but outfit stays sharp. Premium magazine styling.
+Japanese select shop lookbook aesthetic, Seoul quiet street background, soft natural daylight, muted color palette, subtle shadows, realistic fabric texture, natural wrinkles, premium fashion magazine styling.
 
-Young adult male, 174cm, slim-athletic build, well-proportioned.
-
-No back view, no fashion runway, no cyberpunk, no mannequin, no flat lay, no distorted body, no overweight body, no cropped body."#,
+Avoid back view, avoid cropped body, avoid overweight body, avoid bulky silhouette, avoid mannequin, avoid flat lay, avoid runway, avoid extreme streetwear, avoid distorted body, avoid zoomed-in framing."#,
         body.items
     );
 

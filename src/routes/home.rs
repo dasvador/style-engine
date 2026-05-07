@@ -128,6 +128,17 @@ const HOME_HTML: &str = r#"<!DOCTYPE html>
     font-size: 0.6rem; color: #c4a882; margin-top: 4px;
     font-style: italic;
   }
+  .lookbook-note {
+    margin: 0 20px 14px; padding: 14px 16px; background: #f5f3ef;
+    border-radius: 10px; border-left: 3px solid #c4b9a8;
+  }
+  .lookbook-note-title {
+    font-size: 0.7rem; font-weight: 700; color: #a09888;
+    letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .lookbook-note-text {
+    font-size: 0.8rem; line-height: 1.6; color: #5a5550;
+  }
   .lookbook-mood {
     padding: 0 20px 14px; display: flex; flex-wrap: wrap;
     gap: 6px; justify-content: center;
@@ -988,10 +999,13 @@ async function sendChat(e) {
       html += `<div style="color:#b0a99f; font-size:0.75rem; padding:30px 0;">이미지 생성 중...</div>`;
       html += `</div>`;
 
-      // Style Note
+      // Style Note 카드
       if (desc) {
-        const clean = desc.replace(/\*\*/g,'').replace(/- /g,'').replace(/\n/g,' ').trim();
-        html += `<div class="lookbook-desc">${escHtml(clean)}</div>`;
+        const clean = desc.replace(/\*\*/g,'').replace(/- /g,'· ').replace(/\n\n/g,'\n').trim();
+        html += `<div class="lookbook-note">`;
+        html += `<div class="lookbook-note-title">Style Note</div>`;
+        html += `<div class="lookbook-note-text">${clean.replace(/\n/g,'<br>')}</div>`;
+        html += `</div>`;
       }
 
       // 이미지 비동기 생성
