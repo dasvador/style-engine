@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::db::clothing_repo;
 use crate::errors::AppError;
+use crate::middleware::auth::AuthUser;
 use crate::models::clothing::Clothing;
 use crate::services::outfit_scorer;
 use crate::services::weather as weather_service;
@@ -33,8 +34,10 @@ struct ChatItem {
 
 async fn chat(
     State(state): State<AppState>,
+    auth: AuthUser,
     Json(body): Json<ChatRequest>,
 ) -> Result<Json<ChatResponse>, AppError> {
+    let user_id = &auth.user_id;
     if state.openai_api_key.is_empty() || state.openai_api_key == "sk-your-key-here" {
         return Err(AppError::BadRequest(
             "OPENAI_API_KEY is not configured".to_string(),
@@ -73,8 +76,9 @@ async fn chat(
 
     // 유저 프로파일
     let user_profile = sqlx::query_as::<_, crate::models::user_profile::UserStyleProfile>(
-        "SELECT * FROM user_style_profile WHERE user_id = 'default'"
+        "SELECT * FROM user_style_profile WHERE user_id = ?"
     )
+    .bind(user_id)
     .fetch_optional(&state.db)
     .await
     .ok()
@@ -82,9 +86,9 @@ async fn chat(
 
     // 피드백 3층 로드
     let feedback_ctx = {
-        let item_scores = crate::db::feedback_repo::get_item_adjustments(&state.db, "default")
+        let item_scores = crate::db::feedback_repo::get_item_adjustments(&state.db, user_id)
             .await.unwrap_or_default();
-        let pref_scores = crate::db::feedback_repo::get_preference_scores(&state.db, "default")
+        let pref_scores = crate::db::feedback_repo::get_preference_scores(&state.db, user_id)
             .await.unwrap_or_default();
         outfit_scorer::FeedbackContext {
             item_adj: item_scores.into_iter().map(|s| (s.item_name, s.score_adjustment)).collect(),

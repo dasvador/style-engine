@@ -12,13 +12,11 @@ use crate::models::recommendation::{
     ModeRecommendation, MultiModeRecommendationResponse, OutfitCandidate, OutfitItem,
     RecommendationRequest, RecommendationResponse, ScoringDetail,
 };
+use crate::middleware::auth::AuthUser;
 use crate::services::recommendation_diversity;
 use crate::services::recommendation_service;
 use crate::services::{openai, style_engine, weather as weather_service};
 use crate::AppState;
-
-/// 싱글유저 앱 — 고정 user_id
-const DEFAULT_USER_ID: &str = "default";
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -28,8 +26,10 @@ pub fn router() -> Router<AppState> {
 
 async fn get_recommendation(
     State(state): State<AppState>,
+    auth: AuthUser,
     Json(body): Json<RecommendationRequest>,
 ) -> Result<Json<RecommendationResponse>, AppError> {
+    let user_id = &auth.user_id;
     if state.openai_api_key.is_empty() || state.openai_api_key == "sk-your-key-here" {
         return Err(AppError::BadRequest(
             "OPENAI_API_KEY is not configured".to_string(),
@@ -58,7 +58,7 @@ async fn get_recommendation(
     let grouped = build_grouped_clothes(&clothes);
 
     // 4. Build recency hint from recent history
-    let recent_hint = build_recent_hint(&state.db, &clothes).await;
+    let recent_hint = build_recent_hint(&state.db, &clothes, user_id).await;
 
     // 5. Call OpenAI for 3 candidates
     let multi_result = openai::get_outfit_candidates(
@@ -102,7 +102,7 @@ async fn get_recommendation(
                 // Rerank with history penalties
                 let reranked = recommendation_service::rerank_candidates_with_history(
                     &state.db,
-                    DEFAULT_USER_ID,
+                    user_id,
                     candidates,
                 )
                 .await
@@ -163,7 +163,7 @@ async fn get_recommendation(
     match selected_candidate {
         Some(sel) => {
             let _ =
-                recommendation_service::save_selected_recommendation(&state.db, DEFAULT_USER_ID, &sel)
+                recommendation_service::save_selected_recommendation(&state.db, user_id, &sel)
                     .await;
         }
         None => {
@@ -176,7 +176,7 @@ async fn get_recommendation(
 
             let _ = RecommendationHistoryRepo::insert(
                 &state.db,
-                DEFAULT_USER_ID,
+                user_id,
                 top_id.as_deref(),
                 bottom_id.as_deref(),
                 outer_id.as_deref(),
@@ -199,8 +199,10 @@ async fn get_recommendation(
 
 async fn get_multi_recommendation(
     State(state): State<AppState>,
+    auth: AuthUser,
     Json(body): Json<RecommendationRequest>,
 ) -> Result<Json<MultiModeRecommendationResponse>, AppError> {
+    let user_id = &auth.user_id;
     if state.openai_api_key.is_empty() || state.openai_api_key == "sk-your-key-here" {
         return Err(AppError::BadRequest(
             "OPENAI_API_KEY is not configured".to_string(),
@@ -224,13 +226,13 @@ async fn get_multi_recommendation(
 
     let clothes = clothing_repo::list_clothing(&state.db).await?;
 
-    let recent_hint = build_recent_hint(&state.db, &clothes).await;
+    let recent_hint = build_recent_hint(&state.db, &clothes, user_id).await;
     let current_season = current_season_label();
 
     // 최근 추천 아이템 ID 수집 (shortlist recency penalty용)
     let recent_ids: std::collections::HashSet<String> = {
         let recent = RecommendationHistoryRepo::find_recent_by_user(
-            &state.db, DEFAULT_USER_ID, 7,
+            &state.db, user_id, 7,
         ).await.unwrap_or_default();
         let mut ids = std::collections::HashSet::new();
         for r in &recent {
@@ -292,7 +294,7 @@ async fn get_multi_recommendation(
 
     let reranked = recommendation_service::rerank_candidates_with_history(
         &state.db,
-        DEFAULT_USER_ID,
+        user_id,
         scored_candidates,
     )
     .await
@@ -302,7 +304,7 @@ async fn get_multi_recommendation(
     let all_ids: Vec<String> = clothes.iter().map(|c| c.id.clone()).collect();
     let dormant_ids = RecommendationHistoryRepo::find_dormant_item_ids(
         &state.db,
-        DEFAULT_USER_ID,
+        user_id,
         &all_ids,
     )
     .await
@@ -433,7 +435,7 @@ async fn get_multi_recommendation(
     if let Some(ref t) = todays {
         let _ = recommendation_service::save_selected_recommendation(
             &state.db,
-            DEFAULT_USER_ID,
+            user_id,
             &t.candidate,
         )
         .await;
@@ -629,8 +631,8 @@ async fn build_outfit_candidate(
 
 // ─── Helper: 최근 추천 이력 → LLM 힌트 문자열 ───
 
-async fn build_recent_hint(db: &sqlx::MySqlPool, clothes: &[Clothing]) -> String {
-    let recent = RecommendationHistoryRepo::find_recent_by_user(db, DEFAULT_USER_ID, 10)
+async fn build_recent_hint(db: &sqlx::MySqlPool, clothes: &[Clothing], user_id: &str) -> String {
+    let recent = RecommendationHistoryRepo::find_recent_by_user(db, user_id, 10)
         .await
         .unwrap_or_default();
 

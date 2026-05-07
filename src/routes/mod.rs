@@ -3,6 +3,7 @@ pub mod clothes;
 pub mod feedback;
 pub mod health;
 pub mod home;
+pub mod user;
 pub mod outfit;
 pub mod recommendation;
 pub mod reference;
@@ -24,6 +25,7 @@ pub fn api_router() -> Router<AppState> {
         .nest("/outfit", outfit::router())
         .nest("/chat", chat::router())
         .nest("/feedback", feedback::router())
+        .nest("/user", user::router())
 }
 
 pub fn home_router() -> Router<AppState> {

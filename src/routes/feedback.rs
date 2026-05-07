@@ -3,6 +3,7 @@ use serde::Serialize;
 
 use crate::db::feedback_repo;
 use crate::errors::AppError;
+use crate::middleware::auth::AuthUser;
 use crate::models::feedback::FeedbackRequest;
 use crate::AppState;
 
@@ -18,9 +19,10 @@ struct FeedbackResponse {
 
 async fn submit_feedback(
     State(state): State<AppState>,
+    auth: AuthUser,
     Json(body): Json<FeedbackRequest>,
 ) -> Result<Json<FeedbackResponse>, AppError> {
-    let user_id = "default"; // TODO: 멀티유저 시 로그인 유저로 교체
+    let user_id = &auth.user_id;
 
     let id = feedback_repo::insert_feedback(&state.db, user_id, &body)
         .await
