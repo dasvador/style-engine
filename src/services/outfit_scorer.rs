@@ -128,20 +128,32 @@ pub fn complement_score(anchor: &Clothing, candidate: &Clothing) -> i32 {
     let c_mat = candidate.material_primary.as_deref().unwrap_or("");
     let is_denim = c_mat == "denim" || candidate.name.contains("데님");
 
-    // 1. 톤 — 대비도 좋지만 continuity도 좋음. 둘 다 보상.
-    if a_tone != c_tone {
-        s += 4; // 대비 보너스 (약화)
+    // 1. 톤 — anchor 특성에 따라 방향성 차별화
+    match (a_tone, c_tone) {
+        // anchor 밝음 → 어두움 후보에 강한 보너스 (깊이 필요)
+        ("밝음", "어두움") => s += 8,
+        ("밝음", "중간") => s += 4,
+        // anchor 어두움 → 밝음 후보에 강한 보너스 (환기 필요)
+        ("어두움", "밝음") => s += 8,
+        ("어두움", "중간") => s += 4,
+        // anchor 중간 → 밝/어 양쪽 대비
+        ("중간", "밝음") | ("중간", "어두움") => s += 6,
+        // 동일 톤
+        _ => s -= 2,
     }
-    // 동일 톤은 페널티가 아니라 0 (shadow continuity가 별도 보상)
 
-    // 2. 색온도 — 동일이어도 페널티 없음 (continuity 허용)
-    if a_temp != c_temp && a_temp != "neutral" && c_temp != "neutral" {
-        s += 3; // 믹스 보너스 (약화)
+    // 2. 색온도 — anchor와 반대 온도에 강한 보너스
+    match (a_temp, c_temp) {
+        ("warm", "cool") | ("cool", "warm") => s += 6,  // 반대 = 강한 보너스
+        ("warm", "neutral") | ("cool", "neutral") => s += 3,
+        ("neutral", "warm") | ("neutral", "cool") => s += 2,
+        _ if a_temp == c_temp && a_temp != "neutral" => s -= 3, // 같은 온도 몰림
+        _ => {}
     }
 
-    // 3. 스타일 희석 — 강한 anchor에 베이직 후보 보너스
+    // 3. 스타일 희석
     if a_style != "베이직" && c_style == "베이직" { s += 8; }
-    if a_style != "베이직" && a_style == c_style { s -= 8; } // 같은 강스타일 반복 강화
+    if a_style != "베이직" && a_style == c_style { s -= 8; }
 
     // 4. role 밸런스
     if (a_role == "반찬" || a_role == "약한반찬") && (c_role == "밥" || c_role == "연결템") {
