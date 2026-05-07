@@ -223,12 +223,38 @@ async fn get_multi_recommendation(
     .map_err(AppError::Internal)?;
 
     let clothes = clothing_repo::list_clothing(&state.db).await?;
-    let grouped = build_grouped_clothes(&clothes);
 
     let recent_hint = build_recent_hint(&state.db, &clothes).await;
     let current_season = current_season_label();
 
-    // LLM: 5후보 생성 (카테고리별 그룹 입력)
+    // 최근 추천 아이템 ID 수집 (shortlist recency penalty용)
+    let recent_ids: std::collections::HashSet<String> = {
+        let recent = RecommendationHistoryRepo::find_recent_by_user(
+            &state.db, DEFAULT_USER_ID, 7,
+        ).await.unwrap_or_default();
+        let mut ids = std::collections::HashSet::new();
+        for r in &recent {
+            if let Some(id) = &r.top_id { ids.insert(id.clone()); }
+            if let Some(id) = &r.bottom_id { ids.insert(id.clone()); }
+            if let Some(id) = &r.outer_id { ids.insert(id.clone()); }
+            if let Some(id) = &r.shoes_id { ids.insert(id.clone()); }
+            if let Some(id) = &r.bag_id { ids.insert(id.clone()); }
+        }
+        ids
+    };
+
+    // Shortlist: 150개 → 슬롯별 top-k
+    let sl_ctx = crate::services::shortlist::ShortlistContext {
+        temperature: weather.temperature,
+        situation: body.occasion.as_deref(),
+        current_season: current_season.as_deref(),
+        recent_item_ids: &recent_ids,
+    };
+    let shortlist = crate::services::shortlist::build_all_shortlists(&clothes, &sl_ctx);
+    tracing::info!("{}", shortlist.summary());
+    let grouped = shortlist.to_grouped();
+
+    // LLM: 5후보 생성 (shortlist 기반 카테고리별 그룹 입력)
     let ai_candidates = openai::get_outfit_candidates(
         &state.http_client,
         &state.openai_api_key,

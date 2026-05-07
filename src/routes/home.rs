@@ -60,6 +60,47 @@ const HOME_HTML: &str = r#"<!DOCTYPE html>
   .screen.active { display: block; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
+  /* --- Chat --- */
+  #screen-chat.active { display: block; }
+  .chat-container {
+    padding: 8px 0;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .chat-bubble {
+    max-width: 85%; padding: 10px 14px; border-radius: 16px;
+    font-size: 0.9rem; line-height: 1.5; word-break: break-word;
+  }
+  .chat-user {
+    align-self: flex-end; background: var(--primary); color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .chat-ai {
+    align-self: flex-start; background: var(--gray-100); color: var(--gray-800);
+    border-bottom-left-radius: 4px;
+  }
+  .chat-ai .chat-item-chip {
+    display: inline-block; background: #fff; border: 1px solid var(--gray-200);
+    border-radius: 8px; padding: 2px 8px; margin: 2px 2px; font-size: 0.8rem;
+  }
+  .chat-ai .chat-item-chip.not-owned {
+    border-style: dashed; border-color: var(--warning); color: var(--gray-500);
+  }
+  .chat-input-bar { display: flex; gap: 8px; padding: 12px 0; }
+  .chat-input {
+    flex: 1; border: 1.5px solid var(--gray-200); border-radius: 20px;
+    padding: 10px 16px; font-size: 0.9rem; outline: none;
+    transition: border-color 0.2s;
+  }
+  .chat-input:focus { border-color: var(--primary); }
+  .chat-send-btn {
+    width: 40px; height: 40px; border-radius: 50%; border: none;
+    background: var(--primary); color: #fff; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .chat-send-btn:disabled { opacity: 0.5; cursor: default; }
+  .chat-typing { color: var(--gray-400); font-style: italic; font-size: 0.85rem; }
+
   /* --- Bottom Tab Bar --- */
   .tab-bar {
     position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
@@ -503,9 +544,7 @@ const HOME_HTML: &str = r#"<!DOCTYPE html>
   <!-- Recommendation Section -->
   <div id="rec-section">
     <div class="card-title" style="margin-top:8px;">AI 추천</div>
-    <div id="rec-content">
-      <div class="msg msg-loading"><span class="spinner"></span> AI가 코디를 고민 중...</div>
-    </div>
+    <div id="rec-content"></div>
   </div>
 </div>
 
@@ -662,11 +701,36 @@ const HOME_HTML: &str = r#"<!DOCTYPE html>
   </div>
 </div>
 
+<!-- ========== SCREEN: CHAT ========== -->
+<div class="screen" id="screen-chat">
+  <div class="screen-header">
+    <h1>스타일 상담</h1>
+    <span class="screen-header-sub">옷장 기반 코디 질문</span>
+  </div>
+  <div class="chat-container" id="chat-messages">
+    <div class="chat-bubble chat-ai">
+      안녕하세요! 옷장에 있는 아이템 기반으로 코디를 추천해드려요.<br>
+      <span style="color:var(--gray-400); font-size:0.8rem;">예: "네이비 스니커에 맞는 상하의 추천해줘"</span>
+    </div>
+  </div>
+
+  <form class="chat-input-bar" onsubmit="sendChat(event)">
+    <input type="text" class="chat-input" id="chat-input" placeholder="코디 질문을 입력하세요..." autocomplete="off">
+    <button type="submit" class="chat-send-btn" id="chat-send-btn">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+    </button>
+  </form>
+</div>
+
 <!-- ========== Bottom Tab Bar ========== -->
 <nav class="tab-bar">
   <button class="tab-item active" data-tab="home" onclick="navigate('home')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
     <span>홈</span>
+  </button>
+  <button class="tab-item" data-tab="chat" onclick="navigate('chat')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+    <span>상담</span>
   </button>
   <button class="tab-item" data-tab="evaluate" onclick="navigate('evaluate')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
@@ -688,6 +752,61 @@ let currentDetailId = null;
 let activeCategory = '전체';
 let activeRole = '전체';
 let previousScreen = 'wardrobe';
+
+/* ===== CHAT ===== */
+async function sendChat(e) {
+  e.preventDefault();
+  const input = document.getElementById('chat-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  const container = document.getElementById('chat-messages');
+  const btn = document.getElementById('chat-send-btn');
+
+  // 유저 메시지 추가
+  container.innerHTML += `<div class="chat-bubble chat-user">${escHtml(msg)}</div>`;
+  input.value = '';
+  btn.disabled = true;
+
+  // 타이핑 인디케이터
+  const typingId = 'typing-' + Date.now();
+  container.innerHTML += `<div class="chat-bubble chat-ai chat-typing" id="${typingId}">생각하는 중...</div>`;
+  container.scrollTop = container.scrollHeight;
+
+  try {
+    const r = await fetchJSON(API + '/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg }),
+    });
+    const el = document.getElementById(typingId);
+    if (el) el.remove();
+
+    // AI 응답 렌더링
+    let html = `<div class="chat-bubble chat-ai">`;
+    html += r.reply.replace(/\n/g, '<br>');
+    if (r.items && r.items.length > 0) {
+      html += `<div style="margin-top:8px;">`;
+      r.items.forEach(it => {
+        const cls = it.owned === false ? 'chat-item-chip not-owned' : 'chat-item-chip';
+        const tag = it.owned === false ? ' (미보유)' : '';
+        const label = it.slot === 'inner' ? '이너' : it.slot === 'outer' ? '아우터' : it.category;
+        html += `<span class="${cls}">${escHtml(label)}: ${escHtml(it.name)}${tag}</span>`;
+      });
+      html += `</div>`;
+    }
+    html += `</div>`;
+    container.innerHTML += html;
+  } catch (err) {
+    const el = document.getElementById(typingId);
+    if (el) el.remove();
+    container.innerHTML += `<div class="chat-bubble chat-ai" style="color:var(--danger);">오류가 발생했어요: ${escHtml(err.message)}</div>`;
+  }
+
+  btn.disabled = false;
+  container.scrollTop = container.scrollHeight;
+  input.focus();
+}
 
 /* ===== API HELPER ===== */
 async function fetchJSON(url, opts) {
@@ -1496,9 +1615,10 @@ async function init() {
   const promises = [loadRegion(), loadWeather(), loadClothes()];
   await Promise.allSettled(promises);
 
-  // Auto-load recommendation if there are clothes
+  // 추천은 버튼 클릭 시에만 실행
   if (allClothes.length > 0) {
-    loadRecommendation();
+    document.getElementById('rec-content').innerHTML =
+      '<div class="msg" style="text-align:center; color:var(--gray-400);">위 버튼을 눌러 오늘의 추천을 받아보세요.</div>';
   } else {
     document.getElementById('rec-content').innerHTML =
       '<div class="msg">옷을 등록하면 AI 추천을 받을 수 있어요.</div>';

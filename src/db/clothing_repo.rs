@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::models::clothing::Clothing;
 
-const SELECT_COLS: &str = "id, name, category, color, thickness, image_url, tone, saturation, style, weight, role, color_temperature, versatility, statement_level, formality_level, created_at, updated_at";
+const SELECT_COLS: &str = "id, name, category, color, thickness, image_url, tone, saturation, style, weight, role, color_temperature, versatility, statement_level, formality_level, visual_weight, texture_depth, visual_weight_v2, texture_depth_v2, grounding_score, shadow_tone, silhouette_volume, material_primary, created_at, updated_at";
 
 pub async fn insert_clothing(
     pool: &MySqlPool,
