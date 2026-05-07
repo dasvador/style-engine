@@ -73,7 +73,7 @@ async fn chat(
 
     // 유저 프로파일
     let user_profile = sqlx::query_as::<_, crate::models::user_profile::UserStyleProfile>(
-        "SELECT user_id, height_cm, weight_kg, upper_body, calves, preferred_fit, needs_grounded_shoes, prefers_weighted_bag FROM user_style_profile WHERE user_id = 'default'"
+        "SELECT * FROM user_style_profile WHERE user_id = 'default'"
     )
     .fetch_optional(&state.db)
     .await

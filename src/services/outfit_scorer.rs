@@ -591,12 +591,26 @@ fn body_balance_score(items: &[&Clothing], user: &UserStyleProfile) -> i32 {
     let mut s = 0;
     let shoes = items.iter().find(|i| i.category == "신발");
     let bag = items.iter().find(|i| i.category == "가방");
+    let bottom = items.iter().find(|i| i.category == "하의");
 
+    // 상체 큰 유저 → 접지 필요
     if user.upper_body.as_deref() == Some("large") {
         if let Some(shoe) = shoes {
             let vw = shoe.visual_weight_v2.unwrap_or(3);
             if vw <= 2 { s -= 6; }
             else if vw >= 5 { s += 4; }
+
+            // low_profile 신발은 가끔만 (occasional)
+            if user.low_profile_only_occasional {
+                let float = shoe.floating_score.unwrap_or(3);
+                if float >= 7 { s -= 5; }
+            }
+
+            // medium_volume_runner 보너스
+            if user.medium_volume_runner_bonus {
+                let sub = shoe.sub_category.as_deref().unwrap_or("");
+                if sub == "runner" && vw >= 4 && vw <= 7 { s += 3; }
+            }
         }
         if user.prefers_weighted_bag {
             if let Some(b) = bag {
@@ -605,11 +619,59 @@ fn body_balance_score(items: &[&Clothing], user: &UserStyleProfile) -> i32 {
         }
     }
 
+    // 종아리 굵은 유저 → 슬림핏 패널티
     if user.calves.as_deref() == Some("thick") {
-        let bottom = items.iter().find(|i| i.category == "하의");
         if let Some(b) = bottom {
             if b.silhouette_volume.as_deref() == Some("slim") { s -= 3; }
         }
+    }
+
+    // 다리 짧은 유저 → 하체 과중 패널티 (신발이 너무 무거우면 다리가 더 짧아 보임)
+    if user.leg_length.as_deref() == Some("short") {
+        if let Some(shoe) = shoes {
+            if shoe.visual_weight_v2.unwrap_or(3) >= 8 { s -= 3; }
+        }
+    }
+
+    // 취향 보정 — 선호 아이템 보너스
+    for item in items {
+        let kw = item.texture_keywords.as_deref().unwrap_or("");
+        let mat = item.material_primary.as_deref().unwrap_or("");
+        let name = &item.name;
+
+        if user.likes_texture_depth && item.texture_depth_v2.unwrap_or(3) >= 6 { s += 1; }
+        if user.likes_melange && kw.contains("melange") { s += 2; }
+        if user.likes_suede && mat == "suede" { s += 2; }
+        if user.likes_washed_denim && kw.contains("washed") && mat == "denim" { s += 2; }
+        if user.likes_mocha_brown && name.contains("모카") { s += 2; }
+        if user.likes_heather_gray && (name.contains("헤더") || name.contains("멜란지")) { s += 2; }
+
+        // 비선호 패널티
+        if user.dislikes_flat_beige && kw == "cotton" && item.tone.as_deref() == Some("밝음")
+            && item.color_temperature.as_deref() == Some("warm")
+            && item.texture_depth_v2.unwrap_or(3) <= 2
+        {
+            s -= 3; // flat beige 비선호
+        }
+        if user.dislikes_bright_colors && item.saturation.as_deref() == Some("높음") {
+            s -= 2;
+        }
+    }
+
+    // 데님 bridge 선호
+    if user.denim_bridge_bonus {
+        let has_denim = items.iter().any(|i| {
+            i.material_primary.as_deref() == Some("denim") || i.name.contains("데님")
+        });
+        if has_denim { s += 3; }
+    }
+
+    // military cosplay 비선호 강화
+    if user.dislikes_military_cosplay {
+        let mil_count = items.iter()
+            .filter(|i| i.strong_style_score.unwrap_or(1) >= 6)
+            .count();
+        if mil_count >= 3 { s -= 8; }
     }
 
     s
