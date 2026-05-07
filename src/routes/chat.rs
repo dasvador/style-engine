@@ -355,7 +355,7 @@ async fn generate_image(
         r#"Full-body fashion editorial photograph of a man wearing: {}
 
 Style: Japanese premium lookbook, Tokyo street editorial, relaxed natural pose.
-Body: broad shoulders, slightly stocky, relaxed XL fit.
+Body: average athletic build, 174cm, relaxed fit clothing, not slim not heavy.
 Photo: cinematic natural lighting, soft shadows, muted warm tones, shallow depth of field.
 Aesthetic: AURALEE / BEAMS / vintage military-workwear mix.
 Background: minimal urban, soft bokeh.
