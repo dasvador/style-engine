@@ -79,13 +79,14 @@ async fn chat(
             "type": "function",
             "function": {
                 "name": "search_wardrobe",
-                "description": "유저 옷장에서 아이템을 자연어로 검색한다. anchor 아이템을 찾을 때 사용.",
+                "description": "유저 옷장에서 아이템을 자연어로 검색한다. 유저가 말한 아이템이 어떤 카테고리인지 판단해서 category를 함께 넘겨라.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "query": { "type": "string", "description": "검색할 아이템 설명 (예: 올네이비 스니커, 모카브라운 워크자켓)" }
+                        "query": { "type": "string", "description": "검색할 아이템 설명 (예: 올리브 슬립온, 모카브라운 워크자켓)" },
+                        "category": { "type": "string", "enum": ["상의","하의","아우터","신발","가방"], "description": "아이템의 카테고리. 슬립온/스니커/부츠/샌들→신발, 자켓/코트/가디건→아우터, 팬츠/데님→하의 등" }
                     },
-                    "required": ["query"]
+                    "required": ["query", "category"]
                 }
             }
         },
@@ -207,8 +208,9 @@ async fn chat(
                 let result = match fn_name {
                     "search_wardrobe" => {
                         let query = fn_args["query"].as_str().unwrap_or("");
-                        let result = tool_search_wardrobe(query, &clothes, &state.embedding);
-                        tracing::info!("search_wardrobe result: {}", &result[..result.len().min(300)]);
+                        let category = fn_args["category"].as_str();
+                        let result = tool_search_wardrobe(query, category, &clothes, &state.embedding);
+                        tracing::info!("search_wardrobe(cat={:?}): {}", category, &result[..result.len().min(300)]);
                         result
                     }
                     "get_outfit" => {
@@ -276,13 +278,13 @@ async fn chat(
 
 fn tool_search_wardrobe(
     query: &str,
+    category: Option<&str>,
     clothes: &[Clothing],
     embedding: &std::sync::Arc<crate::services::embedding::EmbeddingService>,
 ) -> String {
-    // 카테고리 힌트로 필터 (DB sub_category 기반 동적 매칭)
-    let cat_filter = extract_category_from_wardrobe(query, clothes);
-    let search_clothes: Vec<Clothing> = if let Some(ref cat) = cat_filter {
-        clothes.iter().filter(|c| c.category == *cat).cloned().collect()
+    // LLM이 판단한 카테고리로 필터 (없으면 전체 검색)
+    let search_clothes: Vec<Clothing> = if let Some(cat) = category {
+        clothes.iter().filter(|c| c.category == cat).cloned().collect()
     } else {
         clothes.to_vec()
     };
