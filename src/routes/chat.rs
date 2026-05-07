@@ -275,6 +275,7 @@ async fn chat(
             // 유저 원문이 DB에 없으면 anchor 슬롯을 원문으로 교체
             if let Some(ref uq) = first_search_query {
                 let is_in_db = clothes.iter().any(|c| c.name == *uq);
+                tracing::info!("anchor override check: query='{}' in_db={} cat={:?} items={}", uq, is_in_db, anchor_category, final_items.len());
                 if !is_in_db {
                     let slot_key = match anchor_category.as_deref() {
                         Some("신발") => "shoes",
@@ -286,8 +287,11 @@ async fn chat(
                     };
                     if !slot_key.is_empty() {
                         if let Some(item) = final_items.iter_mut().find(|i| i.slot == slot_key) {
+                            tracing::info!("anchor override: {} '{}' → '{}'", slot_key, item.name, uq);
                             item.name = uq.clone();
                             item.owned = false;
+                        } else {
+                            tracing::warn!("anchor override: slot '{}' not found in final_items", slot_key);
                         }
                     }
                 }
