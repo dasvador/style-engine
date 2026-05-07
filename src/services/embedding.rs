@@ -27,10 +27,10 @@ pub struct EmbeddingService {
 impl EmbeddingService {
     /// Initialize the embedding model (downloads ~80MB model on first run)
     pub fn new() -> anyhow::Result<Self> {
-        tracing::info!("Initializing embedding model (multilingual-e5-small)...");
+        tracing::info!("Initializing embedding model (multilingual-e5-base)...");
 
         let mut options = InitOptions::default();
-        options.model_name = EmbeddingModel::MultilingualE5Small;
+        options.model_name = EmbeddingModel::MultilingualE5Base;
         options.show_download_progress = true;
 
         let model = TextEmbedding::try_new(options)
