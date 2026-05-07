@@ -192,17 +192,12 @@ pub fn complement_score(anchor: &Clothing, candidate: &Clothing) -> i32 {
         s -= 5; // 둘 다 강함 = 과밀
     }
 
-    // 9. 데님 bridge 보너스 — 축소 (데님끼리 몰림 방지)
-    if is_denim {
-        s += 5; // 기본 bridge 보너스 (10→5로 축소)
-        if a_style != "베이직" { s += 2; }
-    }
-
-    // 11. style dilution 강화 — anchor와 다른 장르면 보너스
+    // 9. 소재 다양성 보너스 — anchor와 다른 소재면 가점
     let a_mat = anchor.material_primary.as_deref().unwrap_or("");
     if a_mat != c_mat && a_mat != "cotton" && c_mat != "cotton" {
-        s += 3; // 소재 다양성 보너스
+        s += 3;
     }
+    // 데님은 별도 보너스 없이 자연 속성(texture/shadow)으로 경쟁
 
     s
 }

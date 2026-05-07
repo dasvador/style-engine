@@ -538,6 +538,7 @@ fn build_final_outfit(
     let anchor_cat = &anchor.category;
     let temp = temperature.unwrap_or(20.0);
 
+    // sub_category 다양성 보장: 같은 sub_category에서 최대 2개만
     let slot_candidates = |cat: &str, k: usize| -> Vec<&Clothing> {
         let mut scored: Vec<(&Clothing, i32)> = clothes.iter()
             .filter(|c| c.category == cat && c.id != anchor.id)
@@ -545,7 +546,19 @@ fn build_final_outfit(
             .map(|c| (c, outfit_scorer::complement_score(anchor, c)))
             .collect();
         scored.sort_by(|a, b| b.1.cmp(&a.1));
-        scored.into_iter().take(k).map(|(c, _)| c).collect()
+
+        let mut result = Vec::new();
+        let mut sub_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        for (c, _) in &scored {
+            let sub = c.sub_category.as_deref().unwrap_or("other").to_string();
+            let count = sub_counts.entry(sub).or_insert(0);
+            if *count < 2 { // 같은 sub_category 최대 2개
+                result.push(*c);
+                *count += 1;
+            }
+            if result.len() >= k { break; }
+        }
+        result
     };
 
     let tops = if anchor_cat == "상의" { vec![anchor] } else { slot_candidates("상의", 5) };
