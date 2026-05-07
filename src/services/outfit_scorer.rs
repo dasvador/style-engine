@@ -154,10 +154,18 @@ pub fn complement_score(anchor: &Clothing, candidate: &Clothing) -> i32 {
     }
     if c_role == "밥" || c_role == "연결템" { s += 3; }
 
-    // 5. 질감 연속성
+    // 5. 질감 연속성 (numeric depth + keyword 기반)
     let tex_gap = (a_td - c_td).abs();
     if tex_gap <= 2 { s += 6; }
     else if tex_gap >= 5 { s -= 6; }
+
+    // texture_keywords 공유 보너스
+    let a_kw = anchor.texture_keywords.as_deref().unwrap_or("");
+    let c_kw = candidate.texture_keywords.as_deref().unwrap_or("");
+    let shared_tex = a_kw.split(',')
+        .filter(|k| !k.is_empty())
+        .any(|k| c_kw.contains(k));
+    if shared_tex { s += 4; } // 같은 질감 키워드 공유 = texture continuity
 
     // 6. 시각적 무게 밸런스
     let wt_gap = (a_vw - c_vw).abs();
@@ -288,6 +296,22 @@ pub fn pairwise_score(a: &Clothing, b: &Clothing) -> i32 {
         }
     }
 
+    // sub_category 기반 충돌 — 같은 rugged sub_category 반복
+    let a_sub = a.sub_category.as_deref().unwrap_or("");
+    let b_sub = b.sub_category.as_deref().unwrap_or("");
+    let rugged_subs = ["cargo","field_jacket","work_boots","deck","bdu"];
+    let a_rugged = rugged_subs.contains(&a_sub);
+    let b_rugged = rugged_subs.contains(&b_sub);
+    if a_rugged && b_rugged { s -= 6; }
+
+    // texture_keywords 공유 보너스 (pairwise)
+    let a_kw = a.texture_keywords.as_deref().unwrap_or("");
+    let b_kw = b.texture_keywords.as_deref().unwrap_or("");
+    let kw_shared = a_kw.split(',')
+        .filter(|k| !k.is_empty())
+        .any(|k| b_kw.contains(k));
+    if kw_shared { s += 2; }
+
     // 9. tech_vs_workwear_conflict — rolltop/nylon bag + fatigue/cargo/workwear
     let a_is_tech = a.material_primary.as_deref() == Some("nylon")
         || a.name.contains("롤탑");
@@ -379,7 +403,7 @@ pub fn outfit_score(items: &[&Clothing], user: Option<&UserStyleProfile>) -> i32
         if range >= 3 && range <= 6 { s += 4; }
     }
 
-    // 5. 톤 편중 페널티 — 전부 같은 톤이면 대비 없음
+    // 5. 톤 편중 페널티
     let tones: Vec<&str> = items.iter()
         .filter_map(|i| i.tone.as_deref())
         .collect();
@@ -388,6 +412,33 @@ pub fn outfit_score(items: &[&Clothing], user: Option<&UserStyleProfile>) -> i32
         let all_same = tones.iter().all(|t| *t == first);
         if all_same { s -= 10; }
     }
+
+    // 5b. floating 조합 penalty (outfit level)
+    let total_floating: i32 = items.iter()
+        .filter_map(|i| i.floating_score)
+        .map(|f| f as i32)
+        .sum();
+    let avg_floating = total_floating as f32 / items.len().max(1) as f32;
+    if avg_floating >= 5.0 { s -= 8; }  // 전체가 떠보임
+    else if avg_floating >= 4.0 { s -= 4; }
+
+    // 5c. texture_keywords variety — rich 키워드가 많으면 보너스
+    let rich_keywords = ["washed","faded","slubby","melange","brushed","suede","corduroy"];
+    let rich_count = items.iter()
+        .filter(|i| {
+            let kw = i.texture_keywords.as_deref().unwrap_or("");
+            rich_keywords.iter().any(|rk| kw.contains(rk))
+        })
+        .count();
+    if rich_count >= 3 { s += 6; }   // 질감이 살아있는 조합
+    else if rich_count >= 2 { s += 3; }
+    // 전부 flat/cotton만이면 penalty
+    let flat_only = items.iter()
+        .all(|i| {
+            let kw = i.texture_keywords.as_deref().unwrap_or("cotton");
+            kw == "cotton" || kw == "nylon"
+        });
+    if flat_only && items.len() >= 3 { s -= 6; }
 
     // 6. 색온도 편중 페널티
     let temps: Vec<&str> = items.iter()
