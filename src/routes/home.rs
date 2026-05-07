@@ -106,13 +106,13 @@ const HOME_HTML: &str = r#"<!DOCTYPE html>
     color: #5a5550; text-align: center; font-style: italic;
   }
   .lookbook-items {
-    display: flex; gap: 8px; padding: 0 16px 16px; overflow-x: auto;
-    scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
+    padding: 0 12px 16px;
   }
   .lookbook-item {
-    flex: 0 0 auto; width: 100px; scroll-snap-align: start;
-    background: #fff; border-radius: 10px; padding: 10px 8px;
+    background: #fff; border-radius: 10px; padding: 10px 6px;
     text-align: center; box-shadow: 0 1px 6px rgba(0,0,0,0.04);
+    min-width: 0;
   }
   .lookbook-item.not-owned {
     border: 1.5px dashed #d4a574; background: #fefcfa;

@@ -354,12 +354,13 @@ async fn generate_image(
     let prompt = format!(
         r#"Full-body fashion editorial photograph of a man wearing: {}
 
-Style: Japanese premium lookbook, Tokyo street editorial, relaxed natural pose.
-Body: average athletic build, 174cm, relaxed fit clothing, not slim not heavy.
+Style: Japanese premium lookbook, Tokyo street editorial.
+Body: average athletic build, 174cm, relaxed fit clothing.
+Pose: photographed from slightly behind or side angle, face not visible, focus on outfit silhouette and texture.
 Photo: cinematic natural lighting, soft shadows, muted warm tones, shallow depth of field.
 Aesthetic: AURALEE / BEAMS / vintage military-workwear mix.
 Background: minimal urban, soft bokeh.
-NOT: ecommerce, flat lay, mannequin, AI collage, hyper-stylized, cyberpunk."#,
+NOT: ecommerce, flat lay, mannequin, AI collage, hyper-stylized, cyberpunk, front-facing portrait."#,
         body.items
     );
 
