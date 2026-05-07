@@ -106,6 +106,10 @@ const HOME_HTML: &str = r#"<!DOCTYPE html>
   }
   .chat-fb-btn:hover { background: var(--gray-100); }
   .chat-fb-btn.selected { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .chat-fb-done {
+    font-size: 0.8rem; color: var(--gray-500); padding: 4px 0;
+    display: inline-block;
+  }
 
   /* --- Bottom Tab Bar --- */
   .tab-bar {
@@ -803,8 +807,13 @@ async function submitFeedback(type, reasons, itemsJson, fbId) {
     const el = document.getElementById(fbId);
     if (el) {
       const label = type === 'like' ? '👍' : '👎';
-      const reasonText = reasons.length > 0 ? ` (${reasons.map(r=>REASON_LABELS[r]||r).join(', ')})` : '';
-      el.innerHTML = `<span style="color:var(--gray-400); font-size:0.8rem;">${label} 반영됨${reasonText}</span>`;
+      const reasonText = reasons.length > 0 ? reasons.map(r=>REASON_LABELS[r]||r).join(', ') : '';
+      const msgs = type === 'like'
+        ? ['다음에도 이런 조합 위주로 추천할게요', '취향 반영했어요', '비슷한 스타일 더 찾아볼게요']
+        : ['다음엔 이런 조합은 줄일게요', '반영했어요, 다른 방향으로 시도해볼게요', '알겠어요, 조정할게요'];
+      const msg = msgs[Math.floor(Math.random() * msgs.length)];
+      el.innerHTML = `<span class="chat-fb-done">${label} ${msg}${reasonText ? ' — ' + reasonText : ''}</span>`;
+      el.style.animation = 'fadeIn 0.3s ease';
     }
   } catch (e) { console.error('feedback error', e); }
 }
