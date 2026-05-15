@@ -34,6 +34,8 @@ struct ChatItem {
     category: String,
     name: String,
     owned: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    material: Option<String>,
 }
 
 async fn chat(
@@ -226,7 +228,7 @@ async fn chat(
                             anchor_category = category.map(|c| c.to_string());
                         }
                         let result = tool_search_wardrobe(query, category, &clothes, &state.embedding);
-                        tracing::info!("search_wardrobe(cat={:?}): {}", category, &result[..result.len().min(300)]);
+                        tracing::info!("search_wardrobe(cat={:?}): {}", category, result.char_indices().nth(300).map_or(&result[..], |(i, _)| &result[..i]));
                         result
                     }
                     "get_outfit" => {
@@ -642,6 +644,7 @@ fn tool_get_outfit(
                     category: anchor_slot.to_string(),
                     name: display_anchor_name.clone(),
                     owned: anchor_owned,
+                    material: None,
                 });
             }
 
@@ -805,7 +808,9 @@ fn build_final_outfit(
             "신발" => "shoes", "가방" => "bag", _ => continue,
         };
         desc_parts.push(format!("{}: {}", slot, c.name));
-        items.push(ChatItem { slot: slot.to_string(), category: c.category.clone(), name: c.name.clone(), owned: true });
+        let mat = c.material_primary.clone()
+            .or_else(|| c.texture_keywords.clone());
+        items.push(ChatItem { slot: slot.to_string(), category: c.category.clone(), name: c.name.clone(), owned: true, material: mat });
     }
     if !items.iter().any(|i| i.name == anchor.name) {
         let slot = match anchor.category.as_str() {
@@ -813,9 +818,12 @@ fn build_final_outfit(
             "신발" => "shoes", "가방" => "bag", _ => "?",
         };
         desc_parts.push(format!("{}: {}", slot, anchor.name));
+        let mat = anchor.material_primary.clone()
+            .or_else(|| anchor.texture_keywords.clone());
         items.push(ChatItem {
             slot: slot.to_string(), category: anchor.category.clone(),
             name: anchor.name.clone(), owned: clothes.iter().any(|c| c.name == anchor.name),
+            material: mat,
         });
     }
     Some((desc_parts.join("\n"), items))

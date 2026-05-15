@@ -936,7 +936,8 @@ async function generateOutfitImage(items, statusEl) {
   try {
     const itemDescs = items.map(i => {
       const slot = {inner:'top/inner',outer:'outerwear',bottom:'pants',shoes:'shoes',bag:'bag'}[i.slot] || i.slot;
-      return slot + ': ' + i.name;
+      const mat = i.material ? ' (' + i.material + ')' : '';
+      return slot + ': ' + i.name + mat;
     }).join(', ');
     if (statusEl) statusEl.innerHTML = '<div style="color:#b8b0a6; font-size:0.7rem; padding:40px 0; letter-spacing:1px;">GENERATING LOOK...</div>';
     const r = await fetchJSON(API + '/chat/image', {
