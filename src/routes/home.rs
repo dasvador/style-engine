@@ -932,19 +932,24 @@ function extractSilhouetteTags(items) {
   return [...tags].slice(0, 4);
 }
 
-async function generateOutfitImage(items) {
+async function generateOutfitImage(items, statusEl) {
   try {
     const itemDescs = items.map(i => {
       const slot = {inner:'top/inner',outer:'outerwear',bottom:'pants',shoes:'shoes',bag:'bag'}[i.slot] || i.slot;
       return slot + ': ' + i.name;
     }).join(', ');
+    if (statusEl) statusEl.innerHTML = '<div style="color:#b8b0a6; font-size:0.7rem; padding:40px 0; letter-spacing:1px;">GENERATING LOOK...</div>';
     const r = await fetchJSON(API + '/chat/image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ items: itemDescs }),
     });
     return r.image_url || null;
-  } catch (e) { return null; }
+  } catch (e) {
+    console.error('image gen error:', e);
+    if (statusEl) statusEl.innerHTML = '<div style="color:#c4a882; font-size:0.7rem; padding:20px 0;">이미지를 불러올 수 없습니다</div>';
+    return null;
+  }
 }
 
 /* ===== FEEDBACK ===== */
@@ -1107,15 +1112,16 @@ async function sendChat(e) {
       html += `</div>`;
 
       // 이미지 비동기 생성 (카드 렌더 후)
+      const capturedImgId = imgId;
+      const capturedItems = r.items;
       setTimeout(async () => {
-        const url = await generateOutfitImage(r.items);
-        const el = document.getElementById(imgId);
-        if (el && url) {
-          el.innerHTML = `<img src="${url}" style="width:100%; border-radius:12px; object-fit:contain;" alt="outfit">`;
-        } else if (el) {
-          el.innerHTML = '';
+        const el = document.getElementById(capturedImgId);
+        if (!el) { console.error('imgEl not found:', capturedImgId); return; }
+        const url = await generateOutfitImage(capturedItems, el);
+        if (url) {
+          el.innerHTML = `<img src="${url}" style="width:100%; border-radius:12px; object-fit:contain;" alt="outfit" onerror="this.parentElement.innerHTML='<div style=\\'color:#c4a882;font-size:0.7rem;padding:20px 0\\'>이미지 로드 실패</div>'">`;
         }
-      }, 100);
+      }, 200);
     } else {
       html = `<div class="chat-bubble chat-ai">${r.reply ? r.reply.replace(/\n/g, '<br>') : '추천 결과가 없습니다.'}</div>`;
     }

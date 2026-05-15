@@ -425,16 +425,23 @@ async fn generate_image(
 
     let mut outfit_hasher = DefaultHasher::new();
     body.items.hash(&mut outfit_hasher);
-    let outfit_hash = format!("{:016x}", outfit_hasher.finish());
+    let outfit_hash_val = outfit_hasher.finish();
+    let outfit_hash = format!("{:016x}", outfit_hash_val);
 
     let prompt = format!(
-        r#"Premium editorial fashion photography. Adult Korean male, early 40s, athletic but natural build, mature casual style, clean relaxed silhouette. Wearing: {}
+        r#"Fashion editorial photo of a Korean K-pop female idol. She must look exactly like a top-tier K-pop idol — this is the most important requirement.
 
-Subtle candid pose with slight walking motion, one hand in pocket or adjusting sleeve. Natural body movement, not stiff. Wide full-length shot framed from head to below shoes with visible ground — shoes and full silhouette must be clearly visible.
+Face (critical): extremely beautiful Korean idol face, very small head proportions relative to body, tiny V-line face, big bright double-eyelid eyes, slim straight nose, small plump lips, flawless porcelain skin, Korean celebrity-level beauty. Natural K-beauty makeup with dewy glass skin, soft gradient lips, subtle eye makeup, thin soft eyebrows with natural arch. Trendy Korean idol hairstyle — long layered hair or styled bob, natural dark brown or black color, face-framing layers.
 
-Shallow depth of field, soft cinematic framing, muted tonal palette, warm desaturated color grading. Japanese select shop lookbook aesthetic — AURALEE, BEAMS, HAVEN seasonal editorial mood. Quiet Seoul or Tokyo backstreet, soft overcast natural daylight, long gentle shadows. Realistic fabric texture with visible weave, subtle fading, natural wrinkles, slightly worn-in fabrics, washed cotton texture. Premium fashion magazine composition with editorial breathing space.
+Body: K-pop idol proportions — slim with feminine curves, long legs, narrow waist, natural full bust, defined hip line, elegant hourglass silhouette, 170cm tall model figure. Early 20s.
 
-Avoid catalog pose, avoid ecommerce posture, avoid stiff standing, avoid direct frontal symmetry, avoid mannequin, avoid flat lay, avoid runway, avoid generic streetwear influencer shot, avoid distorted body, avoid overweight body, avoid bulky silhouette, avoid broad upper body, avoid stocky build, avoid cropped body, avoid cropped legs, avoid cutting off at ankles, avoid tight framing, avoid zoomed-in framing, avoid oversaturated colors, avoid harsh lighting."#,
+Outfit: Wearing {}.
+
+Pose: subtle candid moment, slight walking motion or leaning against wall, gentle natural expression, not stiff. Full body visible from head to shoes with ground visible.
+
+Aesthetic: shallow depth of field, soft cinematic grading, muted warm tones, bright natural afternoon sunlight, visually rich city street with trees, storefronts, soft reflections, lively urban atmosphere, warm realistic colors, real neighborhood feeling. Pinterest street-style fashion photography mood.
+
+Avoid: ugly face, distorted face, weird proportions, catalog pose, ecommerce posture, mannequin, stiff standing, symmetrical front pose, cropped body, cropped legs, tight framing, oversaturated colors, harsh lighting, streetwear influencer shot."#,
         body.items
     );
 
@@ -498,7 +505,7 @@ Avoid catalog pose, avoid ecommerce posture, avoid stiff standing, avoid direct 
         .bind(&outfit_hash)
         .bind(&prompt_hash)
         .bind(&url)
-        .bind(&prompt[..prompt.len().min(500)])
+        .bind(prompt.char_indices().nth(500).map_or(&prompt[..], |(i, _)| &prompt[..i]))
         .execute(&state.db)
         .await;
 
