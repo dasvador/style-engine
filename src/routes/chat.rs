@@ -433,7 +433,7 @@ async fn generate_image(
     // 헤어스타일 2종 랜덤 (outfit 해시 기반)
     let is_long_hair = (outfit_hash_val % 2) == 0;
     let hair_and_accessory = if is_long_hair {
-        "Hairstyle: long layered hair flowing down, natural dark brown or black color, face-framing layers. Wearing arnel style tortoiseshell horn-rimmed glasses."
+        "Hairstyle: long layered hair flowing down, natural dark brown or black color, face-framing layers."
     } else {
         "Hairstyle: hair pulled up in a neat casual bun style, natural dark brown or black color, clean neckline visible. No glasses."
     };
@@ -451,7 +451,7 @@ Pose: subtle candid moment, slight walking motion or leaning against wall, gentl
 
 Aesthetic: shallow depth of field, soft cinematic grading, muted warm tones, bright natural afternoon sunlight, visually rich city street with trees, storefronts, soft reflections, lively urban atmosphere, warm realistic colors, real neighborhood feeling. Pinterest street-style fashion photography mood.
 
-Avoid: ugly face, distorted face, weird proportions, catalog pose, ecommerce posture, mannequin, stiff standing, symmetrical front pose, cropped body, cropped legs, tight framing, oversaturated colors, harsh lighting, streetwear influencer shot."#,
+Avoid: ugly face, distorted face, distorted mouth, open mouth, awkward lip shape, weird proportions, catalog pose, ecommerce posture, mannequin, stiff standing, symmetrical front pose, cropped body, cropped legs, tight framing, oversaturated colors, harsh lighting, streetwear influencer shot."#,
         body.items, hair_and_accessory = hair_and_accessory
     );
 
