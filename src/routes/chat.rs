@@ -430,10 +430,18 @@ async fn generate_image(
     let outfit_hash_val = outfit_hasher.finish();
     let outfit_hash = format!("{:016x}", outfit_hash_val);
 
+    // 헤어스타일 2종 랜덤 (outfit 해시 기반)
+    let is_long_hair = (outfit_hash_val % 2) == 0;
+    let hair_and_accessory = if is_long_hair {
+        "Hairstyle: long layered hair flowing down, natural dark brown or black color, face-framing layers. Wearing arnel style tortoiseshell horn-rimmed glasses."
+    } else {
+        "Hairstyle: hair pulled up in a neat casual bun style, natural dark brown or black color, clean neckline visible. No glasses."
+    };
+
     let prompt = format!(
         r#"Fashion editorial photo of a Korean K-pop female idol. She must look exactly like a top-tier K-pop idol — this is the most important requirement.
 
-Face (critical): extremely beautiful Korean idol face, very small head proportions relative to body, tiny V-line face, big bright double-eyelid eyes, slim straight nose, small plump lips, flawless porcelain skin, Korean celebrity-level beauty. Natural K-beauty makeup with dewy glass skin, soft gradient lips, subtle eye makeup, thin soft eyebrows with natural arch. Trendy Korean idol hairstyle — long layered hair or styled bob, natural dark brown or black color, face-framing layers.
+Face (critical): extremely beautiful Korean idol face, very small head proportions relative to body, tiny V-line face, big bright double-eyelid eyes, slim straight nose, small plump lips, flawless porcelain skin, Korean celebrity-level beauty. Natural K-beauty makeup with dewy glass skin, soft gradient lips, subtle eye makeup, thin soft eyebrows with natural arch. {hair_and_accessory}
 
 Body: K-pop idol proportions — slim with feminine curves, long legs, narrow waist, natural full bust, defined hip line, elegant hourglass silhouette, 170cm tall model figure. Early 20s.
 
@@ -444,7 +452,7 @@ Pose: subtle candid moment, slight walking motion or leaning against wall, gentl
 Aesthetic: shallow depth of field, soft cinematic grading, muted warm tones, bright natural afternoon sunlight, visually rich city street with trees, storefronts, soft reflections, lively urban atmosphere, warm realistic colors, real neighborhood feeling. Pinterest street-style fashion photography mood.
 
 Avoid: ugly face, distorted face, weird proportions, catalog pose, ecommerce posture, mannequin, stiff standing, symmetrical front pose, cropped body, cropped legs, tight framing, oversaturated colors, harsh lighting, streetwear influencer shot."#,
-        body.items
+        body.items, hair_and_accessory = hair_and_accessory
     );
 
     let mut prompt_hasher = DefaultHasher::new();
