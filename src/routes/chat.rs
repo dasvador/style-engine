@@ -443,7 +443,7 @@ async fn generate_image(
 
 Face (critical): extremely beautiful Korean idol face, very small head proportions relative to body, tiny V-line face, big bright double-eyelid eyes, slim straight nose, small plump lips, flawless porcelain skin, Korean celebrity-level beauty. Natural K-beauty makeup with dewy glass skin, soft gradient lips, subtle eye makeup, thin soft eyebrows with natural arch. {hair_and_accessory}
 
-Body: K-pop idol proportions — slim with feminine curves, long legs, narrow waist, natural full bust, defined hip line, elegant hourglass silhouette, 170cm tall model figure. Early 20s.
+Body: K-pop idol proportions — very small head relative to body (8-head proportion), slim with feminine curves, long legs, narrow waist, natural full bust, defined hip line, elegant hourglass silhouette, 170cm tall model figure. Early 20s.
 
 Outfit: Wearing {}.
 
@@ -451,7 +451,7 @@ Pose: subtle candid moment, slight walking motion or leaning against wall, gentl
 
 Aesthetic: shallow depth of field, soft cinematic grading, muted warm tones, bright natural afternoon sunlight, visually rich city street with trees, storefronts, soft reflections, lively urban atmosphere, warm realistic colors, real neighborhood feeling. Pinterest street-style fashion photography mood.
 
-Avoid: ugly face, distorted face, distorted mouth, open mouth, awkward lip shape, weird proportions, catalog pose, ecommerce posture, mannequin, stiff standing, symmetrical front pose, cropped body, cropped legs, tight framing, oversaturated colors, harsh lighting, streetwear influencer shot."#,
+Avoid: ugly face, distorted face, distorted mouth, open mouth, awkward lip shape, big head, large head relative to body, weird proportions, catalog pose, ecommerce posture, mannequin, stiff standing, symmetrical front pose, cropped body, cropped legs, tight framing, oversaturated colors, harsh lighting, streetwear influencer shot."#,
         body.items, hair_and_accessory = hair_and_accessory
     );
 

@@ -148,13 +148,16 @@ async fn get_recommendation(
         .outfit
         .into_iter()
         .map(|ai_item| {
-            let image_url = find_matching_clothing(&clothes, &ai_item.name)
-                .and_then(|c| c.image_url.clone());
+            let matched = find_matching_clothing(&clothes, &ai_item.name);
+            let image_url = matched.and_then(|c| c.image_url.clone());
+            let material = matched
+                .and_then(|c| c.material_primary.clone().or_else(|| c.texture_keywords.clone()));
             OutfitItem {
                 category: ai_item.category,
                 name: ai_item.name,
                 reason: ai_item.reason,
                 image_url,
+                material,
             }
         })
         .collect();
@@ -507,13 +510,16 @@ fn build_outfit_items(
         .outfit
         .iter()
         .map(|ai_item| {
-            let image_url = find_matching_clothing(clothes, &ai_item.name)
-                .and_then(|c| c.image_url.clone());
+            let matched = find_matching_clothing(clothes, &ai_item.name);
+            let image_url = matched.and_then(|c| c.image_url.clone());
+            let material = matched
+                .and_then(|c| c.material_primary.clone().or_else(|| c.texture_keywords.clone()));
             OutfitItem {
                 category: ai_item.category.clone(),
                 name: ai_item.name.clone(),
                 reason: ai_item.reason.clone(),
                 image_url,
+                material,
             }
         })
         .collect()

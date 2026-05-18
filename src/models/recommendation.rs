@@ -23,6 +23,8 @@ pub struct OutfitItem {
     pub name: String,
     pub reason: String,
     pub image_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub material: Option<String>,
 }
 
 /// Outfit item from OpenAI response (no image_url)

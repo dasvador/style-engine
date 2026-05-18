@@ -1415,6 +1415,27 @@ function renderMultiModeResult(r) {
       html += `</div>`;
     }
 
+    // 오늘의 추천 이미지 (todays_pick만)
+    if (m.mode === 'todays_pick' && m.outfit && m.outfit.length > 0) {
+      const recImgId = 'rec-img-' + idx;
+      html += `<div class="lookbook-img-wrap" id="${recImgId}">`;
+      html += `<div style="color:#b8b0a6; font-size:0.7rem; padding:30px 0; letter-spacing:1px; text-align:center;">GENERATING LOOK...</div>`;
+      html += `</div>`;
+      const recItems = m.outfit.map(o => ({
+        slot: o.category === '상의' ? 'inner' : o.category === '아우터' ? 'outer' : o.category === '하의' ? 'bottom' : o.category === '신발' ? 'shoes' : o.category === '가방' ? 'bag' : o.category,
+        name: o.name,
+        material: o.material || null,
+      }));
+      setTimeout(async () => {
+        const el2 = document.getElementById(recImgId);
+        if (!el2) return;
+        const url = await generateOutfitImage(recItems, el2);
+        if (url) {
+          el2.innerHTML = `<img src="${url}" style="width:100%; border-radius:12px; object-fit:contain;" alt="outfit">`;
+        }
+      }, 200);
+    }
+
     // Reason
     html += `<div class="mode-reason">${escHtml(m.reason)}</div>`;
 
@@ -1474,7 +1495,8 @@ function toggleModeDetail(idx) {
   }
 }
 
-function loadAndScrollRec() {
+async function loadAndScrollRec() {
+  await loadRecommendation();
   const section = document.getElementById('rec-section');
   section.scrollIntoView({ behavior: 'smooth' });
 }
