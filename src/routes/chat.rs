@@ -479,59 +479,114 @@ Avoid: male model, masculine face, angular jaw, square jawline, sharp chin, masc
         return Ok(Json(ImageResponse { image_url: Some(path) }));
     }
 
-    let req_body = json!({
-        "model": "gpt-image-1",
-        "prompt": prompt,
-        "n": 1,
-        "size": "1024x1536",
-        "quality": "low",
+    // 이미지 생성 + 성별 검증 (최대 3회 시도)
+    let mut final_url: Option<String> = None;
+
+    for attempt in 0..3 {
+        let req_body = json!({
+            "model": "gpt-image-1",
+            "prompt": prompt,
+            "n": 1,
+            "size": "1024x1536",
+            "quality": "low",
+        });
+
+        let resp = state.http_client
+            .post("https://api.openai.com/v1/images/generations")
+            .header("Authorization", format!("Bearer {}", state.openai_api_key))
+            .json(&req_body)
+            .send().await
+            .map_err(|e| AppError::Internal(e.into()))?;
+
+        let resp_text = resp.text().await
+            .map_err(|e| AppError::Internal(e.into()))?;
+        let resp_json: serde_json::Value = serde_json::from_str(&resp_text)
+            .map_err(|e| AppError::Internal(e.into()))?;
+
+        // b64_json → decode → 파일 저장
+        if let Some(b64) = resp_json["data"][0]["b64_json"].as_str() {
+            use base64::Engine;
+            let bytes = base64::engine::general_purpose::STANDARD.decode(b64)
+                .map_err(|e| AppError::Internal(anyhow::anyhow!("base64 decode error: {e}")))?;
+            let filename = format!("{}.png", uuid::Uuid::new_v4());
+            let path = format!("static/images/{}", filename);
+            std::fs::write(&path, &bytes)
+                .map_err(|e| AppError::Internal(anyhow::anyhow!("file write error: {e}")))?;
+            let url = format!("/static/images/{}", filename);
+            tracing::info!("image saved (attempt {}): {} ({} bytes)", attempt + 1, path, bytes.len());
+
+            // GPT-4o 성별 검증
+            let is_female = verify_female_model(&state.http_client, &state.openai_api_key, b64).await;
+            if is_female {
+                tracing::info!("gender check passed (attempt {})", attempt + 1);
+                // DB 캐시 저장
+                let _ = sqlx::query(
+                    "INSERT IGNORE INTO outfit_image (id, outfit_hash, prompt_hash, image_path, prompt_text) VALUES (?, ?, ?, ?, ?)"
+                )
+                .bind(uuid::Uuid::new_v4().to_string())
+                .bind(&outfit_hash)
+                .bind(&prompt_hash)
+                .bind(&url)
+                .bind(prompt.char_indices().nth(500).map_or(&prompt[..], |(i, _)| &prompt[..i]))
+                .execute(&state.db)
+                .await;
+                final_url = Some(url);
+                break;
+            } else {
+                tracing::warn!("gender check failed (attempt {}) — male detected, retrying", attempt + 1);
+                let _ = std::fs::remove_file(&path);
+                if attempt == 2 {
+                    // 마지막 시도도 실패하면 그냥 사용
+                    tracing::warn!("all gender checks failed, using last image");
+                    let filename2 = format!("{}.png", uuid::Uuid::new_v4());
+                    let path2 = format!("static/images/{}", filename2);
+                    let _ = std::fs::write(&path2, &bytes);
+                    final_url = Some(format!("/static/images/{}", filename2));
+                }
+            }
+        } else {
+            tracing::warn!("image API: no image in response (attempt {})", attempt + 1);
+            break;
+        }
+    }
+
+    Ok(Json(ImageResponse { image_url: final_url }))
+}
+
+// ─── 성별 검증 (GPT-4o-mini vision) ───
+async fn verify_female_model(client: &reqwest::Client, api_key: &str, b64_image: &str) -> bool {
+    let body = json!({
+        "model": "gpt-4o-mini",
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Is the person in this photo female? Reply with only 'yes' or 'no'."},
+                {"type": "image_url", "image_url": {"url": format!("data:image/png;base64,{}", b64_image)}}
+            ]
+        }],
+        "max_tokens": 5,
     });
 
-    let resp = state.http_client
-        .post("https://api.openai.com/v1/images/generations")
-        .header("Authorization", format!("Bearer {}", state.openai_api_key))
-        .json(&req_body)
+    match client
+        .post("https://api.openai.com/v1/chat/completions")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&body)
         .send().await
-        .map_err(|e| AppError::Internal(e.into()))?;
-
-    let resp_text = resp.text().await
-        .map_err(|e| AppError::Internal(e.into()))?;
-    let resp_json: serde_json::Value = serde_json::from_str(&resp_text)
-        .map_err(|e| AppError::Internal(e.into()))?;
-
-    // b64_json → decode → 파일 저장 → URL 반환
-    let url = if let Some(b64) = resp_json["data"][0]["b64_json"].as_str() {
-        use base64::Engine;
-        let bytes = base64::engine::general_purpose::STANDARD.decode(b64)
-            .map_err(|e| AppError::Internal(anyhow::anyhow!("base64 decode error: {e}")))?;
-        let filename = format!("{}.png", uuid::Uuid::new_v4());
-        let path = format!("static/images/{}", filename);
-        std::fs::write(&path, &bytes)
-            .map_err(|e| AppError::Internal(anyhow::anyhow!("file write error: {e}")))?;
-        let url = format!("/static/images/{}", filename);
-        tracing::info!("image saved: {} ({} bytes)", path, bytes.len());
-
-        // DB 캐시 저장
-        let _ = sqlx::query(
-            "INSERT IGNORE INTO outfit_image (id, outfit_hash, prompt_hash, image_path, prompt_text) VALUES (?, ?, ?, ?, ?)"
-        )
-        .bind(uuid::Uuid::new_v4().to_string())
-        .bind(&outfit_hash)
-        .bind(&prompt_hash)
-        .bind(&url)
-        .bind(prompt.char_indices().nth(500).map_or(&prompt[..], |(i, _)| &prompt[..i]))
-        .execute(&state.db)
-        .await;
-
-        Some(url)
-    } else if let Some(u) = resp_json["data"][0]["url"].as_str() {
-        Some(u.to_string())
-    } else {
-        tracing::warn!("image API: no image in response");
-        None
-    };
-
-    Ok(Json(ImageResponse { image_url: url }))
+    {
+        Ok(resp) => {
+            if let Ok(j) = resp.json::<serde_json::Value>().await {
+                let answer = j["choices"][0]["message"]["content"]
+                    .as_str().unwrap_or("").to_lowercase();
+                answer.contains("yes")
+            } else {
+                true // 파싱 실패 시 통과
+            }
+        }
+        Err(e) => {
+            tracing::warn!("gender verification failed: {e}");
+            true // API 실패 시 통과
+        }
+    }
 }
 
 // ─── Tool implementations ───
