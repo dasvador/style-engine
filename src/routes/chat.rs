@@ -440,6 +440,16 @@ async fn generate_image(
     let hair_idx = (outfit_hash_val as usize) % hairstyles.len();
     let hair = hairstyles[hair_idx];
 
+    // 배경 4종 랜덤 (outfit 해시 기반, 헤어와 다른 시드)
+    let backgrounds = [
+        "in front of a vintage shop with old signage, vintage props in window, weathered brick wall",
+        "at a cafe terrace with outdoor seating, coffee cups on table, warm cozy atmosphere",
+        "in a narrow alleyway with graffiti walls, old brick buildings, parked bicycles, weathered textures",
+        "along a tree-lined park path with wooden bench, dappled sunlight through leaves, green natural surroundings",
+    ];
+    let bg_idx = ((outfit_hash_val >> 8) as usize) % backgrounds.len();
+    let background = backgrounds[bg_idx];
+
     let prompt = format!(
         r#"Street-style fashion photo of a young hipster female fashion model with cool urban energy. She must be female — this is critical.
 
@@ -453,10 +463,10 @@ Outfit: The female model is wearing {} — styled with relaxed oversized fit, sl
 
 Pose: candid cool-girl moment, relaxed natural stance with weight on one leg, hands in pockets or holding coffee, slight head tilt, laid-back confident expression. Full body visible from head to shoes with ground visible.
 
-Aesthetic: shallow depth of field, soft cinematic grading, muted warm tones, bright natural afternoon sunlight, narrow alleyway with graffiti walls, old brick buildings, parked bicycles, weathered textures, lively hipster backstreet atmosphere, warm realistic colors. Pinterest street-style photography, Kinfolk magazine mood.
+Aesthetic: shallow depth of field, soft cinematic grading, muted warm tones, bright natural afternoon sunlight, {background}, lively hipster atmosphere, warm realistic colors. Pinterest street-style photography, Kinfolk magazine mood.
 
 Avoid: male model, masculine face, angular jaw, square jawline, sharp chin, masculine bone structure, ugly face, distorted face, distorted mouth, open mouth, awkward lip shape, big head, large head relative to body, ordinary pedestrian look, tight-fitting clothes, formal styling, catalog pose, ecommerce posture, mannequin, stiff standing, symmetrical front pose, cropped body, cropped legs, tight framing, oversaturated colors, harsh lighting, luxury campaign mood."#,
-        body.items, hair = hair
+        body.items, hair = hair, background = background
     );
 
     let mut prompt_hasher = DefaultHasher::new();
