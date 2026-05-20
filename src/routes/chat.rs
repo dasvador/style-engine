@@ -430,29 +430,21 @@ async fn generate_image(
     let outfit_hash_val = outfit_hasher.finish();
     let outfit_hash = format!("{:016x}", outfit_hash_val);
 
-    // 헤어스타일 2종 랜덤 (outfit 해시 기반)
-    let is_long_hair = (outfit_hash_val % 2) == 0;
-    let hair_and_accessory = if is_long_hair {
-        "Hairstyle: long layered hair flowing down, natural dark brown or black color, face-framing layers."
-    } else {
-        "Hairstyle: hair pulled up in a neat casual bun style, natural dark brown or black color, clean neckline visible. No glasses."
-    };
-
     let prompt = format!(
-        r#"Fashion editorial photo of a Korean K-pop female idol. She must look exactly like a top-tier K-pop idol — this is the most important requirement.
+        r#"High-end fashion editorial photo of a young woman — professional female fashion model in her early 20s. The model must be female.
 
-Face (critical): extremely beautiful Korean idol face, very small head proportions relative to body, tiny V-line face, big bright double-eyelid eyes, slim straight nose, small plump lips, flawless porcelain skin, Korean celebrity-level beauty. Natural K-beauty makeup with dewy glass skin, soft gradient lips, subtle eye makeup, thin soft eyebrows with natural arch. {hair_and_accessory}
+Face: striking high-fashion model face, very small head proportions relative to body, sharp defined bone structure, high cheekbones, strong yet elegant jawline, expressive confident eyes, natural editorial makeup, thin soft eyebrows.
 
-Body: K-pop idol proportions — very small head relative to body (8-head proportion), slim with feminine curves, long legs, narrow waist, natural full bust, defined hip line, elegant hourglass silhouette, 170cm tall model figure. Early 20s.
+Body: professional runway model proportions — very small head relative to body (8.5-head proportion), tall and lean with long limbs, long legs, narrow waist, slim with subtle feminine curves, natural full bust, 175cm tall figure.
 
-Outfit: Wearing {}.
+Outfit: The female model is wearing {} — styled as women's fashion with feminine fit and proportions.
 
-Pose: subtle candid moment, slight walking motion or leaning against wall, gentle natural expression, not stiff. Full body visible from head to shoes with ground visible.
+Pose: editorial fashion pose with confident stride, slight walking motion with natural body movement, strong model presence, composed elegant expression. Full body visible from head to shoes with ground visible.
 
-Aesthetic: shallow depth of field, soft cinematic grading, muted warm tones, bright natural afternoon sunlight, visually rich city street with trees, storefronts, soft reflections, lively urban atmosphere, warm realistic colors, real neighborhood feeling. Pinterest street-style fashion photography mood.
+Aesthetic: shallow depth of field, soft cinematic grading, muted warm tones, bright natural afternoon sunlight, visually rich city street with trees, storefronts, soft reflections, lively urban atmosphere, warm realistic colors. High-end fashion magazine street-style photography.
 
-Avoid: ugly face, distorted face, distorted mouth, open mouth, awkward lip shape, big head, large head relative to body, weird proportions, catalog pose, ecommerce posture, mannequin, stiff standing, symmetrical front pose, cropped body, cropped legs, tight framing, oversaturated colors, harsh lighting, streetwear influencer shot."#,
-        body.items, hair_and_accessory = hair_and_accessory
+Avoid: male model, masculine face, ugly face, distorted face, distorted mouth, open mouth, awkward lip shape, big head, large head relative to body, ordinary pedestrian look, catalog pose, ecommerce posture, mannequin, stiff standing, symmetrical front pose, cropped body, cropped legs, tight framing, oversaturated colors, harsh lighting, influencer aesthetic."#,
+        body.items
     );
 
     let mut prompt_hasher = DefaultHasher::new();
