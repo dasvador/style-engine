@@ -430,21 +430,33 @@ async fn generate_image(
     let outfit_hash_val = outfit_hasher.finish();
     let outfit_hash = format!("{:016x}", outfit_hash_val);
 
+    // 헤어스타일 4종 랜덤 (outfit 해시 기반)
+    let hairstyles = [
+        "messy long waves with curtain bangs, effortless undone texture",
+        "chin-length blunt bob, slightly tousled, cool-girl energy",
+        "low loose bun with face-framing strands, relaxed and casual",
+        "center-part shoulder-length hair, natural air-dried texture, minimal styling",
+    ];
+    let hair_idx = (outfit_hash_val as usize) % hairstyles.len();
+    let hair = hairstyles[hair_idx];
+
     let prompt = format!(
-        r#"High-end fashion editorial photo of a young woman — professional female fashion model in her early 20s. The model must be female.
+        r#"Street-style fashion photo of a young hipster female fashion model with cool urban energy. She must be female — this is critical.
 
-Face: striking high-fashion model face, very small head proportions relative to body, sharp defined bone structure, high cheekbones, strong yet elegant jawline, expressive confident eyes, natural editorial makeup, thin soft eyebrows.
+Age: early 20s, youthful and effortlessly cool.
 
-Body: professional runway model proportions — very small head relative to body (8.5-head proportion), tall and lean with long limbs, long legs, narrow waist, slim with subtle feminine curves, natural full bust, 175cm tall figure.
+Face: naturally attractive feminine face, very small head proportions relative to body, soft feminine V-line face with smooth rounded jawline — never angular or square jaw, expressive confident eyes, healthy glowing skin, minimal fresh makeup, thin soft eyebrows. Hairstyle: {hair}.
 
-Outfit: The female model is wearing {} — styled as women's fashion with feminine fit and proportions.
+Body: fashion model proportions — very small head relative to body (8.5-head proportion), tall and lean with long limbs, long legs, narrow waist, slim with subtle feminine curves, 175cm tall figure.
 
-Pose: editorial fashion pose with confident stride, slight walking motion with natural body movement, strong model presence, composed elegant expression. Full body visible from head to shoes with ground visible.
+Outfit: The female model is wearing {} — styled with relaxed oversized fit, slightly baggy silhouette, sleeves slightly long, effortless young urban hipster styling.
 
-Aesthetic: shallow depth of field, soft cinematic grading, muted warm tones, bright natural afternoon sunlight, visually rich city street with trees, storefronts, soft reflections, lively urban atmosphere, warm realistic colors. High-end fashion magazine street-style photography.
+Pose: candid cool-girl moment, relaxed natural stance with weight on one leg, hands in pockets or holding coffee, slight head tilt, laid-back confident expression. Full body visible from head to shoes with ground visible.
 
-Avoid: male model, masculine face, ugly face, distorted face, distorted mouth, open mouth, awkward lip shape, big head, large head relative to body, ordinary pedestrian look, catalog pose, ecommerce posture, mannequin, stiff standing, symmetrical front pose, cropped body, cropped legs, tight framing, oversaturated colors, harsh lighting, influencer aesthetic."#,
-        body.items
+Aesthetic: shallow depth of field, soft cinematic grading, muted warm tones, bright natural afternoon sunlight, trendy urban neighborhood with cafes, vintage shops, trees, lively hipster street atmosphere, warm realistic colors. Pinterest street-style photography, Kinfolk magazine mood.
+
+Avoid: male model, masculine face, angular jaw, square jawline, sharp chin, masculine bone structure, ugly face, distorted face, distorted mouth, open mouth, awkward lip shape, big head, large head relative to body, ordinary pedestrian look, tight-fitting clothes, formal styling, catalog pose, ecommerce posture, mannequin, stiff standing, symmetrical front pose, cropped body, cropped legs, tight framing, oversaturated colors, harsh lighting, luxury campaign mood."#,
+        body.items, hair = hair
     );
 
     let mut prompt_hasher = DefaultHasher::new();
