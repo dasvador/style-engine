@@ -453,7 +453,7 @@ Outfit: The female model is wearing {} — styled with relaxed oversized fit, sl
 
 Pose: candid cool-girl moment, relaxed natural stance with weight on one leg, hands in pockets or holding coffee, slight head tilt, laid-back confident expression. Full body visible from head to shoes with ground visible.
 
-Aesthetic: shallow depth of field, soft cinematic grading, muted warm tones, bright natural afternoon sunlight, trendy urban neighborhood with cafes, vintage shops, trees, lively hipster street atmosphere, warm realistic colors. Pinterest street-style photography, Kinfolk magazine mood.
+Aesthetic: shallow depth of field, soft cinematic grading, muted warm tones, bright natural afternoon sunlight, narrow alleyway with graffiti walls, old brick buildings, parked bicycles, weathered textures, lively hipster backstreet atmosphere, warm realistic colors. Pinterest street-style photography, Kinfolk magazine mood.
 
 Avoid: male model, masculine face, angular jaw, square jawline, sharp chin, masculine bone structure, ugly face, distorted face, distorted mouth, open mouth, awkward lip shape, big head, large head relative to body, ordinary pedestrian look, tight-fitting clothes, formal styling, catalog pose, ecommerce posture, mannequin, stiff standing, symmetrical front pose, cropped body, cropped legs, tight framing, oversaturated colors, harsh lighting, luxury campaign mood."#,
         body.items, hair = hair
