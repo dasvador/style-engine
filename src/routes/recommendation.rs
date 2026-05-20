@@ -53,8 +53,16 @@ async fn get_recommendation(
     .await
     .map_err(AppError::Internal)?;
 
-    // 3. Get user's clothes
-    let clothes = clothing_repo::list_clothing(&state.db).await?;
+    // 3. Get user's clothes (filtered by gender + mood if specified)
+    let clothes = if body.gender.is_some() || body.style_mood.is_some() {
+        clothing_repo::list_clothing_filtered(
+            &state.db,
+            body.gender.as_deref(),
+            body.style_mood.as_deref(),
+        ).await?
+    } else {
+        clothing_repo::list_clothing(&state.db).await?
+    };
     let grouped = build_grouped_clothes(&clothes);
 
     // 4. Build recency hint from recent history
@@ -227,7 +235,15 @@ async fn get_multi_recommendation(
     .await
     .map_err(AppError::Internal)?;
 
-    let clothes = clothing_repo::list_clothing(&state.db).await?;
+    let clothes = if body.gender.is_some() || body.style_mood.is_some() {
+        clothing_repo::list_clothing_filtered(
+            &state.db,
+            body.gender.as_deref(),
+            body.style_mood.as_deref(),
+        ).await?
+    } else {
+        clothing_repo::list_clothing(&state.db).await?
+    };
 
     let recent_hint = build_recent_hint(&state.db, &clothes, user_id).await;
     let current_season = current_season_label();

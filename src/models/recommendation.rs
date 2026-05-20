@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 pub struct RecommendationRequest {
     pub occasion: Option<String>,
     pub style_preference: Option<String>,
+    pub gender: Option<String>,
+    pub style_mood: Option<String>,
 }
 
 /// Response DTO for recommendation (to client)

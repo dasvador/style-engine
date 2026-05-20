@@ -3,3 +3,4 @@
 .DS_Store
 .fastembed_cache/
 .claude/
+static/images/*.png

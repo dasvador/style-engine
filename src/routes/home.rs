@@ -573,6 +573,20 @@ const HOME_HTML: &str = r#"<!DOCTYPE html>
   }
   .tab-toggle-item.active { background: #fff; color: var(--gray-800); box-shadow: var(--shadow); }
 
+  /* --- Gender & Mood selectors --- */
+  .gender-btn {
+    flex: 1; padding: 8px; border-radius: 8px; border: 1.5px solid var(--gray-200);
+    background: transparent; color: var(--gray-500); font-size: 0.85rem; font-weight: 600;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .gender-btn.active { background: var(--gray-800); color: #fff; border-color: var(--gray-800); }
+  .mood-chip-btn {
+    padding: 6px 14px; border-radius: 20px; border: 1.5px solid var(--gray-200);
+    background: transparent; color: var(--gray-500); font-size: 0.78rem; font-weight: 500;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .mood-chip-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
   /* --- Scrollbar cleanup --- */
   ::-webkit-scrollbar { width: 0; height: 0; }
 
@@ -626,6 +640,15 @@ const HOME_HTML: &str = r#"<!DOCTYPE html>
   <div id="region-bar" class="region-bar" onclick="openRegionModal()" style="display:none;">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
     <span id="region-name-bar">지역 설정하기</span>
+  </div>
+
+  <!-- 성별 + 무드 선택 -->
+  <div class="card" style="padding:14px 16px;">
+    <div style="display:flex; gap:8px; margin-bottom:10px;">
+      <button class="gender-btn active" id="gender-male" onclick="selectGender('male')">남성</button>
+      <button class="gender-btn" id="gender-female" onclick="selectGender('female')">여성</button>
+    </div>
+    <div id="mood-chips" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
   </div>
 
   <div class="cta-group">
@@ -816,6 +839,10 @@ const HOME_HTML: &str = r#"<!DOCTYPE html>
     <h1>스타일 상담</h1>
     <span class="screen-header-sub">옷장 기반 코디 질문</span>
   </div>
+  <div id="chat-mood-bar" style="display:flex; gap:6px; align-items:center; padding:0 0 10px; font-size:0.78rem;">
+    <span style="color:var(--gray-400);">현재 무드:</span>
+    <span id="chat-mood-label" style="background:var(--gray-100); padding:4px 10px; border-radius:12px; font-weight:600; color:var(--gray-700);"></span>
+  </div>
   <div class="chat-container" id="chat-messages">
     <div class="chat-bubble chat-ai">
       안녕하세요! 옷장에 있는 아이템 기반으로 코디를 추천해드려요.<br>
@@ -861,6 +888,36 @@ let currentDetailId = null;
 let activeCategory = '전체';
 let activeRole = '전체';
 let previousScreen = 'wardrobe';
+let selectedGender = 'male';
+let selectedMood = null;
+
+/* ===== GENDER & MOOD ===== */
+async function selectGender(gender) {
+  selectedGender = gender;
+  document.getElementById('gender-male').classList.toggle('active', gender === 'male');
+  document.getElementById('gender-female').classList.toggle('active', gender === 'female');
+  await loadMoods(gender);
+}
+
+async function loadMoods(gender) {
+  try {
+    const moods = await fetchJSON(API + '/style-moods?gender=' + gender);
+    const el = document.getElementById('mood-chips');
+    selectedMood = null;
+    el.innerHTML = moods.map((m, i) =>
+      `<button class="mood-chip-btn${i === 0 ? ' active' : ''}" onclick="selectMood('${m.mood_key}', this)">${escHtml(m.mood_label)}</button>`
+    ).join('');
+    if (moods.length > 0) {
+      selectedMood = moods[0].mood_key;
+    }
+  } catch (e) { console.error('loadMoods error:', e); }
+}
+
+function selectMood(key, btn) {
+  selectedMood = key;
+  document.querySelectorAll('#mood-chips .mood-chip-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+}
 
 /* ===== LOOKBOOK HELPERS ===== */
 function generateLookbookTitle(items) {
@@ -932,7 +989,7 @@ function extractSilhouetteTags(items) {
   return [...tags].slice(0, 4);
 }
 
-async function generateOutfitImage(items, statusEl) {
+async function generateOutfitImage(items, statusEl, mood) {
   try {
     const itemDescs = items.map(i => {
       const slot = {inner:'top/inner',outer:'outerwear',bottom:'pants',shoes:'shoes',bag:'bag'}[i.slot] || i.slot;
@@ -943,7 +1000,7 @@ async function generateOutfitImage(items, statusEl) {
     const r = await fetchJSON(API + '/chat/image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: itemDescs }),
+      body: JSON.stringify({ items: itemDescs, mood: mood || selectedMood || null }),
     });
     return r.image_url || null;
   } catch (e) {
@@ -1031,7 +1088,7 @@ async function sendChat(e) {
     const r = await fetchJSON(API + '/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: msg }),
+      body: JSON.stringify({ message: msg, gender: selectedGender, style_mood: selectedMood }),
     });
     const el = document.getElementById(typingId);
     if (el) el.remove();
@@ -1176,6 +1233,12 @@ function navigate(screen, params) {
   if (screen === 'wardrobe') { renderWardrobe(); showFab(true); }
   else { showFab(false); }
   if (screen === 'detail' && params && params.id) showItemDetail(params.id);
+  if (screen === 'chat') {
+    const genderLabel = selectedGender === 'female' ? '여성' : '남성';
+    const moodLabel = document.querySelector('#mood-chips .mood-chip-btn.active');
+    const moodText = moodLabel ? moodLabel.textContent : (selectedMood || '');
+    document.getElementById('chat-mood-label').textContent = genderLabel + ' · ' + moodText;
+  }
 }
 
 function showFab(show) {
@@ -1362,7 +1425,7 @@ async function loadRecommendation() {
     const r = await fetchJSON(API + '/recommendation/multi', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ occasion: '\uC77C\uC0C1' }),
+      body: JSON.stringify({ occasion: '\uC77C\uC0C1', gender: selectedGender, style_mood: selectedMood }),
     });
     renderMultiModeResult(r);
   } catch (err) {
@@ -1400,11 +1463,7 @@ function renderMultiModeResult(r) {
     html += `<div class="mode-subtitle">${escHtml(m.mode_description)}</div>`;
 
     // Revival chips (dormant mode)
-    if (m.revival_items && m.revival_items.length > 0) {
-      m.revival_items.forEach(name => {
-        html += `<span class="revival-chip">${escHtml(name)} \u2190 \uC624\uB79C\uB9CC!</span>`;
-      });
-    }
+    // revival_items 표시 제거
 
     // Outfit chips
     if (m.outfit && m.outfit.length) {
@@ -1964,7 +2023,7 @@ async function init() {
   initFilters();
 
   // Load data in parallel
-  const promises = [loadRegion(), loadWeather(), loadClothes()];
+  const promises = [loadRegion(), loadWeather(), loadClothes(), loadMoods(selectedGender)];
   await Promise.allSettled(promises);
 
   // 추천은 버튼 클릭 시에만 실행

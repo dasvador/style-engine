@@ -8,6 +8,8 @@ pub struct Clothing {
     pub id: String,
     pub name: String,
     pub category: String,
+    pub gender: Option<String>,
+    pub style_mood: Option<String>,
     pub color: Option<String>,
     pub thickness: String,
     pub image_url: Option<String>,

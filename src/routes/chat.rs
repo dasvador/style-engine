@@ -20,6 +20,10 @@ pub fn router() -> Router<AppState> {
 #[derive(Debug, Deserialize)]
 struct ChatRequest {
     message: String,
+    #[serde(default)]
+    gender: Option<String>,
+    #[serde(default)]
+    style_mood: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -48,7 +52,15 @@ async fn chat(
     }
 
     let user_id = &auth.user_id;
-    let clothes = clothing_repo::list_clothing(&state.db).await?;
+    let clothes = if body.gender.is_some() || body.style_mood.is_some() {
+        clothing_repo::list_clothing_filtered(
+            &state.db,
+            body.gender.as_deref(),
+            body.style_mood.as_deref(),
+        ).await?
+    } else {
+        clothing_repo::list_clothing(&state.db).await?
+    };
 
     // 날씨
     let mut temperature: Option<f64> = None;
@@ -410,6 +422,8 @@ fn generate_fallback_note(items: &[ChatItem]) -> String {
 #[derive(Debug, Deserialize)]
 struct ImageRequest {
     items: String,
+    #[serde(default)]
+    mood: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -430,44 +444,8 @@ async fn generate_image(
     let outfit_hash_val = outfit_hasher.finish();
     let outfit_hash = format!("{:016x}", outfit_hash_val);
 
-    // 헤어스타일 4종 랜덤 (outfit 해시 기반)
-    let hairstyles = [
-        "messy long waves with curtain bangs, effortless undone texture",
-        "chin-length blunt bob, slightly tousled, cool-girl energy",
-        "low loose bun with face-framing strands, relaxed and casual",
-        "center-part shoulder-length hair, natural air-dried texture, minimal styling",
-    ];
-    let hair_idx = (outfit_hash_val as usize) % hairstyles.len();
-    let hair = hairstyles[hair_idx];
-
-    // 배경 4종 랜덤 (outfit 해시 기반, 헤어와 다른 시드)
-    let backgrounds = [
-        "in front of a vintage shop with old signage, vintage props in window, weathered brick wall",
-        "at a cafe terrace with outdoor seating, coffee cups on table, warm cozy atmosphere",
-        "in a narrow alleyway with graffiti walls, old brick buildings, parked bicycles, weathered textures",
-        "along a tree-lined park path with wooden bench, dappled sunlight through leaves, green natural surroundings",
-    ];
-    let bg_idx = ((outfit_hash_val >> 8) as usize) % backgrounds.len();
-    let background = backgrounds[bg_idx];
-
-    let prompt = format!(
-        r#"Street-style fashion photo of a young hipster female fashion model with cool urban energy. She must be female — this is critical.
-
-Age: early 20s, youthful and effortlessly cool.
-
-Face: naturally attractive feminine face, very small head proportions relative to body, soft feminine V-line face with smooth rounded jawline — never angular or square jaw, expressive confident eyes, healthy glowing skin, minimal fresh makeup, thin soft eyebrows. Hairstyle: {hair}.
-
-Body: fashion model proportions — very small head relative to body (8.5-head proportion), tall and lean with long limbs, long legs, narrow waist, slim with subtle feminine curves, 175cm tall figure.
-
-Outfit: The female model is wearing {} — styled with relaxed oversized fit, slightly baggy silhouette, sleeves slightly long, effortless young urban hipster styling. All clothing should look worn-in with visible aging, subtle fading, soft washed texture, natural distressing, and vintage patina — never brand-new or freshly pressed.
-
-Pose: candid cool-girl moment, relaxed natural stance with weight on one leg, hands in pockets or holding coffee, slight head tilt, laid-back confident expression. Full body visible from head to shoes with ground visible.
-
-Aesthetic: shallow depth of field, soft cinematic grading, muted warm tones, bright natural afternoon sunlight, {background}, lively hipster atmosphere, warm realistic colors. Pinterest street-style photography, Kinfolk magazine mood.
-
-Avoid: male model, masculine face, angular jaw, square jawline, sharp chin, masculine bone structure, ugly face, distorted face, distorted mouth, open mouth, awkward lip shape, big head, large head relative to body, ordinary pedestrian look, tight-fitting clothes, formal styling, catalog pose, ecommerce posture, mannequin, stiff standing, symmetrical front pose, cropped body, cropped legs, tight framing, oversaturated colors, harsh lighting, luxury campaign mood."#,
-        body.items, hair = hair, background = background
-    );
+    let mood = body.mood.as_deref().unwrap_or("amekaji");
+    let prompt = build_image_prompt(mood, &body.items, outfit_hash_val);
 
     let mut prompt_hasher = DefaultHasher::new();
     prompt.hash(&mut prompt_hasher);
@@ -561,6 +539,103 @@ Avoid: male model, masculine face, angular jaw, square jawline, sharp chin, masc
     }
 
     Ok(Json(ImageResponse { image_url: final_url }))
+}
+
+// ─── 무드별 이미지 프롬프트 생성 ───
+fn build_image_prompt(mood: &str, items: &str, hash: u64) -> String {
+    let hairstyles = [
+        "messy long waves with curtain bangs, effortless undone texture",
+        "chin-length blunt bob, slightly tousled",
+        "low loose bun with face-framing strands, relaxed and casual",
+        "center-part shoulder-length hair, natural air-dried texture",
+    ];
+    let hair = hairstyles[(hash as usize) % hairstyles.len()];
+
+    let base_face = format!(
+        "naturally attractive feminine face, very small head proportions relative to body, soft feminine V-line face with smooth rounded jawline — never angular or square jaw, thin soft eyebrows. Hairstyle: {}.",
+        hair
+    );
+    let base_body = "fashion model proportions — very small head relative to body (8.5-head proportion), tall and lean with long limbs, long legs, narrow waist, slim with subtle feminine curves, 175cm tall figure.";
+    let base_avoid = "male model, masculine face, angular jaw, square jawline, sharp chin, masculine bone structure, ugly face, distorted face, distorted mouth, open mouth, awkward lip shape, big head, large head relative to body, ordinary pedestrian look, catalog pose, ecommerce posture, mannequin, stiff standing, symmetrical front pose, cropped body, cropped legs, tight framing, oversaturated colors, harsh lighting";
+
+    match mood {
+        "feminine_casual" => format!(
+            r#"Soft feminine casual fashion photo of a young woman in her mid 20s. She must be female.
+
+Face: {base_face} Soft natural makeup with rosy cheeks and gentle glow, warm approachable expression.
+
+Body: {base_body}
+
+Outfit: The female model is wearing {items} — styled with feminine soft silhouette, natural drape, delicate and polished everyday styling.
+
+Pose: natural gentle smile, relaxed standing or slight walking, one hand touching hair or holding a small bag, warm approachable energy. Full body visible from head to shoes.
+
+Aesthetic: shallow depth of field, soft warm golden tones, bright natural sunlight, cafe terrace or tree-lined boulevard with flowers, soft bokeh, warm romantic atmosphere. Korean feminine fashion blog mood.
+
+Avoid: {base_avoid}, oversized baggy fit, street style edge, dark moody tones."#
+        ),
+        "boyish" => format!(
+            r#"Street-style fashion photo of a young boyish-cool woman in her early 20s. She must be female.
+
+Face: {base_face} Minimal fresh makeup, cool confident expression with relaxed eyes.
+
+Body: {base_body}
+
+Outfit: The female model is wearing {items} — styled with relaxed oversized fit, slightly baggy silhouette, effortless boyish gender-neutral styling. All clothing should look worn-in with subtle fading and vintage patina.
+
+Pose: candid cool-girl moment, relaxed stance with hands in pockets, slight head tilt, laid-back confident expression. Full body visible from head to shoes.
+
+Aesthetic: shallow depth of field, muted warm tones, bright afternoon sunlight, vintage shop front with old signage or narrow alleyway with weathered brick, hipster atmosphere. Pinterest street-style mood.
+
+Avoid: {base_avoid}, feminine delicate styling, formal look, luxury campaign mood."#
+        ),
+        "minimal" => format!(
+            r#"Minimal contemporary fashion photo of a stylish young woman in her mid to late 20s. She must be female.
+
+Face: {base_face} Clean understated makeup, composed calm expression with quiet confidence, sharp gaze.
+
+Body: {base_body}
+
+Outfit: The female model is wearing {items} — styled with clean structured silhouette, precise proportions, minimal modern elegance. Clothing should look crisp and intentional.
+
+Pose: composed editorial walk or still standing with natural weight shift, arms relaxed at sides, poised and minimal expression. Full body visible from head to shoes.
+
+Aesthetic: shallow depth of field, cool muted tones, soft overcast daylight, modern concrete architecture or clean white building facade, minimal urban background, quiet luxury atmosphere. COS / The Row lookbook mood.
+
+Avoid: {base_avoid}, oversized baggy fit, vintage distressing, colorful backgrounds, street style energy."#
+        ),
+        "street" => format!(
+            r#"Urban street-style fashion photo of an energetic young woman in her late teens. She must be female.
+
+Face: {base_face} Bold minimal makeup with strong brows, confident energetic expression.
+
+Body: {base_body}
+
+Outfit: The female model is wearing {items} — styled with edgy street silhouette, mix of oversized and fitted, bold layering, urban cool energy.
+
+Pose: dynamic confident stance, weight on one leg, one hand in pocket or adjusting jacket, strong attitude and energy. Full body visible from head to shoes.
+
+Aesthetic: shallow depth of field, high contrast muted tones, bright daylight, graffiti wall or skate park or urban concrete with street art, raw urban energy. Hypebeast / street fashion photography mood.
+
+Avoid: {base_avoid}, feminine soft styling, luxury campaign mood, romantic atmosphere, pastel tones."#
+        ),
+        _ => format!(
+            // amekaji / default — 기존 힙스터 스타일
+            r#"Street-style fashion photo of a young hipster female fashion model in her early 20s with cool urban energy. She must be female.
+
+Face: {base_face} Minimal fresh makeup, laid-back confident expression.
+
+Body: {base_body}
+
+Outfit: The female model is wearing {items} — styled with relaxed oversized fit, slightly baggy silhouette, effortless young urban hipster styling. All clothing should look worn-in with visible aging, subtle fading, soft washed texture, natural distressing, and vintage patina.
+
+Pose: candid cool-girl moment, relaxed natural stance with weight on one leg, hands in pockets or holding coffee, slight head tilt, laid-back confident expression. Full body visible from head to shoes.
+
+Aesthetic: shallow depth of field, soft cinematic grading, muted warm tones, bright natural afternoon sunlight, narrow alleyway with graffiti walls, old brick buildings, parked bicycles, weathered textures, hipster atmosphere. Pinterest street-style photography, Kinfolk magazine mood.
+
+Avoid: {base_avoid}, tight-fitting clothes, formal styling, luxury campaign mood."#
+        ),
+    }
 }
 
 // ─── 성별 검증 (GPT-4o-mini vision) ───

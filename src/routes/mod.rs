@@ -8,6 +8,7 @@ pub mod outfit;
 pub mod recommendation;
 pub mod reference;
 pub mod region;
+pub mod style_mood;
 pub mod weather;
 
 use axum::Router;
@@ -26,6 +27,7 @@ pub fn api_router() -> Router<AppState> {
         .nest("/chat", chat::router())
         .nest("/feedback", feedback::router())
         .nest("/user", user::router())
+        .nest("/style-moods", style_mood::router())
 }
 
 pub fn home_router() -> Router<AppState> {

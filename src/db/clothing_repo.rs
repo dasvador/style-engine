@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::models::clothing::Clothing;
 
-const SELECT_COLS: &str = "id, name, category, color, thickness, image_url, tone, saturation, style, weight, role, color_temperature, versatility, statement_level, formality_level, visual_weight, texture_depth, visual_weight_v2, texture_depth_v2, grounding_score, shadow_tone, silhouette_volume, material_primary, sub_category, floating_score, strong_style_score, texture_keywords, created_at, updated_at";
+const SELECT_COLS: &str = "id, name, category, gender, style_mood, color, thickness, image_url, tone, saturation, style, weight, role, color_temperature, versatility, statement_level, formality_level, visual_weight, texture_depth, visual_weight_v2, texture_depth_v2, grounding_score, shadow_tone, silhouette_volume, material_primary, sub_category, floating_score, strong_style_score, texture_keywords, created_at, updated_at";
 
 pub async fn insert_clothing(
     pool: &MySqlPool,
@@ -122,6 +122,30 @@ pub async fn list_clothing(pool: &MySqlPool) -> Result<Vec<Clothing>, sqlx::Erro
     ))
     .fetch_all(pool)
     .await
+}
+
+pub async fn list_clothing_filtered(
+    pool: &MySqlPool,
+    gender: Option<&str>,
+    style_mood: Option<&str>,
+) -> Result<Vec<Clothing>, sqlx::Error> {
+    let mut sql = format!("SELECT {} FROM clothing WHERE 1=1", SELECT_COLS);
+    if gender.is_some() {
+        sql.push_str(" AND gender = ?");
+    }
+    if style_mood.is_some() {
+        sql.push_str(" AND style_mood = ?");
+    }
+    sql.push_str(" ORDER BY created_at DESC");
+
+    let mut q = sqlx::query_as::<_, Clothing>(&sql);
+    if let Some(g) = gender {
+        q = q.bind(g);
+    }
+    if let Some(m) = style_mood {
+        q = q.bind(m);
+    }
+    q.fetch_all(pool).await
 }
 
 pub async fn get_clothing_by_id(
