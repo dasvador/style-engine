@@ -449,7 +449,7 @@ Face: naturally attractive feminine face, very small head proportions relative t
 
 Body: fashion model proportions — very small head relative to body (8.5-head proportion), tall and lean with long limbs, long legs, narrow waist, slim with subtle feminine curves, 175cm tall figure.
 
-Outfit: The female model is wearing {} — styled with relaxed oversized fit, slightly baggy silhouette, sleeves slightly long, effortless young urban hipster styling.
+Outfit: The female model is wearing {} — styled with relaxed oversized fit, slightly baggy silhouette, sleeves slightly long, effortless young urban hipster styling. All clothing should look worn-in with visible aging, subtle fading, soft washed texture, natural distressing, and vintage patina — never brand-new or freshly pressed.
 
 Pose: candid cool-girl moment, relaxed natural stance with weight on one leg, hands in pockets or holding coffee, slight head tilt, laid-back confident expression. Full body visible from head to shoes with ground visible.
 
