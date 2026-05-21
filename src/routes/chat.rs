@@ -472,7 +472,7 @@ async fn generate_image(
 
     for attempt in 0..3 {
         let req_body = json!({
-            "model": "gpt-image-1",
+            "model": "gpt-image-2",
             "prompt": prompt,
             "n": 1,
             "size": "1024x1536",
