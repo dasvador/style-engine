@@ -559,20 +559,95 @@ fn build_image_prompt(mood: &str, items: &str, hash: u64) -> String {
     let base_avoid = "male model, masculine face, angular jaw, square jawline, sharp chin, masculine bone structure, ugly face, distorted face, distorted mouth, open mouth, awkward lip shape, big head, large head relative to body, ordinary pedestrian look, catalog pose, ecommerce posture, mannequin, stiff standing, symmetrical front pose, cropped body, cropped legs, tight framing, oversaturated colors, harsh lighting";
 
     match mood {
-        "feminine_casual" => format!(
-            r#"Soft feminine casual fashion photo of a young woman in her mid 20s. She must be female.
+        "quiet_luxury" => format!(
+            r#"Quiet luxury fashion photo of an effortlessly elegant young woman in her mid to late 20s. She must be female.
 
-Face: {base_face} Soft natural makeup with rosy cheeks and gentle glow, warm approachable expression.
+Face: {base_face} Barely-there makeup with luminous natural skin, composed serene expression, understated confidence. Gold minimal jewelry.
 
 Body: {base_body}
 
-Outfit: The female model is wearing {items} — styled with feminine soft silhouette, natural drape, delicate and polished everyday styling.
+Outfit: The female model is wearing {items} — styled with impeccable fit, no logos, luxurious fabrics (cashmere, silk, fine wool, soft leather). Clean timeless silhouette, understated elegance. Every piece should whisper quality through texture and drape, never through branding.
 
-Pose: natural gentle smile, relaxed standing or slight walking, one hand touching hair or holding a small bag, warm approachable energy. Full body visible from head to shoes.
+Pose: composed graceful stride or standing with effortless poise, one hand in coat pocket or holding leather tote, quiet confident body language. Full body visible from head to shoes.
 
-Aesthetic: shallow depth of field, soft warm golden tones, bright natural sunlight, cafe terrace or tree-lined boulevard with flowers, soft bokeh, warm romantic atmosphere. Korean feminine fashion blog mood.
+Aesthetic: shallow depth of field, soft muted neutral tones, gentle overcast daylight, clean modern architecture or private gallery entrance or quiet tree-lined residential street, understated luxury atmosphere. The Row / Loro Piana / soft luxury editorial mood.
 
-Avoid: {base_avoid}, oversized baggy fit, street style edge, dark moody tones."#
+Avoid: {base_avoid}, logos, bold patterns, streetwear elements, sporty pieces, romantic frills, oversaturated colors."#
+        ),
+        "coquette" => format!(
+            r#"Coquette balletcore fashion photo of a charming young woman in her early 20s. She must be female.
+
+Face: {base_face} Soft rosy dewy makeup with pink blush, gentle flirtatious expression with soft smile, pearl or ribbon accessories.
+
+Body: {base_body}
+
+Outfit: The female model is wearing {items} — styled with intentional femininity: ribbons, lace trims, bows, pastel tones, ballet-inspired silhouettes. Slip dresses, puff sleeves, delicate layering. Clothing should feel romantic and playful, never childish.
+
+Pose: graceful ballet-inspired moment, light on feet, one hand touching ribbon or adjusting hair, soft feminine body language with gentle movement. Full body visible from head to shoes.
+
+Aesthetic: shallow depth of field, warm pink-golden soft tones, gentle afternoon sunlight, Parisian patisserie or flower market or pink-toned European streetscape, dreamy romantic atmosphere, soft bokeh. Miu Miu / Sandy Liang / balletcore Pinterest mood.
+
+Avoid: {base_avoid}, masculine styling, dark heavy tones, oversized baggy fit, street edge, sporty elements."#
+        ),
+        "office_siren" => format!(
+            r#"Office siren fashion photo of a sharp confident young professional woman in her mid 20s. She must be female.
+
+Face: {base_face} Cool polished makeup with defined brows and subtle smoky eyes, sharp intelligent gaze with quiet power, modern glasses optional.
+
+Body: {base_body}
+
+Outfit: The female model is wearing {items} — styled with sharp tailored silhouette, slim-fit blazer, pencil skirt or tailored trousers, structured proportions. Mix of power dressing with understated sensuality. Clean, pressed, intentional — more soft office than aggressive siren.
+
+Pose: confident power stride or leaning against glass wall, one hand adjusting blazer or holding structured bag, composed commanding body language. Full body visible from head to shoes.
+
+Aesthetic: shallow depth of field, cool neutral tones with warm highlights, soft morning daylight, modern glass office lobby or luxury hotel corridor or sleek city sidewalk, professional power atmosphere. Devil Wears Prada meets The Row. Soft corporate chic mood.
+
+Avoid: {base_avoid}, casual sneakers, oversized baggy fit, vintage distressing, romantic frills, sporty elements."#
+        ),
+        "boho" => format!(
+            r#"Luxury bohemian fashion photo of a free-spirited stylish young woman in her early 20s. She must be female.
+
+Face: {base_face} Warm sun-kissed makeup with bronzed glow, relaxed dreamy expression, effortless bohemian beauty.
+
+Body: {base_body}
+
+Outfit: The female model is wearing {items} — styled with refined bohemian silhouette: suede, fringe, flowing layers, ethnic-inspired details, warm earthy tones. More luxurious and urban than classic boho — 2026 boho revival is polished, not hippie.
+
+Pose: free-spirited moment, walking through outdoor market or leaning on rustic doorframe, wind-blown hair movement, relaxed bohemian body language. Full body visible from head to shoes.
+
+Aesthetic: shallow depth of field, warm golden earthy tones, golden hour afternoon sunlight, vintage flea market or terracotta-walled alleyway or desert-toned urban landscape, warm textured atmosphere. Isabel Marant / Free People elevated lookbook mood.
+
+Avoid: {base_avoid}, minimal clean styling, corporate look, sporty elements, neon colors, tech fabrics."#
+        ),
+        "off_duty" => format!(
+            r#"Off-duty model fashion photo of a wellness-chic young woman in her early 20s. She must be female.
+
+Face: {base_face} Fresh dewy no-makeup look with healthy inner glow, calm confident expression, effortless model-off-duty radiance.
+
+Body: {base_body}
+
+Outfit: The female model is wearing {items} — styled with elevated athleisure meets luxury street. Body-hugging fitted pieces balanced with relaxed oversized layers. Leggings and biker shorts show sculpted body line. Sports bra tops can be worn alone or layered. Muted neutral tones. The look should feel like a supermodel running errands, not going to the gym.
+
+Pose: relaxed post-workout moment, calm confident stance, one hand holding iced coffee or yoga mat, natural walking, serene grounded body language. Full body visible from head to shoes.
+
+Aesthetic: shallow depth of field, soft warm natural light, clean bright tones, Hangang riverside park or cafe terrace after workout or Seoul urban hiking trail, fresh green surroundings, wellness lifestyle atmosphere. Alo Yoga / adidas by Stella McCartney / model-off-duty Pinterest mood.
+
+Avoid: {base_avoid}, formal styling, vintage distressing, dark moody tones, heavy makeup, aggressive gym energy, harsh lighting."#
+        ),
+        "street" => format!(
+            r#"Urban street-style fashion photo of an energetic young woman in her late teens. She must be female.
+
+Face: {base_face} Bold minimal makeup with strong brows, confident energetic expression.
+
+Body: {base_body}
+
+Outfit: The female model is wearing {items} — styled with edgy street silhouette, curated mix of oversized and fitted, bold layering, urban cool energy. Hint of maximalism — intentional clash, not messy.
+
+Pose: dynamic confident stance, weight on one leg, one hand in pocket or adjusting jacket, strong attitude and energy. Full body visible from head to shoes.
+
+Aesthetic: shallow depth of field, high contrast muted tones, bright daylight, graffiti wall or skate park or urban concrete with street art, raw urban energy. Hypebeast / curated chaos street fashion mood.
+
+Avoid: {base_avoid}, feminine soft styling, luxury campaign mood, romantic atmosphere, pastel tones."#
         ),
         "boyish" => format!(
             r#"Street-style fashion photo of a young boyish-cool woman in her early 20s. She must be female.
@@ -588,36 +663,6 @@ Pose: candid cool-girl moment, relaxed stance with hands in pockets, slight head
 Aesthetic: shallow depth of field, muted warm tones, bright afternoon sunlight, vintage shop front with old signage or narrow alleyway with weathered brick, hipster atmosphere. Pinterest street-style mood.
 
 Avoid: {base_avoid}, feminine delicate styling, formal look, luxury campaign mood."#
-        ),
-        "minimal" => format!(
-            r#"Minimal contemporary fashion photo of a stylish young woman in her mid to late 20s. She must be female.
-
-Face: {base_face} Clean understated makeup, composed calm expression with quiet confidence, sharp gaze.
-
-Body: {base_body}
-
-Outfit: The female model is wearing {items} — styled with clean structured silhouette, precise proportions, minimal modern elegance. Clothing should look crisp and intentional.
-
-Pose: composed editorial walk or still standing with natural weight shift, arms relaxed at sides, poised and minimal expression. Full body visible from head to shoes.
-
-Aesthetic: shallow depth of field, cool muted tones, soft overcast daylight, modern concrete architecture or clean white building facade, minimal urban background, quiet luxury atmosphere. COS / The Row lookbook mood.
-
-Avoid: {base_avoid}, oversized baggy fit, vintage distressing, colorful backgrounds, street style energy."#
-        ),
-        "street" => format!(
-            r#"Urban street-style fashion photo of an energetic young woman in her late teens. She must be female.
-
-Face: {base_face} Bold minimal makeup with strong brows, confident energetic expression.
-
-Body: {base_body}
-
-Outfit: The female model is wearing {items} — styled with edgy street silhouette, mix of oversized and fitted, bold layering, urban cool energy.
-
-Pose: dynamic confident stance, weight on one leg, one hand in pocket or adjusting jacket, strong attitude and energy. Full body visible from head to shoes.
-
-Aesthetic: shallow depth of field, high contrast muted tones, bright daylight, graffiti wall or skate park or urban concrete with street art, raw urban energy. Hypebeast / street fashion photography mood.
-
-Avoid: {base_avoid}, feminine soft styling, luxury campaign mood, romantic atmosphere, pastel tones."#
         ),
         _ => format!(
             // amekaji / default — 기존 힙스터 스타일
