@@ -26,6 +26,7 @@ async fn create_reference(
     let embedding = state
         .embedding
         .embed_text(&body.description)
+        .await
         .map_err(|e| AppError::Internal(e))?;
     let emb_json = serde_json::to_value(&embedding)
         .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
@@ -76,6 +77,7 @@ async fn update_reference(
     let embedding = state
         .embedding
         .embed_text(&body.description)
+        .await
         .map_err(|e| AppError::Internal(e))?;
     let emb_json = serde_json::to_value(&embedding)
         .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;

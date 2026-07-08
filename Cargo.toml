@@ -29,9 +29,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # HTTP client (external API calls)
 reqwest = { version = "0.12", features = ["json"] }
 
-# Embedding (local ONNX-based, free)
-fastembed = "4"
-
 # Utilities
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }

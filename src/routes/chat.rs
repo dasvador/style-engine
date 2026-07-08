@@ -239,7 +239,7 @@ async fn chat(
                             first_search_query = Some(query.to_string());
                             anchor_category = category.map(|c| c.to_string());
                         }
-                        let result = tool_search_wardrobe(query, category, &clothes, &state.embedding);
+                        let result = tool_search_wardrobe(query, category, &clothes, &state.embedding).await;
                         tracing::info!("search_wardrobe(cat={:?}): {}", category, result.char_indices().nth(300).map_or(&result[..], |(i, _)| &result[..i]));
                         result
                     }
@@ -251,7 +251,7 @@ async fn chat(
                         let (outfit_json, mut items) = tool_get_outfit(
                             user_query, anchor_name, &clothes, user_profile.as_ref(),
                             temperature, &feedback_ctx, &state.embedding,
-                        );
+                        ).await;
                         // 유저 원문으로 anchor 슬롯 즉시 교체
                         if let Some(ref uq) = first_search_query {
                             let is_in_db = clothes.iter().any(|c| c.name == *uq);
@@ -721,7 +721,7 @@ async fn verify_female_model(client: &reqwest::Client, api_key: &str, b64_image:
 
 // ─── Tool implementations ───
 
-fn tool_search_wardrobe(
+async fn tool_search_wardrobe(
     query: &str,
     category: Option<&str>,
     clothes: &[Clothing],
@@ -735,7 +735,7 @@ fn tool_search_wardrobe(
     };
 
     // 임베딩 기반 시맨틱 검색
-    match embedding.search_wardrobe(query, &search_clothes, 5) {
+    match embedding.search_wardrobe(query, &search_clothes, 5).await {
         Ok(matches) => {
             let results: Vec<serde_json::Value> = matches.iter().map(|m| {
                 json!({
@@ -763,7 +763,7 @@ fn tool_search_wardrobe(
     }
 }
 
-fn tool_get_outfit(
+async fn tool_get_outfit(
     user_query: &str,
     anchor_name: &str,
     clothes: &[Clothing],
@@ -784,18 +784,20 @@ fn tool_get_outfit(
             let n = c.name.to_lowercase();
             q.split_whitespace().filter(|w| *w != "신발" && *w != "색").all(|w| n.contains(w))
         });
-    let emb_match = || {
-        let filtered: Vec<Clothing> = clothes.iter()
-            .filter(|c| cat_hint.map_or(true, |cat| c.category == cat))
-            .cloned().collect();
-        embedding.search_wardrobe(anchor_name, &filtered, 1).ok()
-            .and_then(|m| m.into_iter().next())
-            .filter(|m| m.similarity > 0.5)
-            .and_then(|m| clothes.iter().find(|c| c.name == m.name))
-    };
 
-    // scoring용 proxy anchor (DB에서 가장 유사한 아이템)
-    let proxy_anchor = exact.or_else(fuzzy).or_else(emb_match);
+    // scoring용 proxy anchor (정확 → fuzzy → 임베딩)
+    let proxy_anchor = match exact.or_else(fuzzy) {
+        Some(a) => Some(a),
+        None => {
+            let filtered: Vec<Clothing> = clothes.iter()
+                .filter(|c| cat_hint.map_or(true, |cat| c.category == cat))
+                .cloned().collect();
+            embedding.search_wardrobe(anchor_name, &filtered, 1).await.ok()
+                .and_then(|m| m.into_iter().next())
+                .filter(|m| m.similarity > 0.5)
+                .and_then(|m| clothes.iter().find(|c| c.name == m.name))
+        }
+    };
     let anchor_owned = exact.is_some(); // 정확히 DB에 있는 경우만 owned
     let display_anchor_name = user_query.to_string(); // 항상 유저 원문 유지
     let display_anchor_cat = cat_hint.unwrap_or("상의");

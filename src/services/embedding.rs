@@ -1,12 +1,13 @@
-use std::sync::Mutex;
-
 use anyhow::Context;
-use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+use serde_json::json;
 use sqlx::MySqlPool;
 use tokio::sync::RwLock;
 
 use crate::db::reference_repo;
 use crate::models::reference::ReferenceMatch;
+
+/// OpenAI 임베딩 모델. 저사양 서버(EC2 등)에서도 동작하도록 로컬 ONNX 대신 API 사용.
+const OPENAI_EMBEDDING_MODEL: &str = "text-embedding-3-small";
 
 /// Cached reference entry for in-memory similarity search
 #[derive(Debug, Clone)]
@@ -18,43 +19,70 @@ struct CachedReference {
     embedding: Vec<f32>,
 }
 
-/// Embedding service using fastembed (ONNX-based, local, free)
+/// Embedding service using OpenAI embeddings API (no local RAM footprint)
 pub struct EmbeddingService {
-    model: Mutex<TextEmbedding>,
+    http_client: reqwest::Client,
+    api_key: String,
     cache: RwLock<Vec<CachedReference>>,
 }
 
 impl EmbeddingService {
-    /// Initialize the embedding model (downloads ~80MB model on first run)
-    pub fn new() -> anyhow::Result<Self> {
-        tracing::info!("Initializing embedding model (multilingual-e5-base)...");
-
-        let mut options = InitOptions::default();
-        options.model_name = EmbeddingModel::MultilingualE5Base;
-        options.show_download_progress = true;
-
-        let model = TextEmbedding::try_new(options)
-            .context("Failed to initialize fastembed model")?;
-
-        tracing::info!("Embedding model initialized");
-
+    /// Initialize the embedding service with an HTTP client and OpenAI API key.
+    pub fn new(http_client: reqwest::Client, api_key: String) -> anyhow::Result<Self> {
+        tracing::info!("Initializing embedding service (OpenAI {})", OPENAI_EMBEDDING_MODEL);
         Ok(Self {
-            model: Mutex::new(model),
+            http_client,
+            api_key,
             cache: RwLock::new(Vec::new()),
         })
     }
 
-    /// Embed a single text string, returning a 384-dim vector
-    pub fn embed_text(&self, text: &str) -> anyhow::Result<Vec<f32>> {
-        let model = self
-            .model
-            .lock()
-            .map_err(|e| anyhow::anyhow!("Model lock poisoned: {}", e))?;
-        let mut results = model
-            .embed(vec![text.to_string()], None)
-            .context("Failed to embed text")?;
+    /// Embed multiple texts in a single API call. Returns vectors in input order.
+    pub async fn embed_batch(&self, texts: Vec<String>) -> anyhow::Result<Vec<Vec<f32>>> {
+        if texts.is_empty() {
+            return Ok(Vec::new());
+        }
+        let body = json!({
+            "model": OPENAI_EMBEDDING_MODEL,
+            "input": texts,
+        });
+
+        let resp = self
+            .http_client
+            .post("https://api.openai.com/v1/embeddings")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .json(&body)
+            .send()
+            .await
+            .context("embedding request failed")?;
+
+        let json: serde_json::Value = resp.json().await.context("embedding response parse failed")?;
+        let data = json["data"]
+            .as_array()
+            .ok_or_else(|| anyhow::anyhow!("embedding response missing data: {}", json))?;
+
+        // index 순서 보장
+        let mut indexed: Vec<(usize, Vec<f32>)> = data
+            .iter()
+            .map(|item| {
+                let idx = item["index"].as_u64().unwrap_or(0) as usize;
+                let emb: Vec<f32> = item["embedding"]
+                    .as_array()
+                    .map(|a| a.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect())
+                    .unwrap_or_default();
+                (idx, emb)
+            })
+            .collect();
+        indexed.sort_by_key(|(i, _)| *i);
+        Ok(indexed.into_iter().map(|(_, e)| e).collect())
+    }
+
+    /// Embed a single text string.
+    pub async fn embed_text(&self, text: &str) -> anyhow::Result<Vec<f32>> {
+        let mut results = self.embed_batch(vec![text.to_string()]).await?;
         results
             .pop()
+            .filter(|e| !e.is_empty())
             .ok_or_else(|| anyhow::anyhow!("Empty embedding result"))
     }
 
@@ -76,7 +104,7 @@ impl EmbeddingService {
             } else {
                 // Generate missing embedding and persist to DB
                 tracing::info!("Generating embedding for '{}'...", &r.name);
-                let e = self.embed_text(&r.description)?;
+                let e = self.embed_text(&r.description).await?;
                 let emb_json = serde_json::to_value(&e)?;
                 reference_repo::update_reference(
                     pool, &r.id, None, None, None, None, Some(&emb_json),
@@ -102,20 +130,7 @@ impl EmbeddingService {
 
     /// Search for top-N most similar references given a query text
     pub async fn search(&self, query: &str, top_n: usize) -> anyhow::Result<Vec<ReferenceMatch>> {
-        let query_embedding = {
-            let text = query.to_string();
-            // Run embedding in blocking context since ONNX is CPU-bound
-            let model_ref = &self.model;
-            let model = model_ref
-                .lock()
-                .map_err(|e| anyhow::anyhow!("Model lock poisoned: {}", e))?;
-            let mut results = model
-                .embed(vec![text], None)
-                .context("Failed to embed query")?;
-            results
-                .pop()
-                .ok_or_else(|| anyhow::anyhow!("Empty embedding result"))?
-        };
+        let query_embedding = self.embed_text(query).await?;
 
         let cache = self.cache.read().await;
 
@@ -162,7 +177,7 @@ impl EmbeddingService {
         let mut seeded = 0;
 
         for (name, era, style, description) in &seeds {
-            let embedding = self.embed_text(description)?;
+            let embedding = self.embed_text(description).await?;
             let emb_json = serde_json::to_value(&embedding)?;
 
             reference_repo::insert_reference(
@@ -192,28 +207,45 @@ pub struct WardrobeMatch {
 
 impl EmbeddingService {
     /// Wardrobe 아이템을 시맨틱 검색. clothing 목록에서 query와 가장 유사한 아이템 top-k 반환.
-    pub fn search_wardrobe(
+    /// query + 모든 아이템 설명을 한 번의 배치 API 호출로 임베딩하여 비용/지연을 최소화한다.
+    pub async fn search_wardrobe(
         &self,
         query: &str,
         clothes: &[crate::models::clothing::Clothing],
         top_n: usize,
     ) -> anyhow::Result<Vec<WardrobeMatch>> {
-        let query_emb = self.embed_text(query)?;
+        if clothes.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // [query, item1, item2, ...] 를 한 번에 임베딩
+        let mut texts: Vec<String> = Vec::with_capacity(clothes.len() + 1);
+        texts.push(query.to_string());
+        for c in clothes {
+            texts.push(format!(
+                "{} {} {} {} {}",
+                c.name,
+                c.color.as_deref().unwrap_or(""),
+                c.style.as_deref().unwrap_or(""),
+                c.material_primary.as_deref().unwrap_or(""),
+                c.sub_category.as_deref().unwrap_or(""),
+            ));
+        }
+
+        let embeddings = self.embed_batch(texts).await?;
+        let query_emb = embeddings
+            .first()
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("missing query embedding"))?;
 
         let mut scored: Vec<(f32, &crate::models::clothing::Clothing)> = clothes
             .iter()
-            .map(|c| {
-                // 아이템 설명 텍스트 구성
-                let desc = format!(
-                    "{} {} {} {} {}",
-                    c.name,
-                    c.color.as_deref().unwrap_or(""),
-                    c.style.as_deref().unwrap_or(""),
-                    c.material_primary.as_deref().unwrap_or(""),
-                    c.sub_category.as_deref().unwrap_or(""),
-                );
-                let item_emb = self.embed_text(&desc).unwrap_or_default();
-                let sim = if item_emb.is_empty() { 0.0 } else { cosine_similarity(&query_emb, &item_emb) };
+            .enumerate()
+            .map(|(i, c)| {
+                let item_emb = embeddings.get(i + 1);
+                let sim = item_emb
+                    .map(|e| cosine_similarity(&query_emb, e))
+                    .unwrap_or(0.0);
                 (sim, c)
             })
             .collect();

@@ -59,9 +59,10 @@ async fn main() {
         std::env::var("KMA_API_KEY").unwrap_or_default();
     let http_client = reqwest::Client::new();
 
-    // Initialize embedding model (downloads ~80MB model on first run)
+    // Initialize embedding service (OpenAI API — no local RAM footprint)
     let embedding_service = Arc::new(
-        EmbeddingService::new().expect("Failed to initialize embedding model"),
+        EmbeddingService::new(http_client.clone(), openai_api_key.clone())
+            .expect("Failed to initialize embedding service"),
     );
 
     // Seed reference data if empty, then load cache
