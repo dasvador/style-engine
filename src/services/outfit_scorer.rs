@@ -88,8 +88,8 @@ pub fn complement_score(anchor: &Clothing, candidate: &Clothing) -> i32 {
     let c_temp = candidate.color_temperature.as_deref().unwrap_or("neutral");
     let a_style = anchor.style.as_deref().unwrap_or("베이직");
     let c_style = candidate.style.as_deref().unwrap_or("베이직");
-    let a_role = anchor.role.as_deref().unwrap_or("밥");
-    let c_role = candidate.role.as_deref().unwrap_or("밥");
+    let a_role = anchor.role.as_deref().unwrap_or("베이스");
+    let c_role = candidate.role.as_deref().unwrap_or("베이스");
     let a_vw = anchor.visual_weight_v2.unwrap_or(3);
     let c_vw = candidate.visual_weight_v2.unwrap_or(3);
     let a_td = anchor.texture_depth_v2.unwrap_or(4);
@@ -128,15 +128,15 @@ pub fn complement_score(anchor: &Clothing, candidate: &Clothing) -> i32 {
     if a_style != "베이직" && a_style == c_style { s -= 8; }
 
     // 4. role 밸런스
-    if (a_role == "반찬" || a_role == "약한반찬") && (c_role == "밥" || c_role == "연결템") {
+    if (a_role == "포인트" || a_role == "약한포인트") && (c_role == "베이스" || c_role == "연결템") {
         s += 5;
     }
-    if (a_role == "반찬" || a_role == "약한반찬")
-        && (c_role == "반찬" || c_role == "약한반찬")
+    if (a_role == "포인트" || a_role == "약한포인트")
+        && (c_role == "포인트" || c_role == "약한포인트")
     {
         s -= 8;
     }
-    if c_role == "밥" || c_role == "연결템" { s += 3; }
+    if c_role == "베이스" || c_role == "연결템" { s += 3; }
 
     // 5. 질감 연속성 (numeric depth + keyword 기반)
     let tex_gap = (a_td - c_td).abs();
@@ -588,8 +588,8 @@ fn is_neutralizer(item: &Clothing) -> bool {
     if mat == "denim" || name.contains("데님") {
         return true;
     }
-    // 베이직 스타일 + 밥/연결 역할
-    if style == "베이직" && (role == "밥" || role == "연결템") {
+    // 베이직 스타일 + 베이스/연결 역할
+    if style == "베이직" && (role == "베이스" || role == "연결템") {
         return true;
     }
     // 특정 neutralizer 패턴

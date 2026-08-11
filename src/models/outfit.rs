@@ -37,12 +37,12 @@ impl SlotKind {
     /// 슬롯별 기대 역할
     pub fn expected_roles(&self, has_outer: bool) -> &'static [&'static str] {
         match self {
-            SlotKind::Top if has_outer => &["밥", "연결템"],
-            SlotKind::Top => &["밥", "반찬", "약한반찬", "연결템"],
-            SlotKind::Bottom => &["밥", "구조템", "연결템"],
-            SlotKind::Outer => &["반찬", "약한반찬", "구조템", "연결템"],
-            SlotKind::Shoes => &["연결템", "구조템", "밥"],
-            SlotKind::Bag => &["연결템", "구조템", "밥"],
+            SlotKind::Top if has_outer => &["베이스", "연결템"],
+            SlotKind::Top => &["베이스", "포인트", "약한포인트", "연결템"],
+            SlotKind::Bottom => &["베이스", "구조템", "연결템"],
+            SlotKind::Outer => &["포인트", "약한포인트", "구조템", "연결템"],
+            SlotKind::Shoes => &["연결템", "구조템", "베이스"],
+            SlotKind::Bag => &["연결템", "구조템", "베이스"],
         }
     }
 }

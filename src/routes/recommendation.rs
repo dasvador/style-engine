@@ -740,11 +740,11 @@ async fn select_best_shoe(
             let shoe_role = shoe.role.as_deref().unwrap_or("");
             let shoe_style = shoe.style.as_deref().unwrap_or("베이직");
 
-            // 1. 역할 선호: 구조템 > 연결템 > 밥 > 반찬
+            // 1. 역할 선호: 구조템 > 연결템 > 베이스 > 포인트
             match shoe_role {
                 "구조템" => score += 15,
                 "연결템" => score += 12,
-                "밥" => score += 8,
+                "베이스" => score += 8,
                 _ => {}
             }
 
@@ -828,15 +828,15 @@ async fn select_best_bag(
         .or_else(|| bottom.and_then(|b| b.style.as_deref()))
         .unwrap_or("베이직");
 
-    // 코디에 이미 반찬이 있는지
+    // 코디에 이미 포인트가 있는지
     let has_accent = [top_id, bottom_id, outer_id]
         .iter()
         .filter_map(|id| id.as_ref())
         .filter_map(|id| clothes.iter().find(|c| c.id == *id))
-        .any(|c| matches!(c.role.as_deref(), Some("반찬") | Some("약한반찬")));
+        .any(|c| matches!(c.role.as_deref(), Some("포인트") | Some("약한포인트")));
 
     let shoes_accent = shoes.is_some_and(|s| {
-        matches!(s.role.as_deref(), Some("반찬") | Some("약한반찬"))
+        matches!(s.role.as_deref(), Some("포인트") | Some("약한포인트"))
     });
 
     let mut scored: Vec<(&Clothing, i32)> = bags
@@ -851,10 +851,10 @@ async fn select_best_bag(
             match bag_role {
                 "구조템" => score += 10,
                 "연결템" => score += 8,
-                "밥" => score += 5,
-                "반찬" if has_accent || shoes_accent => score -= 10,
-                "반찬" => score -= 3,
-                "약한반찬" if has_accent => score -= 5,
+                "베이스" => score += 5,
+                "포인트" if has_accent || shoes_accent => score -= 10,
+                "포인트" => score -= 3,
+                "약한포인트" if has_accent => score -= 5,
                 _ => {}
             }
 

@@ -28,35 +28,35 @@ pub struct ShortlistContext<'a> {
 fn role_priority(category: &str, role: &str) -> i32 {
     match category {
         "상의" => match role {
-            "밥" => 0,
+            "베이스" => 0,
             "연결템" => 1,
             "구조템" => 2,
-            "약한반찬" => 3,
-            "반찬" => 4,
+            "약한포인트" => 3,
+            "포인트" => 4,
             _ => 5,
         },
         "하의" => match role {
-            "밥" => 0,
+            "베이스" => 0,
             "구조템" => 1,
             "연결템" => 2,
-            "약한반찬" => 3,
-            "반찬" => 4,
+            "약한포인트" => 3,
+            "포인트" => 4,
             _ => 5,
         },
         "아우터" => match role {
             "구조템" => 0,
             "연결템" => 1,
-            "약한반찬" => 2,
-            "반찬" => 3,
-            "밥" => 4,
+            "약한포인트" => 2,
+            "포인트" => 3,
+            "베이스" => 4,
             _ => 5,
         },
         "신발" | "가방" => match role {
             "연결템" => 0,
             "구조템" => 1,
-            "밥" => 2,
-            "약한반찬" => 3,
-            "반찬" => 4,
+            "베이스" => 2,
+            "약한포인트" => 3,
+            "포인트" => 4,
             _ => 5,
         },
         _ => 5,
@@ -172,7 +172,7 @@ pub fn build_shortlist<'a>(
     // Phase 1: 각 role에서 최고 점수 1개씩
     let mut by_role: HashMap<&str, Vec<(&Clothing, i32)>> = HashMap::new();
     for &(c, score) in &candidates {
-        let role = c.role.as_deref().unwrap_or("밥");
+        let role = c.role.as_deref().unwrap_or("베이스");
         by_role.entry(role).or_default().push((c, score));
     }
     for (_role, items) in &by_role {

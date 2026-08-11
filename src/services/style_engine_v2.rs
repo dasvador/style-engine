@@ -19,9 +19,9 @@ use crate::models::outfit::{OutfitContext, OutfitSlot, SlotKind};
 pub enum HardFilterReason {
     /// 포멀+스포츠 / 워크 2+ / 밀리터리 2+
     StyleHardConflict,
-    /// 아우터 있을 때 top이 '반찬' 혹은 강한 다크+고채도
+    /// 아우터 있을 때 top이 '포인트' 혹은 강한 다크+고채도
     StrongInnerViolation,
-    /// 밥과 구조템이 모두 없음, 또는 밥이 전부 가벼움 + 반찬 2+
+    /// 베이스와 구조템이 모두 없음, 또는 베이스가 전부 가벼움 + 포인트 2+
     LackOfStructure,
     /// tones 2개 이상이고 전부 밝음 or 전부 어두움인데 outer/bottom에 구조템 없음
     AllOneTone,
@@ -63,7 +63,7 @@ pub enum TodayFitLevel {
 /// 각 축은 독립적으로 계산되어 디버깅/튜닝 시 어느 축이 망가졌는지 추적 가능해야 한다.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct SubScores {
-    /// 밥/반찬/구조 밸런스, 밝기 밸런스, 대비
+    /// 베이스/포인트/구조 밸런스, 밝기 밸런스, 대비
     pub balance: i32,
     /// 스타일/텍스처/world 조화
     pub coherence: i32,
@@ -167,7 +167,7 @@ fn detect_strong_inner_violation(ctx: &OutfitContext) -> bool {
         return false;
     };
 
-    let role_is_accent = top.clothing.role.as_deref() == Some("반찬");
+    let role_is_accent = top.clothing.role.as_deref() == Some("포인트");
     let strong_contrast = top.clothing.tone.as_deref() == Some("어두움")
         && top.clothing.saturation.as_deref() == Some("높음");
     role_is_accent || strong_contrast
@@ -186,18 +186,18 @@ fn detect_lack_of_structure(ctx: &OutfitContext) -> bool {
         return false;
     }
 
-    let babs: Vec<&OutfitSlot> = ctx
+    let bases: Vec<&OutfitSlot> = ctx
         .slots
         .iter()
-        .filter(|s| s.clothing.role.as_deref() == Some("밥"))
+        .filter(|s| s.clothing.role.as_deref() == Some("베이스"))
         .collect();
     let accent_count = ctx
         .slots
         .iter()
-        .filter(|s| s.clothing.role.as_deref() == Some("반찬"))
+        .filter(|s| s.clothing.role.as_deref() == Some("포인트"))
         .count();
 
-    if babs.is_empty() {
+    if bases.is_empty() {
         // 연결템이 2개 이상이고 가볍지 않으면 어스톤 등 안정 조합으로 간주 → soft로 내림
         let stable_connectors = ctx
             .slots
@@ -211,7 +211,7 @@ fn detect_lack_of_structure(ctx: &OutfitContext) -> bool {
         return true;
     }
 
-    let all_light = babs
+    let all_light = bases
         .iter()
         .all(|s| s.clothing.weight.as_deref() == Some("가벼움"));
     all_light && accent_count >= 2
@@ -357,19 +357,19 @@ pub fn compute_style_score(sub: &SubScores) -> i32 {
     (sub.balance + sub.coherence + sub.utility + sub.accessory).clamp(0, 100)
 }
 
-// ─── Axis 1: balance — 밥/반찬, 밝기, 대비, 자연톤(soft) ───
+// ─── Axis 1: balance — 베이스/포인트, 밝기, 대비, 자연톤(soft) ───
 fn score_balance(ctx: &OutfitContext) -> i32 {
     let mut s = AXIS_MAX;
 
-    // 반찬 과다 — 구조 없는 심각 케이스(밥+가벼움+반찬 2+)는 hard filter(LackOfStructure)가 담당.
-    // soft: 구조가 있거나 밥이 무거움이어서 hard를 피한 케이스만 감점.
+    // 포인트 과다 — 구조 없는 심각 케이스(베이스+가벼움+포인트 2+)는 hard filter(LackOfStructure)가 담당.
+    // soft: 구조가 있거나 베이스가 무거움이어서 hard를 피한 케이스만 감점.
     let accent_count = ctx
         .slots
         .iter()
         .filter(|s| {
             matches!(
                 s.clothing.role.as_deref(),
-                Some("반찬") | Some("약한반찬")
+                Some("포인트") | Some("약한포인트")
             )
         })
         .count();
@@ -488,18 +488,18 @@ fn score_coherence(ctx: &OutfitContext) -> i32 {
         s -= world_penalty + strong_style_penalty;
     }
 
-    // flat outfit — 밥/연결템/구조템만으로 구성되고 반찬 없음 + 구조템도 없음
+    // flat outfit — 베이스/연결템/구조템만으로 구성되고 포인트 없음 + 구조템도 없음
     if ctx.slots.len() >= 2 {
         let all_basic = ctx.slots.iter().all(|s| {
             matches!(
                 s.clothing.role.as_deref(),
-                Some("밥") | Some("연결템") | Some("구조템")
+                Some("베이스") | Some("연결템") | Some("구조템")
             )
         });
         let has_accent = ctx.slots.iter().any(|s| {
             matches!(
                 s.clothing.role.as_deref(),
-                Some("반찬") | Some("약한반찬")
+                Some("포인트") | Some("약한포인트")
             )
         });
         let has_structure = ctx

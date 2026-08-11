@@ -162,7 +162,7 @@ fn evaluate_today_fitness(
     });
     let outer_structured = outer.is_some_and(|o| {
         let role = o.role.as_deref().unwrap_or("");
-        role == "구조템" || role == "약한반찬" || role == "반찬"
+        role == "구조템" || role == "약한포인트" || role == "포인트"
     });
     let top_is_structure = top.is_some_and(|t| {
         t.role.as_deref() == Some("구조템")
@@ -173,7 +173,7 @@ fn evaluate_today_fitness(
         penalty += 7;
     }
 
-    // ─── 4. 역할 밸런스 (반찬 과다 / 올 베이직) ───
+    // ─── 4. 역할 밸런스 (포인트 과다 / 올 베이직) ───
     let roles: Vec<&str> = [top, bottom, outer]
         .iter()
         .filter_map(|item| item.and_then(|i| i.role.as_deref()))
@@ -181,7 +181,7 @@ fn evaluate_today_fitness(
 
     let accent_count = roles
         .iter()
-        .filter(|r| **r == "반찬" || **r == "약한반찬")
+        .filter(|r| **r == "포인트" || **r == "약한포인트")
         .count();
     if accent_count >= 2 {
         penalty += 5;

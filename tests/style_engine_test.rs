@@ -79,7 +79,7 @@ fn 헤더그레이_헨리넥() -> ItemBuilder {
         name: "헤더그레이 헨리넥 티셔츠",
         category: "상의", color: "헤더그레이",
         tone: "중간", saturation: "낮음", style: "베이직",
-        weight: "가벼움", role: "밥", color_temp: "neutral",
+        weight: "가벼움", role: "베이스", color_temp: "neutral",
         statement: 1, formality: 1,
     }
 }
@@ -89,7 +89,7 @@ fn 화이트_크루넥() -> ItemBuilder {
         name: "화이트 크루넥 티셔츠",
         category: "상의", color: "화이트",
         tone: "밝음", saturation: "낮음", style: "베이직",
-        weight: "가벼움", role: "밥", color_temp: "neutral",
+        weight: "가벼움", role: "베이스", color_temp: "neutral",
         statement: 1, formality: 1,
     }
 }
@@ -109,7 +109,7 @@ fn 로얄블루_워크셔츠() -> ItemBuilder {
         name: "로얄블루 워크 셔츠",
         category: "상의", color: "로얄블루",
         tone: "중간", saturation: "높음", style: "워크",
-        weight: "중간", role: "반찬", color_temp: "cool",
+        weight: "중간", role: "포인트", color_temp: "cool",
         statement: 3, formality: 2,
     }
 }
@@ -129,7 +129,7 @@ fn 인디고_데님() -> ItemBuilder {
         name: "인디고 셀비지 데님",
         category: "하의", color: "인디고",
         tone: "어두움", saturation: "중간", style: "베이직",
-        weight: "무거움", role: "밥", color_temp: "cool",
+        weight: "무거움", role: "베이스", color_temp: "cool",
         statement: 2, formality: 2,
     }
 }
@@ -149,7 +149,7 @@ fn 카멜_치노() -> ItemBuilder {
         name: "카멜 브러시드 치노",
         category: "하의", color: "카멜",
         tone: "중간", saturation: "중간", style: "베이직",
-        weight: "중간", role: "밥", color_temp: "warm",
+        weight: "중간", role: "베이스", color_temp: "warm",
         statement: 1, formality: 2,
     }
 }
@@ -159,7 +159,7 @@ fn M65() -> ItemBuilder {
         name: "올리브 M-65 필드 자켓",
         category: "아우터", color: "올리브",
         tone: "중간", saturation: "중간", style: "밀리터리",
-        weight: "무거움", role: "약한반찬", color_temp: "warm",
+        weight: "무거움", role: "약한포인트", color_temp: "warm",
         statement: 3, formality: 2,
     }
 }
@@ -169,7 +169,7 @@ fn 러스트_트러커() -> ItemBuilder {
         name: "러스트 코듀로이 트러커 자켓",
         category: "아우터", color: "러스트",
         tone: "중간", saturation: "높음", style: "워크",
-        weight: "중간", role: "반찬", color_temp: "warm",
+        weight: "중간", role: "포인트", color_temp: "warm",
         statement: 4, formality: 2,
     }
 }
@@ -199,7 +199,7 @@ fn 올리브_헬멧백() -> ItemBuilder {
         name: "올리브 헬멧백",
         category: "가방", color: "올리브",
         tone: "중간", saturation: "중간", style: "밀리터리",
-        weight: "중간", role: "약한반찬", color_temp: "warm",
+        weight: "중간", role: "약한포인트", color_temp: "warm",
         statement: 3, formality: 1,
     }
 }
@@ -221,7 +221,7 @@ fn 크림_와플헨리넥() -> ItemBuilder {
         name: "크림 와플 헨리넥",
         category: "상의", color: "크림",
         tone: "밝음", saturation: "낮음", style: "베이직",
-        weight: "가벼움", role: "밥", color_temp: "warm",
+        weight: "가벼움", role: "베이스", color_temp: "warm",
         statement: 1, formality: 1,
     }
 }
@@ -241,7 +241,7 @@ fn 크림_치노() -> ItemBuilder {
         name: "크림 치노 팬츠",
         category: "하의", color: "크림",
         tone: "밝음", saturation: "낮음", style: "베이직",
-        weight: "중간", role: "밥", color_temp: "warm",
+        weight: "중간", role: "베이스", color_temp: "warm",
         statement: 1, formality: 2,
     }
 }
@@ -251,7 +251,7 @@ fn 베이지_치노() -> ItemBuilder {
         name: "베이지 와이드 치노",
         category: "하의", color: "베이지",
         tone: "밝음", saturation: "낮음", style: "워크",
-        weight: "중간", role: "밥", color_temp: "warm",
+        weight: "중간", role: "베이스", color_temp: "warm",
         statement: 1, formality: 2,
     }
 }
@@ -271,7 +271,7 @@ fn 화이트_캔버스() -> ItemBuilder {
         name: "화이트 캔버스 스니커",
         category: "신발", color: "화이트",
         tone: "밝음", saturation: "낮음", style: "베이직",
-        weight: "가벼움", role: "밥", color_temp: "neutral",
+        weight: "가벼움", role: "베이스", color_temp: "neutral",
         statement: 1, formality: 1,
     }
 }
@@ -297,11 +297,11 @@ fn problem_codes(result: &EvaluationResult) -> Vec<&IssueCode> {
 }
 
 // ══════════════════════════════════════════════════════
-// 1️⃣  밥 3개 테스트 — 기본 안정성 (baseline)
+// 1️⃣  베이스 3개 테스트 — 기본 안정성 (baseline)
 // ══════════════════════════════════════════════════════
 
 #[test]
-fn test_01_baseline_bab_outfit() {
+fn test_01_baseline_base_outfit() {
     let ctx = OutfitContext {
         slots: vec![
             slot(SlotKind::Top, &헤더그레이_헨리넥(), &["봄", "가을", "여름"], &["minimal", "sweat"]),
@@ -314,12 +314,12 @@ fn test_01_baseline_bab_outfit() {
     let result = engine::evaluate(&ctx, Some("봄"));
 
     println!("Test 01 — score: {}, problems: {:?}", result.score, problem_codes(&result));
-    assert!(result.score >= 80, "기본 밥 코디 점수가 너무 낮음: {}", result.score);
+    assert!(result.score >= 80, "기본 베이스 코디 점수가 너무 낮음: {}", result.score);
     assert!(result.score <= 95, "ceiling 초과: {}", result.score);
 }
 
 // ══════════════════════════════════════════════════════
-// 2️⃣  반찬 과다 테스트
+// 2️⃣  포인트 과다 테스트
 // ══════════════════════════════════════════════════════
 
 #[test]
@@ -337,7 +337,7 @@ fn test_02_too_many_accents() {
     let result = engine::evaluate(&ctx, Some("봄"));
 
     println!("Test 02 — score: {}, problems: {:?}", result.score, problem_codes(&result));
-    assert!(result.score <= 70, "반찬 과다인데 점수가 너무 높음: {}", result.score);
+    assert!(result.score <= 70, "포인트 과다인데 점수가 너무 높음: {}", result.score);
     assert!(
         has_problem(&result, &IssueCode::TooManyAccents),
         "TooManyAccents 미감지. problems: {:?}", problem_codes(&result)
@@ -399,12 +399,12 @@ fn test_04_world_overmatching() {
 }
 
 // ══════════════════════════════════════════════════════
-// 5️⃣  강한 이너 테스트 (아우터 없이 반찬 상의)
+// 5️⃣  강한 이너 테스트 (아우터 없이 포인트 상의)
 // ══════════════════════════════════════════════════════
 
 #[test]
 fn test_05_strong_inner() {
-    // 로얄블루 워크셔츠(반찬)가 이너일 때 + 아우터 있으면 StrongInner 발생 가능
+    // 로얄블루 워크셔츠(포인트)가 이너일 때 + 아우터 있으면 StrongInner 발생 가능
     let ctx = OutfitContext {
         slots: vec![
             slot(SlotKind::Top, &로얄블루_워크셔츠(), &["봄", "가을"], &["workwear"]),
@@ -418,7 +418,7 @@ fn test_05_strong_inner() {
     let result = engine::evaluate(&ctx, Some("봄"));
 
     println!("Test 05 — score: {}, problems: {:?}", result.score, problem_codes(&result));
-    // 로얄블루(반찬, 높은 채도) + 아우터 존재 → StrongInner 예상
+    // 로얄블루(포인트, 높은 채도) + 아우터 존재 → StrongInner 예상
     assert!(
         has_problem(&result, &IssueCode::StrongInner),
         "강한 이너 미감지. problems: {:?}", problem_codes(&result)
@@ -443,8 +443,8 @@ fn test_06_no_structure() {
     let result = engine::evaluate(&ctx, Some("봄"));
 
     println!("Test 06 — score: {}, problems: {:?}", result.score, problem_codes(&result));
-    // 밥+밥+연결템 — flat outfit 감점이 있지만 신발(연결템) 보너스로 일부 상쇄
-    assert!(result.score >= 83, "밥 조합 과도 감점: {}", result.score);
+    // 베이스+베이스+연결템 — flat outfit 감점이 있지만 신발(연결템) 보너스로 일부 상쇄
+    assert!(result.score >= 83, "베이스 조합 과도 감점: {}", result.score);
     assert!(result.score <= 95, "ceiling 초과: {}", result.score);
 }
 
@@ -565,8 +565,8 @@ fn test_10_bag_mismatch() {
     let result = engine::evaluate(&ctx, Some("봄"));
 
     println!("Test 10 — score: {}, problems: {:?}", result.score, problem_codes(&result));
-    // 올리브 헬멧백은 약한반찬, 그레이 스니커(구조템)가 보너스를 줌
-    assert!(result.score <= 80, "반찬 아우터+약한반찬 가방인데 점수가 높음: {}", result.score);
+    // 올리브 헬멧백은 약한포인트, 그레이 스니커(구조템)가 보너스를 줌
+    assert!(result.score <= 80, "포인트 아우터+약한포인트 가방인데 점수가 높음: {}", result.score);
     assert!(
         has_problem(&result, &IssueCode::StyleConflict)
             || has_problem(&result, &IssueCode::BagConflict)

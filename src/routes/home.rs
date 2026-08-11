@@ -1377,24 +1377,24 @@ function renderWardrobeSummary() {
     roles[r] = (roles[r] || 0) + 1;
   });
 
-  const bab = roles['밥'] || 0;
-  const banchan = (roles['반찬'] || 0) + (roles['약한반찬'] || 0);
+  const baseCount = roles['베이스'] || 0;
+  const accentCount = (roles['포인트'] || 0) + (roles['약한포인트'] || 0);
   const gujo = roles['구조템'] || 0;
 
   grid.innerHTML = `
     <div class="summary-item"><div class="summary-val">${allClothes.length}</div><div class="summary-lbl">전체</div></div>
-    <div class="summary-item"><div class="summary-val">${bab}</div><div class="summary-lbl">밥</div></div>
-    <div class="summary-item"><div class="summary-val">${banchan}</div><div class="summary-lbl">반찬</div></div>
+    <div class="summary-item"><div class="summary-val">${baseCount}</div><div class="summary-lbl">베이스</div></div>
+    <div class="summary-item"><div class="summary-val">${accentCount}</div><div class="summary-lbl">포인트</div></div>
   `;
 
   // Check imbalance
   warn.innerHTML = '';
   if (allClothes.length >= 5) {
     const warnings = [];
-    if (bab === 0) warnings.push('밥 역할 아이템이 없어요. 무채색 기본 아이템을 추가해 보세요.');
-    if (banchan === 0) warnings.push('반찬 역할 아이템이 없어요. 포인트 아이템을 추가해 보세요.');
+    if (baseCount === 0) warnings.push('베이스 역할 아이템이 없어요. 무채색 기본 아이템을 추가해 보세요.');
+    if (accentCount === 0) warnings.push('포인트 역할 아이템이 없어요. 포인트 아이템을 추가해 보세요.');
     if (gujo === 0) warnings.push('구조템이 없어요. 전체 실루엣을 잡아주는 아이템을 추가해 보세요.');
-    if (bab > 0 && banchan > 0 && banchan > bab * 2) warnings.push('반찬이 밥보다 많아요. 기본 아이템을 더 추가하면 좋겠어요.');
+    if (baseCount > 0 && accentCount > 0 && accentCount > baseCount * 2) warnings.push('포인트가 베이스보다 많아요. 기본 아이템을 더 추가하면 좋겠어요.');
 
     if (warnings.length > 0) {
       warn.innerHTML = warnings.map(w =>
@@ -1709,7 +1709,7 @@ function renderEvalResult(r) {
 
 /* ===== WARDROBE ===== */
 const CATEGORIES = ['전체', '상의', '하의', '아우터', '신발', '가방'];
-const ROLES = ['전체', '밥', '반찬', '약한반찬', '연결템', '구조템'];
+const ROLES = ['전체', '베이스', '포인트', '약한포인트', '연결템', '구조템'];
 
 function initFilters() {
   const catBar = document.getElementById('category-filter');
@@ -1785,9 +1785,9 @@ function renderWardrobe() {
 
 function getRoleChipClass(role) {
   switch(role) {
-    case '밥': return '';
-    case '반찬': return 'chip-warning';
-    case '약한반찬': return 'chip-neutral';
+    case '베이스': return '';
+    case '포인트': return 'chip-warning';
+    case '약한포인트': return 'chip-neutral';
     case '구조템': return 'chip-success';
     case '연결템': return 'chip-neutral';
     default: return 'chip-neutral';
@@ -1975,9 +1975,9 @@ function showItemDetail(id) {
 
 function getRoleExplanation(role) {
   const explanations = {
-    '밥': "이 아이템은 '밥' 역할입니다 \u2014 대부분 코디의 중심을 잡아주는 기본 아이템이에요.",
-    '반찬': "이 아이템은 '반찬' 역할입니다 \u2014 코디에 포인트와 개성을 더해주는 아이템이에요.",
-    '약한반찬': "이 아이템은 '약한반찬' 역할입니다 \u2014 부드럽게 포인트를 더하는 보조 아이템이에요.",
+    '베이스': "이 아이템은 '베이스' 역할입니다 \u2014 대부분 코디의 중심을 잡아주는 기본 아이템이에요.",
+    '포인트': "이 아이템은 '포인트' 역할입니다 \u2014 코디에 포인트와 개성을 더해주는 아이템이에요.",
+    '약한포인트': "이 아이템은 '약한포인트' 역할입니다 \u2014 부드럽게 포인트를 더하는 보조 아이템이에요.",
     '구조템': "이 아이템은 '구조템' 역할입니다 \u2014 전체 실루엣과 핏을 잡아주는 아이템이에요.",
     '연결템': "이 아이템은 '연결템' 역할입니다 \u2014 다른 아이템들 사이를 자연스럽게 연결해주는 아이템이에요.",
   };
