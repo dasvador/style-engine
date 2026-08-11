@@ -9,6 +9,12 @@ use crate::models::reference::ReferenceMatch;
 /// OpenAI 임베딩 모델. 저사양 서버(EC2 등)에서도 동작하도록 로컬 ONNX 대신 API 사용.
 const OPENAI_EMBEDDING_MODEL: &str = "text-embedding-3-small";
 
+/// text-embedding-3-small 의 출력 차원.
+/// 저장된 벡터가 이 길이와 다르면 다른 모델이 만든 것이므로 폐기하고 다시 만든다.
+/// cosine_similarity 는 길이가 다르면 0.0 을 돌려주므로, 그대로 두면 검색이
+/// 에러 없이 조용히 전부 실패한다.
+const EMBEDDING_DIM: usize = 1536;
+
 /// Cached reference entry for in-memory similarity search
 #[derive(Debug, Clone)]
 struct CachedReference {
@@ -94,7 +100,20 @@ impl EmbeddingService {
 
         for r in refs {
             let embedding = if let Some(emb_json) = &r.embedding {
-                serde_json::from_value::<Vec<f32>>(emb_json.clone()).ok()
+                serde_json::from_value::<Vec<f32>>(emb_json.clone())
+                    .ok()
+                    .filter(|e| {
+                        let ok = e.len() == EMBEDDING_DIM;
+                        if !ok {
+                            tracing::warn!(
+                                "Discarding stale embedding for '{}': {} dims, expected {}",
+                                &r.name,
+                                e.len(),
+                                EMBEDDING_DIM
+                            );
+                        }
+                        ok
+                    })
             } else {
                 None
             };

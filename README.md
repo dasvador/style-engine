@@ -20,7 +20,7 @@
 | Framework | Axum + Tokio |
 | Database | MySQL (sqlx) |
 | Vision AI | OpenAI gpt-4o-mini |
-| Embedding | fastembed (multilingual-e5-small, 384차원, ONNX 로컬) |
+| Embedding | OpenAI text-embedding-3-small (1536차원, API) |
 | Weather | 기상청 초단기실황 API (Open-Meteo 폴백) |
 
 ## 아키텍처
@@ -43,7 +43,7 @@
     ↓
 Pass 1: Vision API → 변별력 있는 시각 특징 서술 (브랜드 추측 금지)
     ↓
-fastembed → 384차원 벡터 → 레퍼런스 코사인 유사도 검색 (인메모리)
+OpenAI Embedding → 1536차원 벡터 → 레퍼런스 코사인 유사도 검색 (인메모리)
     ↓
 Pass 2: Vision API + 레퍼런스 → 정밀 분석 (구조적 일치 시에만 레퍼런스 매칭)
     ↓
@@ -212,7 +212,7 @@ src/
 ├── services/
 │   ├── style_engine.rs         # 13개 규칙 엔진 + 강점 감지 + 구조화된 suggestions + summary
 │   ├── openai.rs               # Vision API (2-Pass) + 코디 추천 + 설명 생성
-│   ├── embedding.rs            # fastembed 래퍼, 캐시, 검색
+│   ├── embedding.rs            # OpenAI 임베딩 호출, 캐시, 검색
 │   └── weather.rs              # 기상청 초단기실황 API (Open-Meteo 폴백)
 ├── routes/
 │   ├── home.rs                 # 4화면 SPA (홈/평가/옷장/상세)
@@ -252,19 +252,18 @@ mysql -u root -e "CREATE DATABASE rust_web_app"
 cargo run
 ```
 
-서버가 `http://localhost:3000`에서 시작됩니다.
+서버가 `http://localhost:3003`에서 시작됩니다.
 
 ### 첫 실행 시
 
-1. 임베딩 모델 (~80MB) 자동 다운로드 → `.fastembed_cache/`에 캐시
-2. DB 마이그레이션 자동 실행
-3. 밀리터리/빈티지 레퍼런스 13종 자동 시드
-4. 레퍼런스 임베딩 자동 생성 + 인메모리 캐시 로딩
+1. DB 마이그레이션 자동 실행
+2. 밀리터리/빈티지 레퍼런스 13종 자동 시드
+3. 레퍼런스 임베딩 자동 생성 + 인메모리 캐시 로딩
 
 ## 설계 원칙
 
 - **규칙-LLM 분리**: 점수/판정은 결정론적 규칙, LLM은 설명 생성만
-- **로컬 임베딩**: API 비용 없이 한국어 임베딩 (fastembed ONNX)
+- **임베딩은 외부 API**: 로컬 모델을 상주시키지 않아 메모리 사용과 배포가 단순 (초기에는 fastembed ONNX 로컬 추론이었으나 OpenAI API로 전환)
 - **인메모리 캐시**: 레퍼런스 검색 시 DB 조회 없이 코사인 유사도 계산
 - **환각 방지**: 브랜드는 시각적 확인 시에만 포함, 레퍼런스는 강한 일치 시에만 매칭
 - **설명 가능**: 모든 감점/강점에 이유와 구조화된 개선안 제공

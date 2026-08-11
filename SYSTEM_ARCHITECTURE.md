@@ -9,7 +9,7 @@
 | Framework | Axum (Rust) + Tokio |
 | Database | MySQL (sqlx, 런타임 쿼리) |
 | Vision AI | OpenAI gpt-4o-mini |
-| Embedding | fastembed (multilingual-e5-small, 384차원, ONNX 로컬) |
+| Embedding | OpenAI text-embedding-3-small (1536차원, API) |
 | Weather | KMA 초단기실황 API |
 | Style Engine | 결정론적 룰 엔진 (15+ 룰, 0-95점) |
 
@@ -200,7 +200,7 @@ LLM이 신발/가방을 안 넣었을 때 `select_best_shoe()` / `select_best_ba
 PASS 1: 서술 생성 (gpt-4o-mini Vision, temp=0.3)
   → 시각적 특징 자연어 서술 (200자+)
   ↓
-임베딩 검색 (fastembed → 코사인 유사도 → 상위 5개)
+임베딩 검색 (OpenAI Embedding → 코사인 유사도 → 상위 5개)
   → 최고 유사도 < 0.5 → 일반 분석 폴백
   ↓
 PASS 2: 정밀 분석 (gpt-4o-mini Vision, temp=0.2)
@@ -247,7 +247,7 @@ DB 저장 (clothing + season + texture_world)
 | era | VARCHAR(100) | 시대 |
 | style | VARCHAR(100) | 스타일 |
 | description | TEXT | 상세 기술 설명 (임베딩 소스) |
-| embedding | JSON | 384차원 float 벡터 |
+| embedding | JSON | 1536차원 float 벡터 |
 
 시드 데이터 13개: M-51, M-65, 정글 퍼티그, M-43, MA-1, N-1, A-2, B-15, P-41/P-47, N-3B, 셀비지 데님, 빈티지 스웻셔츠, 레트로 스니커
 
@@ -319,7 +319,7 @@ src/
 │   ├── recommendation_service.rs        # 3-모드 선택 + 적합도 게이트
 │   ├── recommendation_diversity.rs      # 리센시 페널티/보너스/휴면 감지
 │   ├── openai.rs                        # Vision API, 5후보 추천, 코디 설명
-│   ├── embedding.rs                     # fastembed, 캐시, 검색, 시드
+│   ├── embedding.rs                     # OpenAI 임베딩, 캐시, 검색, 시드
 │   └── weather.rs                       # KMA 초단기실황 API
 ├── routes/
 │   ├── recommendation.rs                # 추천 핸들러 (/multi 포함)
@@ -368,6 +368,6 @@ migrations/
 5. **이력 기반 다양성**: 결정론적 리센시 패널티 + 휴면 아이템 부활 보너스
 6. **1회 LLM 호출**: 5개 후보를 한 번에 생성 → 모드별 다른 후보 선택
 7. **결정론적 폴백**: LLM이 신발/가방 누락 시 룰 기반 자동 매칭
-8. **로컬 임베딩**: fastembed(ONNX)로 API 비용 없이 한국어 임베딩
+8. **외부 임베딩 API**: OpenAI text-embedding-3-small 사용, 로컬 모델 상주 없음
 9. **2-Pass RAG**: 시각 서술 → 임베딩 검색 → 레퍼런스 컨텍스트 정밀 분석
 10. **인메모리 캐시**: 레퍼런스 임베딩 + 자동 동기화 + NULL 자동 복구
