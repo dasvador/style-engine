@@ -1,4 +1,4 @@
 #!/bin/bash
-pkill -f "target/debug/rust-web-app" 2>/dev/null
+pkill -f "target/debug/style-engine" 2>/dev/null
 sleep 1
 cargo run

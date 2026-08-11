@@ -19,10 +19,10 @@ use std::path::PathBuf;
 use chrono::NaiveDateTime;
 use serde::Deserialize;
 
-use rust_web_app::models::clothing::Clothing;
-use rust_web_app::models::outfit::{OutfitContext, OutfitSlot, SlotKind};
-use rust_web_app::services::serving_ranker;
-use rust_web_app::services::style_engine_v2::{self, HardFilterReason, TodayFitLevel};
+use style_engine::models::clothing::Clothing;
+use style_engine::models::outfit::{OutfitContext, OutfitSlot, SlotKind};
+use style_engine::services::serving_ranker;
+use style_engine::services::style_engine_v2::{self, HardFilterReason, TodayFitLevel};
 
 // ─── Fixture schema ───
 
@@ -141,6 +141,20 @@ fn registry_to_outfit_slot(
             versatility: None,
             statement_level: None,
             formality_level: item.formality_level,
+            gender: None,
+            style_mood: None,
+            visual_weight: None,
+            texture_depth: None,
+            visual_weight_v2: None,
+            texture_depth_v2: None,
+            grounding_score: None,
+            shadow_tone: None,
+            silhouette_volume: None,
+            material_primary: None,
+            sub_category: None,
+            floating_score: None,
+            strong_style_score: None,
+            texture_keywords: None,
             created_at: now,
             updated_at: now,
         },

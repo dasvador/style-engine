@@ -1,9 +1,9 @@
 use chrono::NaiveDateTime;
-use rust_web_app::models::clothing::Clothing;
-use rust_web_app::models::outfit::{
+use style_engine::models::clothing::Clothing;
+use style_engine::models::outfit::{
     EvaluationResult, IssueCode, OutfitContext, OutfitSlot, SlotKind,
 };
-use rust_web_app::services::style_engine;
+use style_engine::services::style_engine as engine;
 
 // ─── Test helper: build Clothing without needing DB ───
 
@@ -43,6 +43,20 @@ impl ItemBuilder {
             versatility: Some("flexible".to_string()),
             statement_level: Some(self.statement),
             formality_level: Some(self.formality),
+            gender: None,
+            style_mood: None,
+            visual_weight: None,
+            texture_depth: None,
+            visual_weight_v2: None,
+            texture_depth_v2: None,
+            grounding_score: None,
+            shadow_tone: None,
+            silhouette_volume: None,
+            material_primary: None,
+            sub_category: None,
+            floating_score: None,
+            strong_style_score: None,
+            texture_keywords: None,
             created_at: ts(),
             updated_at: ts(),
         }
@@ -297,7 +311,7 @@ fn test_01_baseline_bab_outfit() {
         situation: Some("일상".to_string()),
     };
 
-    let result = style_engine::evaluate(&ctx, Some("봄"));
+    let result = engine::evaluate(&ctx, Some("봄"));
 
     println!("Test 01 — score: {}, problems: {:?}", result.score, problem_codes(&result));
     assert!(result.score >= 80, "기본 밥 코디 점수가 너무 낮음: {}", result.score);
@@ -320,7 +334,7 @@ fn test_02_too_many_accents() {
         situation: Some("일상".to_string()),
     };
 
-    let result = style_engine::evaluate(&ctx, Some("봄"));
+    let result = engine::evaluate(&ctx, Some("봄"));
 
     println!("Test 02 — score: {}, problems: {:?}", result.score, problem_codes(&result));
     assert!(result.score <= 70, "반찬 과다인데 점수가 너무 높음: {}", result.score);
@@ -346,7 +360,7 @@ fn test_03_military_formal_mix() {
         situation: Some("일상".to_string()),
     };
 
-    let result = style_engine::evaluate(&ctx, Some("봄"));
+    let result = engine::evaluate(&ctx, Some("봄"));
 
     println!("Test 03 — score: {}, problems: {:?}", result.score, problem_codes(&result));
     // military + tailoring은 밸런싱 페어로 인정 — StyleConflict 없어야 함
@@ -373,7 +387,7 @@ fn test_04_world_overmatching() {
         situation: Some("일상".to_string()),
     };
 
-    let result = style_engine::evaluate(&ctx, Some("봄"));
+    let result = engine::evaluate(&ctx, Some("봄"));
 
     println!("Test 04 — score: {}, problems: {:?}", result.score, problem_codes(&result));
     assert!(result.score <= 75, "올리브 올리브 올리브인데 점수가 높음: {}", result.score);
@@ -401,7 +415,7 @@ fn test_05_strong_inner() {
         situation: Some("일상".to_string()),
     };
 
-    let result = style_engine::evaluate(&ctx, Some("봄"));
+    let result = engine::evaluate(&ctx, Some("봄"));
 
     println!("Test 05 — score: {}, problems: {:?}", result.score, problem_codes(&result));
     // 로얄블루(반찬, 높은 채도) + 아우터 존재 → StrongInner 예상
@@ -426,7 +440,7 @@ fn test_06_no_structure() {
         situation: Some("일상".to_string()),
     };
 
-    let result = style_engine::evaluate(&ctx, Some("봄"));
+    let result = engine::evaluate(&ctx, Some("봄"));
 
     println!("Test 06 — score: {}, problems: {:?}", result.score, problem_codes(&result));
     // 밥+밥+연결템 — flat outfit 감점이 있지만 신발(연결템) 보너스로 일부 상쇄
@@ -449,7 +463,7 @@ fn test_07a_all_bright() {
         situation: Some("일상".to_string()),
     };
 
-    let result = style_engine::evaluate(&ctx, Some("봄"));
+    let result = engine::evaluate(&ctx, Some("봄"));
 
     println!("Test 07a — score: {}, problems: {:?}", result.score, problem_codes(&result));
     // AllBright -15, 추가로 FLAT_OUTFIT이나 LackOfContrast도 가능
@@ -472,7 +486,7 @@ fn test_07b_all_dark() {
         situation: Some("일상".to_string()),
     };
 
-    let result = style_engine::evaluate(&ctx, Some("봄"));
+    let result = engine::evaluate(&ctx, Some("봄"));
 
     println!("Test 07b — score: {}, problems: {:?}", result.score, problem_codes(&result));
     assert!(result.score <= 75, "전부 어두운데 점수가 높음: {}", result.score);
@@ -495,7 +509,7 @@ fn test_08_texture_world_conflict() {
         situation: Some("일상".to_string()),
     };
 
-    let result = style_engine::evaluate(&ctx, Some("봄"));
+    let result = engine::evaluate(&ctx, Some("봄"));
 
     println!("Test 08 — score: {}, problems: {:?}", result.score, problem_codes(&result));
     // sweat + tailoring 충돌 예상
@@ -520,7 +534,7 @@ fn test_09_shoes_mismatch() {
         situation: Some("비즈니스".to_string()),
     };
 
-    let result = style_engine::evaluate(&ctx, Some("봄"));
+    let result = engine::evaluate(&ctx, Some("봄"));
 
     println!("Test 09 — score: {}, problems: {:?}", result.score, problem_codes(&result));
     // 비즈니스 상황에 러닝화 → 격식 미스매치 (강화됨: gap >= 1.5 → 추가 감점)
@@ -548,7 +562,7 @@ fn test_10_bag_mismatch() {
         situation: Some("일상".to_string()),
     };
 
-    let result = style_engine::evaluate(&ctx, Some("봄"));
+    let result = engine::evaluate(&ctx, Some("봄"));
 
     println!("Test 10 — score: {}, problems: {:?}", result.score, problem_codes(&result));
     // 올리브 헬멧백은 약한반찬, 그레이 스니커(구조템)가 보너스를 줌
@@ -577,7 +591,7 @@ fn test_13_borderline_no_excessive_penalty() {
         situation: Some("일상".to_string()),
     };
 
-    let result = style_engine::evaluate(&ctx, Some("봄"));
+    let result = engine::evaluate(&ctx, Some("봄"));
 
     println!("Test 13 — score: {}, problems: {:?}", result.score, problem_codes(&result));
     assert!(result.score >= 65, "애매한 조합인데 과도 감점: {}", result.score);
@@ -600,7 +614,7 @@ fn test_14_perfect_outfit_ceiling() {
         situation: Some("일상".to_string()),
     };
 
-    let result = style_engine::evaluate(&ctx, Some("봄"));
+    let result = engine::evaluate(&ctx, Some("봄"));
 
     println!("Test 14 — score: {}, problems: {:?}", result.score, problem_codes(&result));
     assert!(result.score >= 85, "완벽 조합이 너무 낮음: {}", result.score);
@@ -623,7 +637,7 @@ fn test_bonus_season_mismatch() {
         situation: Some("일상".to_string()),
     };
 
-    let result = style_engine::evaluate(&ctx, Some("겨울"));
+    let result = engine::evaluate(&ctx, Some("겨울"));
 
     println!("Test bonus — score: {}, problems: {:?}", result.score, problem_codes(&result));
     assert!(
