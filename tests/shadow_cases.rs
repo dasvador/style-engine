@@ -283,7 +283,7 @@ fn report_full_analysis() {
         .iter()
         .filter(|r| !r.hard_pass && r.expected_hard_pass)
         .collect();
-    fps.sort_by(|a, b| b.v2.cmp(&a.v2)); // v2 높은 순 (가장 억울한 순)
+    fps.sort_by_key(|r| std::cmp::Reverse(r.v2)); // v2 높은 순 (가장 억울한 순)
     println!(
         "{:12} {:>5} {:>4} {:>4} {:>4} {:>4}  {:<30} notes",
         "case_id", "v2", "bal", "coh", "utl", "acc", "reasons"

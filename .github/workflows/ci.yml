@@ -18,10 +18,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      # 툴체인은 rust-toolchain.toml 이 정한다. 러너의 rustup 이 그 파일을 읽어
+      # 지정된 버전과 컴포넌트를 자동으로 설치하므로, 로컬과 CI 가 같은 컴파일러를 쓴다.
+      # 여기에 버전을 또 적으면 두 곳이 어긋날 수 있다.
+      - name: Show toolchain
+        run: rustup show active-toolchain && cargo --version
 
       - name: Cache cargo registry and build artifacts
         uses: Swatinem/rust-cache@v2

@@ -178,7 +178,7 @@ pub fn build_shortlist<'a>(
         .map(|c| (c, score_item(c, ctx)))
         .collect();
 
-    candidates.sort_by(|a, b| b.1.cmp(&a.1));
+    candidates.sort_by_key(|a| std::cmp::Reverse(a.1));
 
     if candidates.len() <= k {
         return candidates.into_iter().map(|(c, _)| c).collect();

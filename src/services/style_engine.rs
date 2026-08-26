@@ -636,11 +636,9 @@ fn rule_bag(
                 reasons_bad.push("가방이 다소 눈에 띕니다".to_string());
             }
         }
-        "약한포인트" => {
-            if other_accent_count >= 2 {
-                adjustment -= 5;
-                reasons_bad.push("포인트 아이템이 이미 많습니다".to_string());
-            }
+        "약한포인트" if other_accent_count >= 2 => {
+            adjustment -= 5;
+            reasons_bad.push("포인트 아이템이 이미 많습니다".to_string());
         }
         _ => {}
     }

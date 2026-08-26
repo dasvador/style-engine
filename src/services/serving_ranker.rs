@@ -57,17 +57,16 @@ pub fn compute_today_fit(ctx: &OutfitContext, temperature: f64) -> TodayFitLevel
                     return TodayFitLevel::Borderline;
                 }
             }
-            "데이트" => {
+            "데이트"
                 // 스포츠 슈즈 → 격식 수준에 따라 Fail or Borderline
                 // TODO(tuning): HC024 유형 — 사용자 기대는 Fail이지만 현재 formality_avg < 2.5라
                 // Borderline 판정. 임계치를 낮추거나 데이트+스포츠슈즈를 일괄 Fail로 변경 검토.
-                if has_sport_shoes {
+                if has_sport_shoes => {
                     if formality_avg >= 2.5 {
                         return TodayFitLevel::Fail;
                     }
                     return TodayFitLevel::Borderline;
                 }
-            }
             _ => {} // 캐주얼/일상/주말 → 관대
         }
     }
