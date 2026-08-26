@@ -1,24 +1,27 @@
 use axum::{
+    Json, Router,
     extract::{DefaultBodyLimit, Path, State},
     routing::{get, post},
-    Json, Router,
 };
 use validator::Validate;
 
+use crate::AppState;
 use crate::db::clothing_repo;
 use crate::errors::AppError;
 use crate::models::clothing::{
     ClothingResponse, CreateClothingRequest, ImageUploadRequest, UpdateClothingRequest,
 };
-use crate::services::openai;
-use crate::AppState;
+use crate::services::llm::LlmTask;
+use crate::services::prompts;
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", post(create_clothing).get(list_clothing))
         .route(
             "/{id}",
-            get(get_clothing).put(update_clothing).delete(delete_clothing),
+            get(get_clothing)
+                .put(update_clothing)
+                .delete(delete_clothing),
         )
         .route(
             "/upload",
@@ -42,11 +45,11 @@ async fn create_clothing(
         body.color.as_deref(),
         thickness,
         body.image_url.as_deref(),
-        body.tone.as_deref(),
-        body.saturation.as_deref(),
-        body.style.as_deref(),
-        body.weight.as_deref(),
-        body.role.as_deref(),
+        body.tone,
+        body.saturation,
+        body.style,
+        body.weight,
+        body.role,
         body.color_temperature.as_deref(),
         body.versatility.as_deref(),
         body.statement_level,
@@ -109,11 +112,11 @@ async fn update_clothing(
         body.color.as_deref(),
         body.thickness.as_deref(),
         body.image_url.as_deref(),
-        body.tone.as_deref(),
-        body.saturation.as_deref(),
-        body.style.as_deref(),
-        body.weight.as_deref(),
-        body.role.as_deref(),
+        body.tone,
+        body.saturation,
+        body.style,
+        body.weight,
+        body.role,
         body.color_temperature.as_deref(),
         body.versatility.as_deref(),
         body.statement_level,
@@ -156,11 +159,10 @@ async fn upload_clothing_image(
     State(state): State<AppState>,
     Json(body): Json<ImageUploadRequest>,
 ) -> Result<Json<ClothingResponse>, AppError> {
-    if state.openai_api_key.is_empty() || state.openai_api_key == "sk-your-key-here" {
-        return Err(AppError::BadRequest(
-            "OPENAI_API_KEY is not configured".to_string(),
-        ));
-    }
+    state
+        .llm
+        .ensure_configured(LlmTask::VisionPass1)
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
 
     if !body.image_data.starts_with("data:image/") {
         return Err(AppError::BadRequest(
@@ -168,14 +170,10 @@ async fn upload_clothing_image(
         ));
     }
 
-    let analysis = openai::analyze_clothing_image_with_rag(
-        &state.http_client,
-        &state.openai_api_key,
-        &body.image_data,
-        &state.embedding,
-    )
-    .await
-    .map_err(AppError::Internal)?;
+    let analysis =
+        prompts::analyze_clothing_image_with_rag(&state.llm, &body.image_data, &state.embedding)
+            .await
+            .map_err(AppError::Internal)?;
 
     if !analysis.is_clothing {
         let reason = analysis
@@ -202,11 +200,11 @@ async fn upload_clothing_image(
         color.as_deref(),
         thickness,
         Some(&body.image_data),
-        analysis.tone.as_deref(),
-        analysis.saturation.as_deref(),
-        analysis.style.as_deref(),
-        analysis.weight.as_deref(),
-        analysis.role.as_deref(),
+        analysis.tone,
+        analysis.saturation,
+        analysis.style,
+        analysis.weight,
+        analysis.role,
         analysis.color_temperature.as_deref(),
         analysis.versatility.as_deref(),
         analysis.statement_level,

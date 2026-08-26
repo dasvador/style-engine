@@ -1,19 +1,22 @@
-use std::sync::Arc;
+//! 스타일 도메인의 LLM task 정의.
+//!
+//! 이 모듈은 프롬프트를 만들고 결과를 도메인 타입으로 되돌리는 일만 한다.
+//! 어떤 provider의 어떤 모델이 호출되는지, 재시도·타임아웃·비용 계측을 어떻게 하는지는
+//! [`crate::services::llm`]가 책임진다. 여기서 모델명을 언급해서는 안 된다.
 
-use anyhow::Context;
-use serde_json::json;
+use std::sync::Arc;
 
 use crate::models::clothing::{Pass1Result, VisionAnalysisResult};
 use crate::models::recommendation::{AiMultiRecommendation, AiRecommendation};
 use crate::models::reference::ReferenceMatch;
 use crate::models::weather::CurrentWeather;
 use crate::services::embedding::EmbeddingService;
+use crate::services::llm::{ChatRequest, LlmClient, LlmTask, Message};
 
 // ─── 1) get_outfit_recommendation ───
 
 pub async fn get_outfit_recommendation(
-    client: &reqwest::Client,
-    api_key: &str,
+    llm: &LlmClient,
     weather: &CurrentWeather,
     clothes: &[String],
     occasion: Option<&str>,
@@ -91,44 +94,14 @@ pub async fn get_outfit_recommendation(
         style = style_text,
     );
 
-    let body = json!({
-        "model": "gpt-4o-mini",
-        "messages": [
-            { "role": "system", "content": system_prompt },
-            { "role": "user", "content": user_prompt }
-        ],
-        "response_format": { "type": "json_object" },
-        "temperature": 0.4,
-        "max_tokens": 1000
-    });
-
-    let resp = client
-        .post("https://api.openai.com/v1/chat/completions")
-        .bearer_auth(api_key)
-        .json(&body)
-        .send()
-        .await
-        .context("Failed to call OpenAI API")?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        let text = resp.text().await.unwrap_or_default();
-        anyhow::bail!("OpenAI API error ({}): {}", status, text);
-    }
-
-    let resp_json: serde_json::Value = resp
-        .json()
-        .await
-        .context("Failed to parse OpenAI response")?;
-
-    let content = resp_json["choices"][0]["message"]["content"]
-        .as_str()
-        .context("Missing content in OpenAI response")?;
-
-    let recommendation: AiRecommendation =
-        serde_json::from_str(content).context("Failed to parse AI recommendation JSON")?;
-
-    Ok(recommendation)
+    Ok(llm
+        .chat_json::<AiRecommendation>(
+            LlmTask::OutfitRecommendation,
+            ChatRequest::new(vec![Message::user_text(user_prompt)])
+                .system(system_prompt)
+                .json(),
+        )
+        .await?)
 }
 
 // ─── 1b) get_outfit_candidates (3 candidates for diversity scoring) ───
@@ -143,8 +116,7 @@ pub struct GroupedClothes {
 }
 
 pub async fn get_outfit_candidates(
-    client: &reqwest::Client,
-    api_key: &str,
+    llm: &LlmClient,
     weather: &CurrentWeather,
     clothes: &GroupedClothes,
     occasion: Option<&str>,
@@ -153,11 +125,31 @@ pub async fn get_outfit_candidates(
 ) -> anyhow::Result<AiMultiRecommendation> {
     let clothes_grouped = format!(
         "[상의 후보]\n{tops}\n\n[하의 후보]\n{bottoms}\n\n[아우터 후보]\n{outers}\n\n[신발 후보]\n{shoes}\n\n[가방 후보]\n{bags}",
-        tops = if clothes.tops.is_empty() { "(없음)".to_string() } else { clothes.tops.join("\n") },
-        bottoms = if clothes.bottoms.is_empty() { "(없음)".to_string() } else { clothes.bottoms.join("\n") },
-        outers = if clothes.outers.is_empty() { "(없음)".to_string() } else { clothes.outers.join("\n") },
-        shoes = if clothes.shoes.is_empty() { "(없음)".to_string() } else { clothes.shoes.join("\n") },
-        bags = if clothes.bags.is_empty() { "(없음)".to_string() } else { clothes.bags.join("\n") },
+        tops = if clothes.tops.is_empty() {
+            "(없음)".to_string()
+        } else {
+            clothes.tops.join("\n")
+        },
+        bottoms = if clothes.bottoms.is_empty() {
+            "(없음)".to_string()
+        } else {
+            clothes.bottoms.join("\n")
+        },
+        outers = if clothes.outers.is_empty() {
+            "(없음)".to_string()
+        } else {
+            clothes.outers.join("\n")
+        },
+        shoes = if clothes.shoes.is_empty() {
+            "(없음)".to_string()
+        } else {
+            clothes.shoes.join("\n")
+        },
+        bags = if clothes.bags.is_empty() {
+            "(없음)".to_string()
+        } else {
+            clothes.bags.join("\n")
+        },
     );
 
     let occasion_text = occasion.unwrap_or("일상");
@@ -266,51 +258,20 @@ pub async fn get_outfit_candidates(
         },
     );
 
-    let body = json!({
-        "model": "gpt-4o-mini",
-        "messages": [
-            { "role": "system", "content": system_prompt },
-            { "role": "user", "content": user_prompt }
-        ],
-        "response_format": { "type": "json_object" },
-        "temperature": 0.5,
-        "max_tokens": 3000
-    });
-
-    let resp = client
-        .post("https://api.openai.com/v1/chat/completions")
-        .bearer_auth(api_key)
-        .json(&body)
-        .send()
-        .await
-        .context("Failed to call OpenAI API")?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        let text = resp.text().await.unwrap_or_default();
-        anyhow::bail!("OpenAI API error ({}): {}", status, text);
-    }
-
-    let resp_json: serde_json::Value = resp
-        .json()
-        .await
-        .context("Failed to parse OpenAI response")?;
-
-    let content = resp_json["choices"][0]["message"]["content"]
-        .as_str()
-        .context("Missing content in OpenAI response")?;
-
-    let multi: AiMultiRecommendation =
-        serde_json::from_str(content).context("Failed to parse AI multi-recommendation JSON")?;
-
-    Ok(multi)
+    Ok(llm
+        .chat_json::<AiMultiRecommendation>(
+            LlmTask::OutfitCandidates,
+            ChatRequest::new(vec![Message::user_text(user_prompt)])
+                .system(system_prompt)
+                .json(),
+        )
+        .await?)
 }
 
 // ─── 2) analyze_clothing_image (fallback, no RAG) ───
 
 pub async fn analyze_clothing_image(
-    client: &reqwest::Client,
-    api_key: &str,
+    llm: &LlmClient,
     image_data_url: &str,
 ) -> anyhow::Result<VisionAnalysisResult> {
     let system_prompt = r#"당신은 아메카지, 빈티지, 밀리터리, 워크웨어 남성 패션에 익숙한 의류 분석 AI입니다.
@@ -363,65 +324,23 @@ name 작성 원칙:
 - texture_worlds는 workwear, military, tailoring, sweat, outdoor, minimal 중 복수 선택 가능.
 - category는 상의, 하의, 아우터, 신발, 액세서리, 가방, 모자, 벨트 중 하나입니다."#;
 
-    let user_content = json!([
-        {
-            "type": "text",
-            "text": "이 이미지를 분석하여 의류 정보를 추출해주세요. 브랜드는 확실할 때만 포함하세요."
-        },
-        {
-            "type": "image_url",
-            "image_url": {
-                "url": image_data_url,
-                "detail": "high"
-            }
-        }
-    ]);
-
-    let body = json!({
-        "model": "gpt-4o-mini",
-        "messages": [
-            { "role": "system", "content": system_prompt },
-            { "role": "user", "content": user_content }
-        ],
-        "response_format": { "type": "json_object" },
-        "temperature": 0.3,
-        "max_tokens": 500
-    });
-
-    let resp = client
-        .post("https://api.openai.com/v1/chat/completions")
-        .bearer_auth(api_key)
-        .json(&body)
-        .send()
-        .await
-        .context("Failed to call OpenAI Vision API")?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        let text = resp.text().await.unwrap_or_default();
-        anyhow::bail!("OpenAI Vision API error ({}): {}", status, text);
-    }
-
-    let resp_json: serde_json::Value = resp
-        .json()
-        .await
-        .context("Failed to parse OpenAI Vision response")?;
-
-    let content = resp_json["choices"][0]["message"]["content"]
-        .as_str()
-        .context("Missing content in OpenAI Vision response")?;
-
-    let result: VisionAnalysisResult =
-        serde_json::from_str(content).context("Failed to parse Vision analysis JSON")?;
-
-    Ok(result)
+    Ok(llm
+        .chat_json::<VisionAnalysisResult>(
+            LlmTask::VisionAnalyze,
+            ChatRequest::new(vec![Message::user_image(
+                "이 이미지를 분석하여 의류 정보를 추출해주세요. 브랜드는 확실할 때만 포함하세요.",
+                image_data_url,
+            )])
+            .system(system_prompt)
+            .json(),
+        )
+        .await?)
 }
 
 // ─── 3) analyze_clothing_pass1 ───
 
 pub async fn analyze_clothing_pass1(
-    client: &reqwest::Client,
-    api_key: &str,
+    llm: &LlmClient,
     image_data_url: &str,
 ) -> anyhow::Result<Pass1Result> {
     let system_prompt = r#"당신은 아메카지, 빈티지, 밀리터리, 워크웨어 패션 전문 감정사 AI입니다.
@@ -469,65 +388,23 @@ pub async fn analyze_clothing_pass1(
 반드시 JSON 형식으로 응답하세요:
 {"description": "한국어로 작성한 상세 서술. 180~300자 내외 권장, 단 식별 가능한 특징을 우선"}"#;
 
-    let user_content = json!([
-        {
-            "type": "text",
-            "text": "이 의류의 시각적 특징을 서술해주세요. 브랜드는 추측하지 말고, 다른 아이템과 구분할 수 있는 구조적 특징에 집중하세요."
-        },
-        {
-            "type": "image_url",
-            "image_url": {
-                "url": image_data_url,
-                "detail": "high"
-            }
-        }
-    ]);
-
-    let body = json!({
-        "model": "gpt-4o-mini",
-        "messages": [
-            { "role": "system", "content": system_prompt },
-            { "role": "user", "content": user_content }
-        ],
-        "response_format": { "type": "json_object" },
-        "temperature": 0.3,
-        "max_tokens": 500
-    });
-
-    let resp = client
-        .post("https://api.openai.com/v1/chat/completions")
-        .bearer_auth(api_key)
-        .json(&body)
-        .send()
-        .await
-        .context("Failed to call OpenAI Vision API (pass1)")?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        let text = resp.text().await.unwrap_or_default();
-        anyhow::bail!("OpenAI Vision API error (pass1) ({}): {}", status, text);
-    }
-
-    let resp_json: serde_json::Value = resp
-        .json()
-        .await
-        .context("Failed to parse OpenAI Vision response (pass1)")?;
-
-    let content = resp_json["choices"][0]["message"]["content"]
-        .as_str()
-        .context("Missing content in OpenAI Vision response (pass1)")?;
-
-    let result: Pass1Result =
-        serde_json::from_str(content).context("Failed to parse pass1 JSON")?;
-
-    Ok(result)
+    Ok(llm
+        .chat_json::<Pass1Result>(
+            LlmTask::VisionPass1,
+            ChatRequest::new(vec![Message::user_image(
+                "이 의류의 시각적 특징을 서술해주세요. 브랜드는 추측하지 말고, 다른 아이템과 구분할 수 있는 구조적 특징에 집중하세요.",
+                image_data_url,
+            )])
+            .system(system_prompt)
+            .json(),
+        )
+        .await?)
 }
 
 // ─── 4) analyze_clothing_pass2 ───
 
 pub async fn analyze_clothing_pass2(
-    client: &reqwest::Client,
-    api_key: &str,
+    llm: &LlmClient,
     image_data_url: &str,
     references: &[ReferenceMatch],
 ) -> anyhow::Result<VisionAnalysisResult> {
@@ -605,69 +482,27 @@ name 작성 원칙:
 - is_clothing이 false이면 name/category/color/thickness/seasons는 null, rejection_reason을 작성하세요."#
     );
 
-    let user_content = json!([
-        {
-            "type": "text",
-            "text": "이 이미지를 분석하여 의류 정보를 추출해주세요. 위 레퍼런스는 참고하되, 핵심 특징이 충분히 일치할 때만 특정 모델명을 사용하세요."
-        },
-        {
-            "type": "image_url",
-            "image_url": {
-                "url": image_data_url,
-                "detail": "high"
-            }
-        }
-    ]);
-
-    let body = json!({
-        "model": "gpt-4o-mini",
-        "messages": [
-            { "role": "system", "content": system_prompt },
-            { "role": "user", "content": user_content }
-        ],
-        "response_format": { "type": "json_object" },
-        "temperature": 0.2,
-        "max_tokens": 500
-    });
-
-    let resp = client
-        .post("https://api.openai.com/v1/chat/completions")
-        .bearer_auth(api_key)
-        .json(&body)
-        .send()
-        .await
-        .context("Failed to call OpenAI Vision API (pass2)")?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        let text = resp.text().await.unwrap_or_default();
-        anyhow::bail!("OpenAI Vision API error (pass2) ({}): {}", status, text);
-    }
-
-    let resp_json: serde_json::Value = resp
-        .json()
-        .await
-        .context("Failed to parse OpenAI Vision response (pass2)")?;
-
-    let content = resp_json["choices"][0]["message"]["content"]
-        .as_str()
-        .context("Missing content in OpenAI Vision response (pass2)")?;
-
-    let result: VisionAnalysisResult =
-        serde_json::from_str(content).context("Failed to parse pass2 analysis JSON")?;
-
-    Ok(result)
+    Ok(llm
+        .chat_json::<VisionAnalysisResult>(
+            LlmTask::VisionPass2,
+            ChatRequest::new(vec![Message::user_image(
+                "이 이미지를 분석하여 의류 정보를 추출해주세요. 위 레퍼런스는 참고하되, 핵심 특징이 충분히 일치할 때만 특정 모델명을 사용하세요.",
+                image_data_url,
+            )])
+            .system(system_prompt)
+            .json(),
+        )
+        .await?)
 }
 
 /// Full 2-pass RAG pipeline: pass1 → embed → retrieve → pass2
 pub async fn analyze_clothing_image_with_rag(
-    client: &reqwest::Client,
-    api_key: &str,
+    llm: &LlmClient,
     image_data_url: &str,
     embedding_service: &Arc<EmbeddingService>,
 ) -> anyhow::Result<VisionAnalysisResult> {
     tracing::info!("RAG Pass 1: Getting image description...");
-    let pass1 = analyze_clothing_pass1(client, api_key, image_data_url).await?;
+    let pass1 = analyze_clothing_pass1(llm, image_data_url).await?;
     tracing::info!("RAG Pass 1 result: {}", &pass1.description);
 
     let references = embedding_service.search(&pass1.description, 5).await?;
@@ -682,12 +517,15 @@ pub async fn analyze_clothing_image_with_rag(
     );
 
     if top_similarity < 0.5 {
-        tracing::info!("RAG similarity too low ({:.3}), falling back to general analysis", top_similarity);
-        return analyze_clothing_image(client, api_key, image_data_url).await;
+        tracing::info!(
+            "RAG similarity too low ({:.3}), falling back to general analysis",
+            top_similarity
+        );
+        return analyze_clothing_image(llm, image_data_url).await;
     }
 
     tracing::info!("RAG Pass 2: Detailed analysis with reference context...");
-    let result = analyze_clothing_pass2(client, api_key, image_data_url, &references).await?;
+    let result = analyze_clothing_pass2(llm, image_data_url, &references).await?;
 
     Ok(result)
 }
@@ -695,8 +533,7 @@ pub async fn analyze_clothing_image_with_rag(
 // ─── 5) generate_outfit_explanation — 시그니처 변경: score 제거, verdict_label/strengths 분리 ───
 
 pub async fn generate_outfit_explanation(
-    client: &reqwest::Client,
-    api_key: &str,
+    llm: &LlmClient,
     items_desc: &str,
     verdict_label: &str,
     strengths_desc: &str,
@@ -724,38 +561,12 @@ pub async fn generate_outfit_explanation(
         suggestions = suggestions_desc,
     );
 
-    let body = json!({
-        "model": "gpt-4o-mini",
-        "messages": [
-            { "role": "system", "content": system_prompt },
-            { "role": "user", "content": user_prompt }
-        ],
-        "temperature": 0.5,
-        "max_tokens": 500
-    });
+    let resp = llm
+        .chat(
+            LlmTask::OutfitExplanation,
+            ChatRequest::new(vec![Message::user_text(user_prompt)]).system(system_prompt),
+        )
+        .await?;
 
-    let resp = client
-        .post("https://api.openai.com/v1/chat/completions")
-        .bearer_auth(api_key)
-        .json(&body)
-        .send()
-        .await
-        .context("Failed to call OpenAI API for outfit explanation")?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        let text = resp.text().await.unwrap_or_default();
-        anyhow::bail!("OpenAI API error (explanation) ({}): {}", status, text);
-    }
-
-    let resp_json: serde_json::Value = resp
-        .json()
-        .await
-        .context("Failed to parse OpenAI response (explanation)")?;
-
-    let content = resp_json["choices"][0]["message"]["content"]
-        .as_str()
-        .context("Missing content in OpenAI response (explanation)")?;
-
-    Ok(content.to_string())
+    Ok(resp.text_or_empty().to_string())
 }

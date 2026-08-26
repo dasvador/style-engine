@@ -1,19 +1,21 @@
-use anyhow::Context;
-use serde_json::json;
+use std::sync::Arc;
+
 use sqlx::MySqlPool;
 use tokio::sync::RwLock;
 
 use crate::db::reference_repo;
 use crate::models::reference::ReferenceMatch;
+use crate::services::llm::{LlmClient, LlmTask};
 
-/// OpenAI 임베딩 모델. 저사양 서버(EC2 등)에서도 동작하도록 로컬 ONNX 대신 API 사용.
-const OPENAI_EMBEDDING_MODEL: &str = "text-embedding-3-small";
-
-/// text-embedding-3-small 의 출력 차원.
+/// 임베딩 모델의 출력 차원.
 /// 저장된 벡터가 이 길이와 다르면 다른 모델이 만든 것이므로 폐기하고 다시 만든다.
 /// cosine_similarity 는 길이가 다르면 0.0 을 돌려주므로, 그대로 두면 검색이
 /// 에러 없이 조용히 전부 실패한다.
-const EMBEDDING_DIM: usize = 1536;
+///
+/// 임베딩 모델이 설정으로 바뀔 수 있게 된 뒤로 이 값도 모델을 따라가야 한다.
+/// `LLM_TASK_EMBEDDING`으로 다른 차원의 모델을 지정했다면 `LLM_EMBEDDING_DIM`도 함께 바꿔야
+/// 기존 벡터가 폐기되고 재생성된다.
+const DEFAULT_EMBEDDING_DIM: usize = 1536;
 
 /// Cached reference entry for in-memory similarity search
 #[derive(Debug, Clone)]
@@ -25,20 +27,32 @@ struct CachedReference {
     embedding: Vec<f32>,
 }
 
-/// Embedding service using OpenAI embeddings API (no local RAM footprint)
+/// 레퍼런스 임베딩 캐시와 유사도 검색.
+///
+/// 임베딩 호출 자체는 [`LlmClient`]에 위임한다 — 어떤 provider의 어떤 모델을 쓰는지,
+/// 재시도·계측을 어떻게 하는지는 이 서비스의 관심사가 아니다.
 pub struct EmbeddingService {
-    http_client: reqwest::Client,
-    api_key: String,
+    llm: Arc<LlmClient>,
+    expected_dim: usize,
     cache: RwLock<Vec<CachedReference>>,
 }
 
 impl EmbeddingService {
-    /// Initialize the embedding service with an HTTP client and OpenAI API key.
-    pub fn new(http_client: reqwest::Client, api_key: String) -> anyhow::Result<Self> {
-        tracing::info!("Initializing embedding service (OpenAI {})", OPENAI_EMBEDDING_MODEL);
+    pub fn new(llm: Arc<LlmClient>) -> anyhow::Result<Self> {
+        let expected_dim = std::env::var("LLM_EMBEDDING_DIM")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_EMBEDDING_DIM);
+
+        tracing::info!(
+            model = %llm.config().task(LlmTask::Embedding).model,
+            expected_dim,
+            "Initializing embedding service"
+        );
+
         Ok(Self {
-            http_client,
-            api_key,
+            llm,
+            expected_dim,
             cache: RwLock::new(Vec::new()),
         })
     }
@@ -48,39 +62,7 @@ impl EmbeddingService {
         if texts.is_empty() {
             return Ok(Vec::new());
         }
-        let body = json!({
-            "model": OPENAI_EMBEDDING_MODEL,
-            "input": texts,
-        });
-
-        let resp = self
-            .http_client
-            .post("https://api.openai.com/v1/embeddings")
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&body)
-            .send()
-            .await
-            .context("embedding request failed")?;
-
-        let json: serde_json::Value = resp.json().await.context("embedding response parse failed")?;
-        let data = json["data"]
-            .as_array()
-            .ok_or_else(|| anyhow::anyhow!("embedding response missing data: {}", json))?;
-
-        // index 순서 보장
-        let mut indexed: Vec<(usize, Vec<f32>)> = data
-            .iter()
-            .map(|item| {
-                let idx = item["index"].as_u64().unwrap_or(0) as usize;
-                let emb: Vec<f32> = item["embedding"]
-                    .as_array()
-                    .map(|a| a.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect())
-                    .unwrap_or_default();
-                (idx, emb)
-            })
-            .collect();
-        indexed.sort_by_key(|(i, _)| *i);
-        Ok(indexed.into_iter().map(|(_, e)| e).collect())
+        Ok(self.llm.embed(&texts).await?.vectors)
     }
 
     /// Embed a single text string.
@@ -103,13 +85,13 @@ impl EmbeddingService {
                 serde_json::from_value::<Vec<f32>>(emb_json.clone())
                     .ok()
                     .filter(|e| {
-                        let ok = e.len() == EMBEDDING_DIM;
+                        let ok = e.len() == self.expected_dim;
                         if !ok {
                             tracing::warn!(
                                 "Discarding stale embedding for '{}': {} dims, expected {}",
                                 &r.name,
                                 e.len(),
-                                EMBEDDING_DIM
+                                self.expected_dim
                             );
                         }
                         ok
@@ -126,7 +108,13 @@ impl EmbeddingService {
                 let e = self.embed_text(&r.description).await?;
                 let emb_json = serde_json::to_value(&e)?;
                 reference_repo::update_reference(
-                    pool, &r.id, None, None, None, None, Some(&emb_json),
+                    pool,
+                    &r.id,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(&emb_json),
                 )
                 .await?;
                 e
@@ -245,7 +233,7 @@ impl EmbeddingService {
                 "{} {} {} {} {}",
                 c.name,
                 c.color.as_deref().unwrap_or(""),
-                c.style.as_deref().unwrap_or(""),
+                c.style.map(|s| s.as_str()).unwrap_or(""),
                 c.material_primary.as_deref().unwrap_or(""),
                 c.sub_category.as_deref().unwrap_or(""),
             ));
@@ -271,13 +259,15 @@ impl EmbeddingService {
 
         scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
-        Ok(scored.into_iter().take(top_n).map(|(sim, c)| {
-            WardrobeMatch {
+        Ok(scored
+            .into_iter()
+            .take(top_n)
+            .map(|(sim, c)| WardrobeMatch {
                 name: c.name.clone(),
                 category: c.category.clone(),
                 similarity: sim,
-            }
-        }).collect())
+            })
+            .collect())
     }
 }
 
@@ -298,11 +288,7 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     }
 
     let denom = norm_a.sqrt() * norm_b.sqrt();
-    if denom == 0.0 {
-        0.0
-    } else {
-        dot / denom
-    }
+    if denom == 0.0 { 0.0 } else { dot / denom }
 }
 
 /// Amekaji / vintage clothing seed data: (name, era, style, description)

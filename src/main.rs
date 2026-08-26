@@ -15,12 +15,14 @@ mod routes;
 mod services;
 
 use services::embedding::EmbeddingService;
+use services::llm::LlmClient;
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: sqlx::MySqlPool,
     pub http_client: reqwest::Client,
-    pub openai_api_key: String,
+    /// 모든 모델 호출의 단일 진입점. task → provider/model 라우팅, 재시도, 계측을 담당한다.
+    pub llm: Arc<LlmClient>,
     pub kma_api_key: String,
     pub embedding: Arc<EmbeddingService>,
 }
@@ -53,16 +55,15 @@ async fn main() {
         .await
         .expect("Failed to run migrations");
 
-    let openai_api_key =
-        std::env::var("OPENAI_API_KEY").unwrap_or_default();
-    let kma_api_key =
-        std::env::var("KMA_API_KEY").unwrap_or_default();
+    let kma_api_key = std::env::var("KMA_API_KEY").unwrap_or_default();
     let http_client = reqwest::Client::new();
 
-    // Initialize embedding service (OpenAI API — no local RAM footprint)
+    // LLM provider 레이어. task별 provider/model 라우팅을 환경변수에서 읽는다.
+    let llm = Arc::new(LlmClient::from_env(http_client.clone()));
+
+    // Initialize embedding service (API 기반 — 로컬 RAM 사용 없음)
     let embedding_service = Arc::new(
-        EmbeddingService::new(http_client.clone(), openai_api_key.clone())
-            .expect("Failed to initialize embedding service"),
+        EmbeddingService::new(llm.clone()).expect("Failed to initialize embedding service"),
     );
 
     // Seed reference data if empty, then load cache
@@ -78,7 +79,7 @@ async fn main() {
     let state = AppState {
         db: pool,
         http_client,
-        openai_api_key,
+        llm,
         kma_api_key,
         embedding: embedding_service,
     };
