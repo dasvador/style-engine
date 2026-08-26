@@ -7,201 +7,23 @@
 //! 실행:
 //!   cargo test --test shadow_cases -- --nocapture
 //!
-//! TODO(option B):
-//!   - hard filter에서 workwear/military 2+ 제거, 상하의+아우터만 카운팅으로 축소
-//!   - coherence subscore로 이전
-//!   - accessory 슬롯은 strong-style count 제외
-//!   - 포멀+스포츠 같은 명확 충돌만 hard 유지
+//! 케이스 스키마와 로딩은 tests/common/mod.rs 로 분리되어 eval_scorecard 와 공유한다.
+//! 회귀 게이트가 필요하면 이 파일이 아니라 eval_scorecard 를 본다 — 여기 report_* 는
+//! 진단용 출력이고 통과/실패를 판정하지 않는다.
 
-use std::collections::HashMap;
-use std::path::PathBuf;
+mod common;
 
-use chrono::NaiveDateTime;
-use serde::Deserialize;
+use common::*;
 
-use style_engine::models::clothing::Clothing;
-use style_engine::models::outfit::{OutfitContext, OutfitSlot, SlotKind};
 use style_engine::services::serving_ranker;
-use style_engine::services::style_engine_v2::{self, HardFilterReason, TodayFitLevel};
-
-// ─── Fixture schema ───
-
-#[derive(Debug, Deserialize)]
-struct Registry {
-    items: HashMap<String, RegistryItem>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RegistryItem {
-    name: String,
-    category: String,
-    style: Option<String>,
-    role: Option<String>,
-    tone: Option<String>,
-    saturation: Option<String>,
-    color_temperature: Option<String>,
-    weight: Option<String>,
-    formality_level: Option<i8>,
-    #[serde(default)]
-    seasons: Vec<String>,
-    #[serde(default)]
-    texture_worlds: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CaseFile {
-    #[allow(dead_code)]
-    version: u32,
-    cases: Vec<TestCase>,
-}
-
-#[derive(Debug, Deserialize)]
-struct TestCase {
-    case_id: String,
-    situation: Option<String>,
-    #[serde(default)]
-    current_season: Option<String>,
-    #[allow(dead_code)]
-    temperature_c: Option<f64>,
-    #[serde(default)]
-    top: String,
-    #[serde(default)]
-    bottom: String,
-    #[serde(default)]
-    outer: String,
-    #[serde(default)]
-    shoes: String,
-    #[serde(default)]
-    bag: String,
-    expected_hard_pass: bool,
-    expected_today_fit: String,
-    expected_preference: String,
-    #[serde(default)]
-    forbidden_reason: String,
-    #[serde(default)]
-    notes: String,
-    #[serde(default)]
-    tags: Vec<String>,
-}
-
-// ─── Loaders ───
-
-fn fixture_path(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures")
-        .join(name)
-}
-
-fn load_registry() -> Registry {
-    let content = std::fs::read_to_string(fixture_path("wardrobe_registry.toml"))
-        .expect("failed to read wardrobe_registry.toml");
-    toml::from_str::<Registry>(&content).expect("failed to parse wardrobe_registry.toml")
-}
-
-fn load_cases() -> CaseFile {
-    let content = std::fs::read_to_string(fixture_path("recommendation_cases.toml"))
-        .expect("failed to read recommendation_cases.toml");
-    toml::from_str::<CaseFile>(&content).expect("failed to parse recommendation_cases.toml")
-}
-
-// ─── Helpers ───
-
-fn placeholder_ts() -> NaiveDateTime {
-    NaiveDateTime::parse_from_str("2026-04-01 00:00:00", "%Y-%m-%d %H:%M:%S").unwrap()
-}
-
-fn registry_to_outfit_slot(
-    item_id: &str,
-    slot_kind: SlotKind,
-    registry: &Registry,
-) -> Option<OutfitSlot> {
-    if item_id.is_empty() {
-        return None;
-    }
-    let item = registry
-        .items
-        .get(item_id)
-        .unwrap_or_else(|| panic!("unknown item '{}' in registry", item_id));
-    let now = placeholder_ts();
-    Some(OutfitSlot {
-        slot: slot_kind,
-        clothing: Clothing {
-            id: item_id.to_string(),
-            name: item.name.clone(),
-            category: item.category.clone(),
-            color: None,
-            thickness: "medium".to_string(),
-            image_url: None,
-            tone: item.tone.clone(),
-            saturation: item.saturation.clone(),
-            style: item.style.clone(),
-            weight: item.weight.clone(),
-            role: item.role.clone(),
-            color_temperature: item.color_temperature.clone(),
-            versatility: None,
-            statement_level: None,
-            formality_level: item.formality_level,
-            gender: None,
-            style_mood: None,
-            visual_weight: None,
-            texture_depth: None,
-            visual_weight_v2: None,
-            texture_depth_v2: None,
-            grounding_score: None,
-            shadow_tone: None,
-            silhouette_volume: None,
-            material_primary: None,
-            sub_category: None,
-            floating_score: None,
-            strong_style_score: None,
-            texture_keywords: None,
-            created_at: now,
-            updated_at: now,
-        },
-        seasons: item.seasons.clone(),
-        texture_worlds: item.texture_worlds.clone(),
-    })
-}
-
-fn case_to_context(case: &TestCase, registry: &Registry) -> OutfitContext {
-    let slot_defs = [
-        (&case.top, SlotKind::Top),
-        (&case.bottom, SlotKind::Bottom),
-        (&case.outer, SlotKind::Outer),
-        (&case.shoes, SlotKind::Shoes),
-        (&case.bag, SlotKind::Bag),
-    ];
-    let slots: Vec<OutfitSlot> = slot_defs
-        .iter()
-        .filter_map(|(id, kind)| registry_to_outfit_slot(id, *kind, registry))
-        .collect();
-    OutfitContext {
-        slots,
-        situation: case.situation.clone(),
-    }
-}
+use style_engine::services::style_engine_v2::{self, TodayFitLevel};
 
 /// 상황별 케이스 비활성화 — 출근/데이트/비즈니스는 선택 폭이 좁아져
 /// 현재 단계에서는 캐주얼만으로 평가. 향후 situation-aware 로직 구현 시 해제.
 const SKIP_SITUATIONS: &[&str] = &["출근", "비즈니스", "데이트"];
 
 fn is_active(case: &TestCase) -> bool {
-    match case.situation.as_deref() {
-        Some(s) if SKIP_SITUATIONS.contains(&s) => false,
-        _ => true,
-    }
-}
-
-fn reason_code(r: &HardFilterReason) -> &'static str {
-    match r {
-        HardFilterReason::StyleHardConflict => "StyleHardConflict",
-        HardFilterReason::StrongInnerViolation => "StrongInnerViolation",
-        HardFilterReason::LackOfStructure => "LackOfStructure",
-        HardFilterReason::AllOneTone => "AllOneTone",
-        HardFilterReason::SeasonCompleteMismatch => "SeasonCompleteMismatch",
-        HardFilterReason::WarmMonotoneNoStructure => "WarmMonotoneNoStructure",
-        HardFilterReason::FormalSituationAthleticShoes => "FormalSituationAthleticShoes",
-    }
+    !matches!(case.situation.as_deref(), Some(s) if SKIP_SITUATIONS.contains(&s))
 }
 
 // ─── Tests ───
@@ -281,7 +103,11 @@ fn report_hard_filter_agreement() {
         let ctx = case_to_context(case, &registry);
         let hard = style_engine_v2::run_hard_filter(&ctx, case.current_season.as_deref());
 
-        let actual_reasons: Vec<String> = hard.reasons.iter().map(|r| reason_code(r).to_string()).collect();
+        let actual_reasons: Vec<String> = hard
+            .reasons
+            .iter()
+            .map(|r| reason_code(r).to_string())
+            .collect();
 
         if hard.pass == case.expected_hard_pass {
             if hard.pass {
@@ -302,13 +128,22 @@ fn report_hard_filter_agreement() {
     println!();
     println!("=== Hard Filter Agreement Report ===");
     println!("total: {total} (skipped {skipped} situation-dependent)");
-    println!("agree: {agree} ({:.0}%)", 100.0 * agree as f32 / total as f32);
+    println!(
+        "agree: {agree} ({:.0}%)",
+        100.0 * agree as f32 / total as f32
+    );
     println!("  pass: {agree_pass}  fail: {agree_fail}");
-    println!("false positives (engine rejects, human accepts): {}", false_positives.len());
+    println!(
+        "false positives (engine rejects, human accepts): {}",
+        false_positives.len()
+    );
     for (id, reasons, notes) in &false_positives {
         println!("  X {id:12}  {reasons:?}  -- {notes}");
     }
-    println!("false negatives (engine passes, human rejects): {}", false_negatives.len());
+    println!(
+        "false negatives (engine passes, human rejects): {}",
+        false_negatives.len()
+    );
     for (id, notes) in &false_negatives {
         println!("  ! {id:12}  -- {notes}");
     }
@@ -339,8 +174,10 @@ fn report_subscore_distribution() {
 
     println!();
     println!("=== Subscore Detail ===");
-    println!("{:12} {:>5} {:>4} {:>4} {:>4} {:>4} {:>4} {:>8}",
-             "case_id", "v2", "bal", "coh", "utl", "acc", "hard", "pref");
+    println!(
+        "{:12} {:>5} {:>4} {:>4} {:>4} {:>4} {:>4} {:>8}",
+        "case_id", "v2", "bal", "coh", "utl", "acc", "hard", "pref"
+    );
     println!("{}", "-".repeat(60));
     for (id, total, axes, hard, pref) in &rows {
         let mark = if *hard { " " } else { "X" };
@@ -352,7 +189,10 @@ fn report_subscore_distribution() {
 
     let totals: Vec<i32> = rows.iter().map(|r| r.1).collect();
     print_stats("style_score", &totals);
-    for (i, name) in ["balance", "coherence", "utility", "accessory"].iter().enumerate() {
+    for (i, name) in ["balance", "coherence", "utility", "accessory"]
+        .iter()
+        .enumerate()
+    {
         let vals: Vec<i32> = rows.iter().map(|r| r.2[i]).collect();
         print_stats(name, &vals);
     }
@@ -365,13 +205,13 @@ fn print_stats(label: &str, data: &[i32]) {
     let n = s.len();
     let (min, max, med) = (s[0], s[n - 1], s[n / 2]);
     let mean = s.iter().sum::<i32>() as f32 / n as f32;
-    println!(
-        "  {label:12} n={n:>2} min={min:>3} med={med:>3} avg={mean:>5.1} max={max:>3}"
-    );
+    println!("  {label:12} n={n:>2} min={min:>3} med={med:>3} avg={mean:>5.1} max={max:>3}");
 }
 
 // ─── Full analysis (전체 50건, skip 없음) ───
 
+// 진단 리포트용 집계 구조체 — 일부 필드는 현재 출력 포맷에서 쓰이지 않는다.
+#[allow(dead_code)]
 struct CaseResult {
     case_id: String,
     situation: String,
@@ -392,13 +232,6 @@ struct CaseResult {
     serving_reason: String,
     notes: String,
     outfit_key: String,
-}
-
-fn build_outfit_key(c: &TestCase) -> String {
-    format!(
-        "{}|{}|{}|{}|{}",
-        c.top, c.bottom, c.outer, c.shoes, c.bag
-    )
 }
 
 #[test]
@@ -426,7 +259,11 @@ fn report_full_analysis() {
             utl: sub.utility,
             acc: sub.accessory,
             hard_pass: hard.pass,
-            hard_reasons: hard.reasons.iter().map(|r| reason_code(r).to_string()).collect(),
+            hard_reasons: hard
+                .reasons
+                .iter()
+                .map(|r| reason_code(r).to_string())
+                .collect(),
             expected_hard_pass: case.expected_hard_pass,
             expected_pref: case.expected_preference.clone(),
             expected_today_fit: case.expected_today_fit.clone(),
@@ -447,16 +284,26 @@ fn report_full_analysis() {
         .filter(|r| !r.hard_pass && r.expected_hard_pass)
         .collect();
     fps.sort_by(|a, b| b.v2.cmp(&a.v2)); // v2 높은 순 (가장 억울한 순)
-    println!("{:12} {:>5} {:>4} {:>4} {:>4} {:>4}  {:<30} {}", "case_id", "v2", "bal", "coh", "utl", "acc", "reasons", "notes");
+    println!(
+        "{:12} {:>5} {:>4} {:>4} {:>4} {:>4}  {:<30} notes",
+        "case_id", "v2", "bal", "coh", "utl", "acc", "reasons"
+    );
     println!("{}", "-".repeat(100));
     for (i, r) in fps.iter().enumerate().take(10) {
         println!(
             "{:12} {:>5} {:>4} {:>4} {:>4} {:>4}  {:<30} {}",
-            r.case_id, r.v2, r.bal, r.coh, r.utl, r.acc,
+            r.case_id,
+            r.v2,
+            r.bal,
+            r.coh,
+            r.utl,
+            r.acc,
             r.hard_reasons.join(","),
             truncate(&r.notes, 40),
         );
-        if i >= 9 { break; }
+        if i >= 9 {
+            break;
+        }
     }
     println!("total false positives: {}", fps.len());
 
@@ -468,14 +315,27 @@ fn report_full_analysis() {
         .filter(|r| r.expected_pref == "Accept")
         .collect();
     accepts.sort_by_key(|r| r.v2);
-    println!("{:12} {:>5} {:>4} {:>4} {:>4} {:>4} {:>4} {:>8}  {}", "case_id", "v2", "bal", "coh", "utl", "acc", "hard", "sit", "notes");
+    println!(
+        "{:12} {:>5} {:>4} {:>4} {:>4} {:>4} {:>4} {:>8}  notes",
+        "case_id", "v2", "bal", "coh", "utl", "acc", "hard", "sit"
+    );
     println!("{}", "-".repeat(105));
     for r in accepts.iter().take(10) {
         let hm = if r.hard_pass { " " } else { "X" };
         println!(
             "{:12} {:>5} {:>4} {:>4} {:>4} {:>4} {:>4} {:>8}  {}",
-            r.case_id, r.v2, r.bal, r.coh, r.utl, r.acc, hm,
-            if r.situation.is_empty() { "-" } else { &r.situation },
+            r.case_id,
+            r.v2,
+            r.bal,
+            r.coh,
+            r.utl,
+            r.acc,
+            hm,
+            if r.situation.is_empty() {
+                "-"
+            } else {
+                &r.situation
+            },
             truncate(&r.notes, 40),
         );
     }
@@ -489,27 +349,53 @@ fn report_full_analysis() {
     for r in &results {
         by_outfit.entry(r.outfit_key.as_str()).or_default().push(r);
     }
-    println!("{:30} {:12} {:>8} {:>5} {:>4} {:>8}  {:12} {:>8} {:>5} {:>4} {:>8}",
-        "outfit", "case_A", "sit_A", "v2_A", "hard", "pref_A", "case_B", "sit_B", "v2_B", "hard", "pref_B");
+    println!(
+        "{:30} {:12} {:>8} {:>5} {:>4} {:>8}  {:12} {:>8} {:>5} {:>4} {:>8}",
+        "outfit",
+        "case_A",
+        "sit_A",
+        "v2_A",
+        "hard",
+        "pref_A",
+        "case_B",
+        "sit_B",
+        "v2_B",
+        "hard",
+        "pref_B"
+    );
     println!("{}", "-".repeat(130));
     for (key, group) in &by_outfit {
-        if group.len() < 2 { continue; }
+        if group.len() < 2 {
+            continue;
+        }
         for i in 0..group.len() {
             for j in (i + 1)..group.len() {
                 let a = group[i];
                 let b = group[j];
-                if a.situation == b.situation { continue; }
+                if a.situation == b.situation {
+                    continue;
+                }
                 let pref_diff = a.expected_pref != b.expected_pref
                     || a.hard_pass != b.hard_pass
                     || (a.v2 - b.v2).abs() >= 5;
-                if !pref_diff { continue; }
+                if !pref_diff {
+                    continue;
+                }
                 let ha = if a.hard_pass { " " } else { "X" };
                 let hb = if b.hard_pass { " " } else { "X" };
                 println!(
                     "{:30} {:12} {:>8} {:>5} {:>4} {:>8}  {:12} {:>8} {:>5} {:>4} {:>8}",
                     truncate(key, 30),
-                    a.case_id, a.situation, a.v2, ha, a.expected_pref,
-                    b.case_id, b.situation, b.v2, hb, b.expected_pref,
+                    a.case_id,
+                    a.situation,
+                    a.v2,
+                    ha,
+                    a.expected_pref,
+                    b.case_id,
+                    b.situation,
+                    b.v2,
+                    hb,
+                    b.expected_pref,
                 );
             }
         }
@@ -523,8 +409,10 @@ fn report_full_analysis() {
     ];
     println!();
     println!("--- notable pairs (similar outfit, different situation or accessory) ---");
-    println!("{:12} {:>8} {:>5} {:>4} {:>8}  vs  {:12} {:>8} {:>5} {:>4} {:>8}",
-        "case_A", "sit_A", "v2_A", "hard", "pref_A", "case_B", "sit_B", "v2_B", "hard", "pref_B");
+    println!(
+        "{:12} {:>8} {:>5} {:>4} {:>8}  vs  {:12} {:>8} {:>5} {:>4} {:>8}",
+        "case_A", "sit_A", "v2_A", "hard", "pref_A", "case_B", "sit_B", "v2_B", "hard", "pref_B"
+    );
     println!("{}", "-".repeat(110));
     for (id_a, id_b) in &notable_pairs {
         let a = results.iter().find(|r| r.case_id == *id_a);
@@ -534,8 +422,16 @@ fn report_full_analysis() {
             let hb = if b.hard_pass { " " } else { "X" };
             println!(
                 "{:12} {:>8} {:>5} {:>4} {:>8}  vs  {:12} {:>8} {:>5} {:>4} {:>8}",
-                a.case_id, a.situation, a.v2, ha, a.expected_pref,
-                b.case_id, b.situation, b.v2, hb, b.expected_pref,
+                a.case_id,
+                a.situation,
+                a.v2,
+                ha,
+                a.expected_pref,
+                b.case_id,
+                b.situation,
+                b.v2,
+                hb,
+                b.expected_pref,
             );
         }
     }
@@ -565,9 +461,15 @@ fn report_full_analysis() {
         }
     }
     let total = results.len();
-    println!("total={total}  agree={fit_agree} ({:.0}%)", 100.0 * fit_agree as f32 / total as f32);
+    println!(
+        "total={total}  agree={fit_agree} ({:.0}%)",
+        100.0 * fit_agree as f32 / total as f32
+    );
     if !fit_mismatch.is_empty() {
-        println!("{:12} {:>8} {:>10} {:>10} {}", "case_id", "sit", "expected", "actual", "notes");
+        println!(
+            "{:12} {:>8} {:>10} {:>10} notes",
+            "case_id", "sit", "expected", "actual"
+        );
         for (id, sit, exp, act, notes) in &fit_mismatch {
             println!("{:12} {:>8} {:>10} {:>10} {}", id, sit, exp, act, notes);
         }
@@ -583,9 +485,23 @@ fn report_full_analysis() {
         ("HC039", "HC040"),
         ("HC023", "HC024"),
     ];
-    println!("{:12} {:>8} {:>5} {:>5} {:>4} {:>10} {:>8}  vs  {:12} {:>8} {:>5} {:>5} {:>4} {:>10} {:>8}",
-        "case_A", "sit", "v2", "serv", "adj", "fit", "pref",
-        "case_B", "sit", "v2", "serv", "adj", "fit", "pref");
+    println!(
+        "{:12} {:>8} {:>5} {:>5} {:>4} {:>10} {:>8}  vs  {:12} {:>8} {:>5} {:>5} {:>4} {:>10} {:>8}",
+        "case_A",
+        "sit",
+        "v2",
+        "serv",
+        "adj",
+        "fit",
+        "pref",
+        "case_B",
+        "sit",
+        "v2",
+        "serv",
+        "adj",
+        "fit",
+        "pref"
+    );
     println!("{}", "-".repeat(140));
     for (a_id, b_id) in &notable {
         let a = results.iter().find(|r| r.case_id == *a_id);
@@ -593,8 +509,20 @@ fn report_full_analysis() {
         if let (Some(a), Some(b)) = (a, b) {
             println!(
                 "{:12} {:>8} {:>5} {:>5} {:>4} {:>10} {:>8}  vs  {:12} {:>8} {:>5} {:>5} {:>4} {:>10} {:>8}",
-                a.case_id, a.situation, a.v2, a.serving_score, a.serving_adj, fit_label(&a.today_fit), a.expected_pref,
-                b.case_id, b.situation, b.v2, b.serving_score, b.serving_adj, fit_label(&b.today_fit), b.expected_pref,
+                a.case_id,
+                a.situation,
+                a.v2,
+                a.serving_score,
+                a.serving_adj,
+                fit_label(&a.today_fit),
+                a.expected_pref,
+                b.case_id,
+                b.situation,
+                b.v2,
+                b.serving_score,
+                b.serving_adj,
+                fit_label(&b.today_fit),
+                b.expected_pref,
             );
         }
     }
@@ -602,15 +530,40 @@ fn report_full_analysis() {
     // ═══ 6. Category-filtered rates ═══
     println!();
     println!("═══ 6. Category-filtered Rates ═══");
-    for (prefix, label) in [("SG", "situation"), ("AC", "accessory"), ("TG", "temperature")] {
-        let cat: Vec<&CaseResult> = results.iter().filter(|r| r.case_id.starts_with(prefix)).collect();
-        if cat.is_empty() { continue; }
+    for (prefix, label) in [
+        ("SG", "situation"),
+        ("AC", "accessory"),
+        ("TG", "temperature"),
+    ] {
+        let cat: Vec<&CaseResult> = results
+            .iter()
+            .filter(|r| r.case_id.starts_with(prefix))
+            .collect();
+        if cat.is_empty() {
+            continue;
+        }
         let n = cat.len();
-        let h_ok = cat.iter().filter(|r| r.hard_pass == r.expected_hard_pass).count();
-        let f_ok = cat.iter().filter(|r| fit_label(&r.today_fit) == r.expected_today_fit).count();
-        let c_ok = cat.iter().filter(|r| r.hard_pass == r.expected_hard_pass && fit_label(&r.today_fit) == r.expected_today_fit).count();
-        println!("  {label:12} n={n:>2}  hard={h_ok}/{n} ({:.0}%)  fit={f_ok}/{n} ({:.0}%)  combined={c_ok}/{n} ({:.0}%)",
-            100.0*h_ok as f32/n as f32, 100.0*f_ok as f32/n as f32, 100.0*c_ok as f32/n as f32);
+        let h_ok = cat
+            .iter()
+            .filter(|r| r.hard_pass == r.expected_hard_pass)
+            .count();
+        let f_ok = cat
+            .iter()
+            .filter(|r| fit_label(&r.today_fit) == r.expected_today_fit)
+            .count();
+        let c_ok = cat
+            .iter()
+            .filter(|r| {
+                r.hard_pass == r.expected_hard_pass
+                    && fit_label(&r.today_fit) == r.expected_today_fit
+            })
+            .count();
+        println!(
+            "  {label:12} n={n:>2}  hard={h_ok}/{n} ({:.0}%)  fit={f_ok}/{n} ({:.0}%)  combined={c_ok}/{n} ({:.0}%)",
+            100.0 * h_ok as f32 / n as f32,
+            100.0 * f_ok as f32 / n as f32,
+            100.0 * c_ok as f32 / n as f32
+        );
         // detail mismatches
         for r in &cat {
             let h_match = r.hard_pass == r.expected_hard_pass;
@@ -621,14 +574,16 @@ fn report_full_analysis() {
                 } else {
                     format!("(exp:{})", r.expected_today_fit)
                 };
-                println!("    {:8} hard:{}{} fit:{}{} serv={:>4} {}",
+                println!(
+                    "    {:8} hard:{}{} fit:{}{} serv={:>4} {}",
                     r.case_id,
                     if r.hard_pass { "P" } else { "F" },
                     if h_match { "" } else { "!" },
                     fit_label(&r.today_fit),
                     fit_note,
                     r.serving_score,
-                    truncate(&r.notes, 35));
+                    truncate(&r.notes, 35)
+                );
             }
         }
     }
@@ -636,30 +591,61 @@ fn report_full_analysis() {
     // ═══ 7. HC024 cluster — 데이트+스포츠슈즈 ═══
     println!();
     println!("═══ 7. 데이트+스포츠슈즈 cluster ═══");
-    let date_sport: Vec<&CaseResult> = results.iter().filter(|r| {
-        r.situation == "데이트" && r.notes.contains("러닝") || r.case_id == "HC024" || r.case_id == "AC005" || r.case_id == "AC014" || r.case_id == "SG005"
-    }).collect();
-    println!("{:8} {:>5} {:>5} {:>10} {:>8} {}", "case_id", "v2", "serv", "fit", "pref", "notes");
+    let date_sport: Vec<&CaseResult> = results
+        .iter()
+        .filter(|r| {
+            r.situation == "데이트" && r.notes.contains("러닝")
+                || r.case_id == "HC024"
+                || r.case_id == "AC005"
+                || r.case_id == "AC014"
+                || r.case_id == "SG005"
+        })
+        .collect();
+    println!(
+        "{:8} {:>5} {:>5} {:>10} {:>8} notes",
+        "case_id", "v2", "serv", "fit", "pref"
+    );
     for r in &date_sport {
-        println!("{:8} {:>5} {:>5} {:>10} {:>8} {}", r.case_id, r.v2, r.serving_score, fit_label(&r.today_fit), r.expected_pref, truncate(&r.notes, 40));
+        println!(
+            "{:8} {:>5} {:>5} {:>10} {:>8} {}",
+            r.case_id,
+            r.v2,
+            r.serving_score,
+            fit_label(&r.today_fit),
+            r.expected_pref,
+            truncate(&r.notes, 40)
+        );
     }
 
     // ═══ Summary ═══
     println!();
     println!("═══ Summary ═══");
-    let fp = results.iter().filter(|r| !r.hard_pass && r.expected_hard_pass).count();
-    let fn_ = results.iter().filter(|r| r.hard_pass && !r.expected_hard_pass).count();
+    let fp = results
+        .iter()
+        .filter(|r| !r.hard_pass && r.expected_hard_pass)
+        .count();
+    let fn_ = results
+        .iter()
+        .filter(|r| r.hard_pass && !r.expected_hard_pass)
+        .count();
     let hard_agree = total - fp - fn_;
-    let full_agree = results.iter().filter(|r| {
-        r.hard_pass == r.expected_hard_pass && fit_label(&r.today_fit) == r.expected_today_fit
-    }).count();
+    let full_agree = results
+        .iter()
+        .filter(|r| {
+            r.hard_pass == r.expected_hard_pass && fit_label(&r.today_fit) == r.expected_today_fit
+        })
+        .count();
     println!("total={total}");
-    println!("hard: agree={hard_agree} ({:.0}%)  FP={fp}  FN={fn_}", 100.0 * hard_agree as f32 / total as f32);
-    println!("today_fit: agree={fit_agree} ({:.0}%)", 100.0 * fit_agree as f32 / total as f32);
-    println!("combined (hard+fit): agree={full_agree} ({:.0}%)", 100.0 * full_agree as f32 / total as f32);
-}
-
-fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max { s.to_string() }
-    else { format!("{}…", &s[..s.char_indices().take(max).last().map(|(i,_)| i).unwrap_or(max)]) }
+    println!(
+        "hard: agree={hard_agree} ({:.0}%)  FP={fp}  FN={fn_}",
+        100.0 * hard_agree as f32 / total as f32
+    );
+    println!(
+        "today_fit: agree={fit_agree} ({:.0}%)",
+        100.0 * fit_agree as f32 / total as f32
+    );
+    println!(
+        "combined (hard+fit): agree={full_agree} ({:.0}%)",
+        100.0 * full_agree as f32 / total as f32
+    );
 }

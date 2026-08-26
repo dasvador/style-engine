@@ -1,0 +1,31 @@
+{
+  "total_cases": 96,
+  "hard_filter": {
+    "accuracy_pct": 93.8,
+    "false_positives": 3,
+    "false_negatives": 3,
+    "reject_precision_pct": 75.0,
+    "reject_recall_pct": 75.0,
+    "fp_by_reason": {
+      "LackOfStructure": 1,
+      "WarmMonotoneNoStructure": 2
+    }
+  },
+  "today_fit": {
+    "accuracy_pct": 61.5,
+    "confusion": {
+      "Borderline→Fail": 1,
+      "Borderline→Pass": 23,
+      "Fail→Borderline": 3,
+      "Fail→Pass": 9,
+      "Pass→Borderline": 1
+    }
+  },
+  "preference": {
+    "pairwise_ranking_pct": 74.9,
+    "accept_mean_score": 96.7,
+    "reject_mean_score": 91.9,
+    "separation": 4.8
+  },
+  "combined_accuracy_pct": 58.3
+}
