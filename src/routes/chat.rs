@@ -1068,7 +1068,7 @@ fn build_final_outfit(
             .filter(|c| is_weather_appropriate(c, temp))
             .map(|c| (c, outfit_scorer::complement_score(anchor, c)))
             .collect();
-        scored.sort_by(|a, b| b.1.cmp(&a.1));
+        scored.sort_by_key(|a| std::cmp::Reverse(a.1));
 
         let mut result = Vec::new();
         let mut sub_counts: std::collections::HashMap<String, usize> =
@@ -1145,7 +1145,7 @@ fn build_final_outfit(
         }
     }
 
-    combos.sort_by(|a, b| b.1.cmp(&a.1));
+    combos.sort_by_key(|a| std::cmp::Reverse(a.1));
     let (best_outfit, best_score) = combos.first()?;
 
     tracing::info!(

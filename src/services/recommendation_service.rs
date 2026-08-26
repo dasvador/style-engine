@@ -126,30 +126,26 @@ fn evaluate_today_fitness(
     let bottom_temp = bottom.and_then(|t| t.color_temperature.as_deref());
 
     let has_contrast = match (top_tone, bottom_tone) {
-        (Some(tt), Some(bt)) => {
-            if tt == bt {
-                // 같은 밝기 → 색온도라도 달라야 함
-                let same_color_temp = top_temp.is_some() && top_temp == bottom_temp;
-                if same_color_temp {
-                    // 완전 동일 톤+색온도: 강한 감점
-                    penalty += 12;
-                    false
-                } else if tt == Tone::Bright {
-                    // 둘 다 밝음 (색온도는 다름): 약한 감점
-                    let outer_helps = outer
-                        .and_then(|o| o.tone)
-                        .is_some_and(|t| t == Tone::Dark || t == Tone::Mid);
-                    if outer_helps {
-                        true
-                    } else {
-                        penalty += 8;
-                        false
-                    }
+        (Some(tt), Some(bt)) if tt == bt => {
+            // 같은 밝기 → 색온도라도 달라야 함
+            let same_color_temp = top_temp.is_some() && top_temp == bottom_temp;
+            if same_color_temp {
+                // 완전 동일 톤+색온도: 강한 감점
+                penalty += 12;
+                false
+            } else if tt == Tone::Bright {
+                // 둘 다 밝음 (색온도는 다름): 약한 감점
+                let outer_helps = outer
+                    .and_then(|o| o.tone)
+                    .is_some_and(|t| t == Tone::Dark || t == Tone::Mid);
+                if outer_helps {
+                    true
                 } else {
-                    true // 둘 다 어두움/중간이지만 색온도 다름 → OK
+                    penalty += 8;
+                    false
                 }
             } else {
-                true // 밝기가 다름 → 대비 있음
+                true // 둘 다 어두움/중간이지만 색온도 다름 → OK
             }
         }
         _ => true, // 데이터 없음 → 패스

@@ -796,7 +796,7 @@ async fn select_best_shoe(
         })
         .collect();
 
-    scored.sort_by(|a, b| b.1.cmp(&a.1));
+    scored.sort_by_key(|a| std::cmp::Reverse(a.1));
 
     if let Some((best, _)) = scored.first() {
         let seasons = clothing_repo::get_seasons(db, &best.id)
@@ -890,7 +890,7 @@ async fn select_best_bag(
         })
         .collect();
 
-    scored.sort_by(|a, b| b.1.cmp(&a.1));
+    scored.sort_by_key(|a| std::cmp::Reverse(a.1));
 
     if let Some((best, _)) = scored.first() {
         let seasons = clothing_repo::get_seasons(db, &best.id)
