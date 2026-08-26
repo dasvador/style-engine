@@ -2,9 +2,11 @@ use sqlx::MySqlPool;
 use uuid::Uuid;
 
 use crate::models::clothing::Clothing;
+use crate::models::style_vocab::{Role, Saturation, Style, Tone, Weight};
 
 const SELECT_COLS: &str = "id, name, category, gender, style_mood, color, thickness, image_url, tone, saturation, style, weight, role, color_temperature, versatility, statement_level, formality_level, visual_weight, texture_depth, visual_weight_v2, texture_depth_v2, grounding_score, shadow_tone, silhouette_volume, material_primary, sub_category, floating_score, strong_style_score, texture_keywords, created_at, updated_at";
 
+#[allow(clippy::too_many_arguments)] // 테이블 컬럼을 그대로 받는 저장 함수
 pub async fn insert_clothing(
     pool: &MySqlPool,
     name: &str,
@@ -12,11 +14,11 @@ pub async fn insert_clothing(
     color: Option<&str>,
     thickness: &str,
     image_url: Option<&str>,
-    tone: Option<&str>,
-    saturation: Option<&str>,
-    style: Option<&str>,
-    weight: Option<&str>,
-    role: Option<&str>,
+    tone: Option<Tone>,
+    saturation: Option<Saturation>,
+    style: Option<Style>,
+    weight: Option<Weight>,
+    role: Option<Role>,
     color_temperature: Option<&str>,
     versatility: Option<&str>,
     statement_level: Option<i8>,
@@ -45,10 +47,13 @@ pub async fn insert_clothing(
     .execute(pool)
     .await?;
 
-    sqlx::query_as::<_, Clothing>(&format!("SELECT {} FROM clothing WHERE id = ?", SELECT_COLS))
-        .bind(&id)
-        .fetch_one(pool)
-        .await
+    sqlx::query_as::<_, Clothing>(&format!(
+        "SELECT {} FROM clothing WHERE id = ?",
+        SELECT_COLS
+    ))
+    .bind(&id)
+    .fetch_one(pool)
+    .await
 }
 
 pub async fn insert_seasons(
@@ -104,10 +109,7 @@ pub async fn get_texture_worlds(
     Ok(rows.into_iter().map(|r| r.0).collect())
 }
 
-pub async fn delete_texture_worlds(
-    pool: &MySqlPool,
-    clothing_id: &str,
-) -> Result<(), sqlx::Error> {
+pub async fn delete_texture_worlds(pool: &MySqlPool, clothing_id: &str) -> Result<(), sqlx::Error> {
     sqlx::query("DELETE FROM clothing_texture_world WHERE clothing_id = ?")
         .bind(clothing_id)
         .execute(pool)
@@ -161,6 +163,7 @@ pub async fn get_clothing_by_id(
     .await
 }
 
+#[allow(clippy::too_many_arguments)] // 테이블 컬럼을 그대로 받는 저장 함수
 pub async fn update_clothing(
     pool: &MySqlPool,
     id: &str,
@@ -169,11 +172,11 @@ pub async fn update_clothing(
     color: Option<&str>,
     thickness: Option<&str>,
     image_url: Option<&str>,
-    tone: Option<&str>,
-    saturation: Option<&str>,
-    style: Option<&str>,
-    weight: Option<&str>,
-    role: Option<&str>,
+    tone: Option<Tone>,
+    saturation: Option<Saturation>,
+    style: Option<Style>,
+    weight: Option<Weight>,
+    role: Option<Role>,
     color_temperature: Option<&str>,
     versatility: Option<&str>,
     statement_level: Option<i8>,

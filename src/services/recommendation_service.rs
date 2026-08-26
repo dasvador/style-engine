@@ -6,6 +6,7 @@ use sqlx::MySqlPool;
 use crate::db::recommendation_history_repo::RecommendationHistoryRepo;
 use crate::models::clothing::Clothing;
 use crate::models::recommendation::{OutfitCandidate, ScoringDetail};
+use crate::models::style_vocab::{Role, Style, Tone, Weight};
 use crate::services::recommendation_diversity::{
     calculate_diversity_bonus, calculate_dormant_bonus, calculate_recency_penalty,
 };
@@ -60,10 +61,10 @@ pub fn select_recommendation(candidates: &[OutfitCandidate]) -> Option<OutfitCan
 
 /// 후보의 Today 적합도 — 3가지 축으로 평가
 struct TodayFitness {
-    temp_suitable: bool,   // 온도 적합
-    has_contrast: bool,    // 대비 충분
-    has_structure: bool,   // 구조감 있음
-    penalty: i32,          // 총 감점
+    temp_suitable: bool, // 온도 적합
+    has_contrast: bool,  // 대비 충분
+    has_structure: bool, // 구조감 있음
+    penalty: i32,        // 총 감점
 }
 
 impl TodayFitness {
@@ -78,7 +79,8 @@ impl TodayFitness {
 }
 
 fn find_clothing<'a>(id: &Option<String>, clothes: &'a [Clothing]) -> Option<&'a Clothing> {
-    id.as_ref().and_then(|id| clothes.iter().find(|c| c.id == *id))
+    id.as_ref()
+        .and_then(|id| clothes.iter().find(|c| c.id == *id))
 }
 
 fn evaluate_today_fitness(
@@ -93,8 +95,8 @@ fn evaluate_today_fitness(
     let mut penalty = 0;
 
     // ─── 1. 온도 적합성 ───
-    let is_light_top = top
-        .is_some_and(|t| t.weight.as_deref() == Some("가벼움") || t.thickness == "thin");
+    let is_light_top =
+        top.is_some_and(|t| t.weight == Some(Weight::Light) || t.thickness == "thin");
     let has_outer = outer.is_some();
 
     let temp_suitable = if temperature <= 13.0 {
@@ -118,8 +120,8 @@ fn evaluate_today_fitness(
     };
 
     // ─── 2. 대비 충분성 ───
-    let top_tone = top.and_then(|t| t.tone.as_deref());
-    let bottom_tone = bottom.and_then(|t| t.tone.as_deref());
+    let top_tone = top.and_then(|t| t.tone);
+    let bottom_tone = bottom.and_then(|t| t.tone);
     let top_temp = top.and_then(|t| t.color_temperature.as_deref());
     let bottom_temp = bottom.and_then(|t| t.color_temperature.as_deref());
 
@@ -132,11 +134,11 @@ fn evaluate_today_fitness(
                     // 완전 동일 톤+색온도: 강한 감점
                     penalty += 12;
                     false
-                } else if tt == "밝음" {
+                } else if tt == Tone::Bright {
                     // 둘 다 밝음 (색온도는 다름): 약한 감점
                     let outer_helps = outer
-                        .and_then(|o| o.tone.as_deref())
-                        .is_some_and(|t| t == "어두움" || t == "중간");
+                        .and_then(|o| o.tone)
+                        .is_some_and(|t| t == Tone::Dark || t == Tone::Mid);
                     if outer_helps {
                         true
                     } else {
@@ -155,18 +157,17 @@ fn evaluate_today_fitness(
 
     // ─── 3. 구조감 ───
     let bottom_structured = bottom.is_some_and(|b| {
-        let role = b.role.as_deref().unwrap_or("");
-        let style = b.style.as_deref().unwrap_or("");
-        let weight = b.weight.as_deref().unwrap_or("");
-        role == "구조템" || style == "포멀" || weight == "무거움"
+        b.role == Some(Role::Structural)
+            || b.style == Some(Style::Formal)
+            || b.weight == Some(Weight::Heavy)
     });
     let outer_structured = outer.is_some_and(|o| {
-        let role = o.role.as_deref().unwrap_or("");
-        role == "구조템" || role == "약한포인트" || role == "포인트"
+        matches!(
+            o.role,
+            Some(Role::Structural) | Some(Role::SoftAccent) | Some(Role::Accent)
+        )
     });
-    let top_is_structure = top.is_some_and(|t| {
-        t.role.as_deref() == Some("구조템")
-    });
+    let top_is_structure = top.is_some_and(|t| t.role == Some(Role::Structural));
 
     let has_structure = bottom_structured || outer_structured || top_is_structure;
     if !has_structure {
@@ -174,14 +175,14 @@ fn evaluate_today_fitness(
     }
 
     // ─── 4. 역할 밸런스 (포인트 과다 / 올 베이직) ───
-    let roles: Vec<&str> = [top, bottom, outer]
+    let roles: Vec<Role> = [top, bottom, outer]
         .iter()
-        .filter_map(|item| item.and_then(|i| i.role.as_deref()))
+        .filter_map(|item| item.and_then(|i| i.role))
         .collect();
 
     let accent_count = roles
         .iter()
-        .filter(|r| **r == "포인트" || **r == "약한포인트")
+        .filter(|r| **r == Role::Accent || **r == Role::SoftAccent)
         .count();
     if accent_count >= 2 {
         penalty += 5;
@@ -273,14 +274,10 @@ pub fn select_variation(
     }
 
     // 3차 폴백: 두 번째 후보
-    candidates
-        .iter()
-        .skip(1)
-        .next()
-        .map(|c| ModeSelectionResult {
-            scoring: build_variation_scoring(c),
-            candidate: c.clone(),
-        })
+    candidates.get(1).map(|c| ModeSelectionResult {
+        scoring: build_variation_scoring(c),
+        candidate: c.clone(),
+    })
 }
 
 /// Step 3: 안 입은 옷 — 휴면 아이템을 포함하면서 Today와 top+bottom이 다르고

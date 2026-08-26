@@ -8,6 +8,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::models::clothing::Clothing;
+use crate::models::style_vocab::{Role, Style, Weight};
 
 /// 슬롯별 shortlist 크기
 const TOP_K_TOP: usize = 12;
@@ -17,6 +18,8 @@ const TOP_K_SHOES: usize = 6;
 const TOP_K_BAG: usize = 5;
 
 /// Shortlist 생성 컨텍스트
+// current_season 은 호출부가 채우지만 현재 shortlist 로직은 아직 참조하지 않는다.
+#[allow(dead_code)]
 pub struct ShortlistContext<'a> {
     pub temperature: f64,
     pub situation: Option<&'a str>,
@@ -67,8 +70,8 @@ fn role_priority(category: &str, role: &str) -> i32 {
 fn score_item(item: &Clothing, ctx: &ShortlistContext) -> i32 {
     let mut s: i32 = 50; // base
 
-    let role = item.role.as_deref().unwrap_or("");
-    let style = item.style.as_deref().unwrap_or("베이직");
+    let role = item.role.map(|v| v.as_str()).unwrap_or("");
+    let style = item.style.unwrap_or(Style::Basic);
     let formality = item.formality_level.unwrap_or(2) as i32;
 
     // 1. role 우선순위 보너스 (슬롯별 우선 role이 높은 점수)
@@ -76,7 +79,7 @@ fn score_item(item: &Clothing, ctx: &ShortlistContext) -> i32 {
     s += (5 - rp) * 3; // 0~15
 
     // 2. neutral core 보너스 — 베이직 스타일은 어디서나 살아남아야 함
-    if style == "베이직" {
+    if style == Style::Basic {
         s += 5;
     }
 
@@ -100,7 +103,7 @@ fn score_item(item: &Clothing, ctx: &ShortlistContext) -> i32 {
         }
 
         // 출근/데이트에서 스포츠 신발 강하게 하향
-        if item.category == "신발" && style == "스포츠" {
+        if item.category == "신발" && style == Style::Sport {
             match sit {
                 "출근" | "비즈니스" => s -= 20,
                 "데이트" => s -= 12,
@@ -116,7 +119,7 @@ fn score_item(item: &Clothing, ctx: &ShortlistContext) -> i32 {
 
     // 5. thematic (밀리터리/워크) 아이템은 neutral보다 약간 낮게
     // 단, 2개까지는 정상이므로 강하게 빼지 않음
-    if style == "밀리터리" || style == "워크" {
+    if style == Style::Military || style == Style::Work {
         s -= 2;
     }
 
@@ -125,21 +128,37 @@ fn score_item(item: &Clothing, ctx: &ShortlistContext) -> i32 {
 
 /// 온도 기반 아이템 필터 — 계절에 맞지 않는 아이템 제외
 fn is_temp_appropriate(item: &Clothing, temp: f64) -> bool {
-    let weight = item.weight.as_deref().unwrap_or("중간");
+    let weight = item.weight.unwrap_or(Weight::Mid);
     let mat = item.material_primary.as_deref().unwrap_or("");
     let name = &item.name;
 
     if temp >= 20.0 {
-        if mat == "wool" || mat == "flannel" { return false; }
-        if name.contains("니트") && !name.contains("가벼") { return false; }
-        if name.contains("울 ") { return false; }
-        if item.category == "아우터" && weight == "무거움" { return false; }
-        if name.contains("코트") || name.contains("파카") { return false; }
+        if mat == "wool" || mat == "flannel" {
+            return false;
+        }
+        if name.contains("니트") && !name.contains("가벼") {
+            return false;
+        }
+        if name.contains("울 ") {
+            return false;
+        }
+        if item.category == "아우터" && weight == Weight::Heavy {
+            return false;
+        }
+        if name.contains("코트") || name.contains("파카") {
+            return false;
+        }
     }
     if temp >= 25.0 {
-        if item.category == "아우터" && weight != "가벼움" { return false; }
-        if name.contains("코듀로이") { return false; }
-        if weight == "무거움" { return false; }
+        if item.category == "아우터" && weight != Weight::Light {
+            return false;
+        }
+        if name.contains("코듀로이") {
+            return false;
+        }
+        if weight == Weight::Heavy {
+            return false;
+        }
     }
     true
 }
@@ -170,17 +189,18 @@ pub fn build_shortlist<'a>(
     let mut used: HashSet<String> = HashSet::new();
 
     // Phase 1: 각 role에서 최고 점수 1개씩
-    let mut by_role: HashMap<&str, Vec<(&Clothing, i32)>> = HashMap::new();
+    let mut by_role: HashMap<Role, Vec<(&Clothing, i32)>> = HashMap::new();
     for &(c, score) in &candidates {
-        let role = c.role.as_deref().unwrap_or("베이스");
+        let role = c.role.unwrap_or(Role::Base);
         by_role.entry(role).or_default().push((c, score));
     }
-    for (_role, items) in &by_role {
-        if let Some(&(best, _)) = items.first() {
-            if selected.len() < k && !used.contains(&best.id) {
-                selected.push(best);
-                used.insert(best.id.clone());
-            }
+    for items in by_role.values() {
+        if let Some(&(best, _)) = items.first()
+            && selected.len() < k
+            && !used.contains(&best.id)
+        {
+            selected.push(best);
+            used.insert(best.id.clone());
         }
     }
 
@@ -189,8 +209,7 @@ pub fn build_shortlist<'a>(
     let mut thematic_bag_count = selected
         .iter()
         .filter(|c| {
-            c.category == "가방"
-                && matches!(c.style.as_deref(), Some("밀리터리") | Some("워크"))
+            c.category == "가방" && matches!(c.style, Some(Style::Military) | Some(Style::Work))
         })
         .count();
 
@@ -204,16 +223,14 @@ pub fn build_shortlist<'a>(
         }
         // thematic bag 제한 체크
         if category == "가방"
-            && matches!(c.style.as_deref(), Some("밀리터리") | Some("워크"))
+            && matches!(c.style, Some(Style::Military) | Some(Style::Work))
             && thematic_bag_count >= thematic_bag_limit
         {
             continue;
         }
         selected.push(c);
         used.insert(c.id.clone());
-        if category == "가방"
-            && matches!(c.style.as_deref(), Some("밀리터리") | Some("워크"))
-        {
+        if category == "가방" && matches!(c.style, Some(Style::Military) | Some(Style::Work)) {
             thematic_bag_count += 1;
         }
     }
@@ -245,17 +262,17 @@ pub struct ShortlistResult<'a> {
 
 impl<'a> ShortlistResult<'a> {
     /// GroupedClothes로 변환 (LLM 프롬프트용)
-    pub fn to_grouped(&self) -> crate::services::openai::GroupedClothes {
+    pub fn to_grouped(&self) -> crate::services::prompts::GroupedClothes {
         let fmt = |c: &Clothing| {
             format!(
                 "- {} | role:{} | tone:{} | style:{}",
                 c.name,
-                c.role.as_deref().unwrap_or("-"),
-                c.tone.as_deref().unwrap_or("-"),
-                c.style.as_deref().unwrap_or("-"),
+                c.role.map(|v| v.as_str()).unwrap_or("-"),
+                c.tone.map(|v| v.as_str()).unwrap_or("-"),
+                c.style.map(|v| v.as_str()).unwrap_or("-"),
             )
         };
-        crate::services::openai::GroupedClothes {
+        crate::services::prompts::GroupedClothes {
             tops: self.tops.iter().map(|c| fmt(c)).collect(),
             bottoms: self.bottoms.iter().map(|c| fmt(c)).collect(),
             outers: self.outers.iter().map(|c| fmt(c)).collect(),

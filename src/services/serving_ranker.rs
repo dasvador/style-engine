@@ -8,6 +8,7 @@
 //! baseline에 영향 없음 — shadow experiment 경로에서만 사용.
 
 use crate::models::outfit::{OutfitContext, SlotKind};
+use crate::models::style_vocab::{Style, Weight};
 use crate::services::style_engine_v2::TodayFitLevel;
 
 /// Today 적합도 판정.
@@ -25,10 +26,9 @@ pub fn compute_today_fit(ctx: &OutfitContext, temperature: f64) -> TodayFitLevel
         .slots
         .iter()
         .filter(|s| s.slot == SlotKind::Shoes)
-        .any(|s| s.clothing.style.as_deref() == Some("스포츠"));
+        .any(|s| s.clothing.style == Some(Style::Sport));
 
-    let has_sweat_top = top
-        .is_some_and(|t| t.texture_worlds.iter().any(|w| w == "sweat"));
+    let has_sweat_top = top.is_some_and(|t| t.texture_worlds.iter().any(|w| w == "sweat"));
     let has_sweat_bottom = ctx
         .slots
         .iter()
@@ -74,7 +74,7 @@ pub fn compute_today_fit(ctx: &OutfitContext, temperature: f64) -> TodayFitLevel
 
     // ─── 2. Temperature gate ───
     let is_light_top = top.is_some_and(|t| {
-        t.clothing.weight.as_deref() == Some("가벼움") || t.clothing.thickness == "thin"
+        t.clothing.weight == Some(Weight::Light) || t.clothing.thickness == "thin"
     });
 
     if temperature <= 13.0 && is_light_top && !has_outer {
@@ -185,7 +185,13 @@ pub fn serving_sort_key(
         (false, _) => 3,
     };
     // negate for descending where needed
-    (tier, -serving_score, recency_penalty, -diversity_bonus, index)
+    (
+        tier,
+        -serving_score,
+        recency_penalty,
+        -diversity_bonus,
+        index,
+    )
 }
 
 fn compute_formality_avg(ctx: &OutfitContext) -> f32 {
