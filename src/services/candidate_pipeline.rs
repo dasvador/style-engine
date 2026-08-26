@@ -6,8 +6,8 @@ use crate::db::clothing_repo;
 use crate::models::clothing::Clothing;
 use crate::models::outfit::{OutfitContext, OutfitSlot, SlotKind};
 use crate::models::recommendation::OutfitCandidate;
-use crate::services::style_engine_v2::{self, OutfitEvaluation};
 use crate::services::serving_ranker;
+use crate::services::style_engine_v2::{self, OutfitEvaluation};
 
 /// 후보의 아이템 id들로부터 OutfitContext를 재구성.
 pub async fn rebuild_context(
@@ -27,7 +27,9 @@ pub async fn rebuild_context(
     let mut slots = Vec::new();
     for (maybe_id, kind) in slot_ids {
         let Some(id) = maybe_id else { continue };
-        let Some(clothing) = clothes.iter().find(|c| c.id == id) else { continue };
+        let Some(clothing) = clothes.iter().find(|c| c.id == id) else {
+            continue;
+        };
         let seasons = clothing_repo::get_seasons(db, id).await.unwrap_or_default();
         let texture_worlds = clothing_repo::get_texture_worlds(db, id)
             .await

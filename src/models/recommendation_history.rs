@@ -15,25 +15,13 @@ pub struct OutfitRecommendationHistory {
     pub recommended_at: NaiveDateTime,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct OutfitHistorySummary {
     pub item_used_yesterday: bool,
     pub item_used_within_3_days: bool,
     pub same_top_bottom_within_7_days: bool,
     pub same_full_outfit_within_14_days: bool,
     pub recent_usage_count_7d: i32,
-}
-
-impl Default for OutfitHistorySummary {
-    fn default() -> Self {
-        Self {
-            item_used_yesterday: false,
-            item_used_within_3_days: false,
-            same_top_bottom_within_7_days: false,
-            same_full_outfit_within_14_days: false,
-            recent_usage_count_7d: 0,
-        }
-    }
 }
 
 pub fn new_history_id() -> String {

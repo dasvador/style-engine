@@ -1,5 +1,5 @@
-use axum::{extract::State, routing::get, Json, Router};
-use serde_json::{json, Value};
+use axum::{Json, Router, extract::State, routing::get};
+use serde_json::{Value, json};
 
 use crate::AppState;
 
@@ -9,10 +9,7 @@ pub fn router() -> Router<AppState> {
 
 async fn health_check(State(state): State<AppState>) -> Json<Value> {
     // Quick DB ping to verify connectivity
-    let db_ok = sqlx::query("SELECT 1")
-        .fetch_one(&state.db)
-        .await
-        .is_ok();
+    let db_ok = sqlx::query("SELECT 1").fetch_one(&state.db).await.is_ok();
 
     Json(json!({
         "status": if db_ok { "ok" } else { "degraded" },

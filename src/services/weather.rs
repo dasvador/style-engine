@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use chrono::{FixedOffset, Timelike, Utc};
 
 use crate::models::weather::{CurrentWeather, KmaResponse, OpenMeteoResponse};
@@ -41,10 +41,16 @@ async fn fetch_from_kma(
 
     // 초단기실황: 매시 40분 이후 해당 정시 데이터 제공
     let (base_date, base_time) = if now.minute() >= 40 {
-        (now.format("%Y%m%d").to_string(), format!("{:02}00", now.hour()))
+        (
+            now.format("%Y%m%d").to_string(),
+            format!("{:02}00", now.hour()),
+        )
     } else {
         let prev = now - chrono::Duration::hours(1);
-        (prev.format("%Y%m%d").to_string(), format!("{:02}00", prev.hour()))
+        (
+            prev.format("%Y%m%d").to_string(),
+            format!("{:02}00", prev.hour()),
+        )
     };
 
     // KMA API 키는 Encoding 버전을 그대로 URL에 삽입
@@ -79,7 +85,9 @@ async fn fetch_from_kma(
         }
     }
 
-    let temperature = *data.get("T1H").ok_or_else(|| anyhow!("T1H (기온) not found in KMA response"))?;
+    let temperature = *data
+        .get("T1H")
+        .ok_or_else(|| anyhow!("T1H (기온) not found in KMA response"))?;
     let humidity = *data.get("REH").unwrap_or(&0.0);
     let wind_speed = *data.get("WSD").unwrap_or(&0.0);
     let pty = *data.get("PTY").unwrap_or(&0.0) as i32;
@@ -187,8 +195,7 @@ fn calc_apparent_temperature(temp: f64, wind_speed_ms: f64) -> f64 {
 
     if temp <= 10.0 && wind_kmh > 4.8 {
         // Wind chill (Environment Canada formula)
-        13.12 + 0.6215 * temp - 11.37 * wind_kmh.powf(0.16)
-            + 0.3965 * temp * wind_kmh.powf(0.16)
+        13.12 + 0.6215 * temp - 11.37 * wind_kmh.powf(0.16) + 0.3965 * temp * wind_kmh.powf(0.16)
     } else {
         temp
     }
@@ -233,7 +240,7 @@ fn weather_code_to_description(code: i32) -> String {
         66 | 67 => "진눈깨비",
         71 | 73 | 75 => "눈",
         77 => "싸락눈",
-        80 | 81 | 82 => "소나기",
+        80..=82 => "소나기",
         85 | 86 => "눈보라",
         95 => "뇌우",
         96 | 99 => "우박 동반 뇌우",

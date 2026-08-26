@@ -1,18 +1,16 @@
-use axum::{extract::State, routing::get, Json, Router};
+use axum::{Json, Router, extract::State, routing::get};
 use validator::Validate;
 
+use crate::AppState;
 use crate::db::region_repo;
 use crate::errors::AppError;
 use crate::models::region::{RegionSetting, UpsertRegionRequest};
-use crate::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new().route("/", get(get_region).put(upsert_region))
 }
 
-async fn get_region(
-    State(state): State<AppState>,
-) -> Result<Json<RegionSetting>, AppError> {
+async fn get_region(State(state): State<AppState>) -> Result<Json<RegionSetting>, AppError> {
     let region = region_repo::get_region(&state.db)
         .await?
         .ok_or_else(|| AppError::NotFound("No region configured".to_string()))?;

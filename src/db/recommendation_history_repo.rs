@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use sqlx::MySqlPool;
 
 use crate::models::recommendation_history::{
-    new_history_id, OutfitHistorySummary, OutfitRecommendationHistory,
+    OutfitHistorySummary, OutfitRecommendationHistory, new_history_id,
 };
 
 pub struct RecommendationHistoryRepo;
