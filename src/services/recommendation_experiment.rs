@@ -32,6 +32,9 @@ pub struct CandidateShadowLog {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+// DormantTiebreak / ContextPenaltyDiff 는 shadow 로그 스키마에 예약된 분류로,
+// 해당 판정 분기가 아직 구현되지 않아 생성되지 않는다.
+#[allow(dead_code)]
 pub enum WinnerChangeReason {
     HardFilterDiff,
     TodayFitDiff,
@@ -107,8 +110,8 @@ pub async fn run_shadow(
                     "{}:{}(style={},role={})",
                     s.slot.label(),
                     s.clothing.name,
-                    s.clothing.style.as_deref().unwrap_or("-"),
-                    s.clothing.role.as_deref().unwrap_or("-"),
+                    s.clothing.style.map(|v| v.as_str()).unwrap_or("-"),
+                    s.clothing.role.map(|v| v.as_str()).unwrap_or("-"),
                 )
             })
             .collect();
@@ -166,8 +169,16 @@ pub async fn run_shadow(
             .iter()
             .find(|(_, c, r)| {
                 c.ai_candidate_index != today
-                    && (r.top_id != reranked.iter().find(|x| x.ai_candidate_index == today).and_then(|t| t.top_id.clone())
-                        || r.bottom_id != reranked.iter().find(|x| x.ai_candidate_index == today).and_then(|t| t.bottom_id.clone()))
+                    && (r.top_id
+                        != reranked
+                            .iter()
+                            .find(|x| x.ai_candidate_index == today)
+                            .and_then(|t| t.top_id.clone())
+                        || r.bottom_id
+                            != reranked
+                                .iter()
+                                .find(|x| x.ai_candidate_index == today)
+                                .and_then(|t| t.bottom_id.clone()))
             })
             .map(|(_, c, _)| c.ai_candidate_index)
     });
@@ -178,7 +189,10 @@ pub async fn run_shadow(
             .find(|(_, c, r)| {
                 c.ai_candidate_index != today
                     && Some(c.ai_candidate_index) != exp_variation_idx
-                    && crate::services::recommendation_service::contains_dormant_item(r, dormant_ids)
+                    && crate::services::recommendation_service::contains_dormant_item(
+                        r,
+                        dormant_ids,
+                    )
             })
             .map(|(_, c, _)| c.ai_candidate_index)
     });
@@ -186,15 +200,18 @@ pub async fn run_shadow(
     // ─── S5: winner 비교 ───
     let winner_changed = baseline_today_idx != exp_today_idx;
 
-    let b_cand = baseline_today_idx
-        .and_then(|idx| cands.iter().find(|c| c.ai_candidate_index == idx));
-    let e_cand = exp_today_idx
-        .and_then(|idx| cands.iter().find(|c| c.ai_candidate_index == idx));
-    let b_oc = baseline_today_idx
-        .and_then(|idx| reranked.iter().find(|r| r.ai_candidate_index == idx));
+    let b_cand =
+        baseline_today_idx.and_then(|idx| cands.iter().find(|c| c.ai_candidate_index == idx));
+    let e_cand = exp_today_idx.and_then(|idx| cands.iter().find(|c| c.ai_candidate_index == idx));
+    let b_oc =
+        baseline_today_idx.and_then(|idx| reranked.iter().find(|r| r.ai_candidate_index == idx));
 
     let (primary, secondaries, note) = if !winner_changed {
-        (WinnerChangeReason::Unknown, vec![], "same winner".to_string())
+        (
+            WinnerChangeReason::Unknown,
+            vec![],
+            "same winner".to_string(),
+        )
     } else {
         determine_change_reasons(b_cand, e_cand, b_oc, reranked)
     };
@@ -243,11 +260,14 @@ fn determine_change_reasons(
     let mut notes = Vec::new();
 
     // 1. baseline winner가 v2 hard filter에서 탈락
-    if let Some(bc) = b_cand {
-        if !bc.hard_pass {
-            reasons.push(WinnerChangeReason::HardFilterDiff);
-            notes.push(format!("baseline idx={} hard-failed in v2", bc.ai_candidate_index));
-        }
+    if let Some(bc) = b_cand
+        && !bc.hard_pass
+    {
+        reasons.push(WinnerChangeReason::HardFilterDiff);
+        notes.push(format!(
+            "baseline idx={} hard-failed in v2",
+            bc.ai_candidate_index
+        ));
     }
 
     // 2. baseline winner의 today_fit이 Fail
@@ -255,39 +275,42 @@ fn determine_change_reasons(
         if bc.today_fit == TodayFitLevel::Fail {
             reasons.push(WinnerChangeReason::TodayFitDiff);
             notes.push("baseline winner today_fit=Fail".to_string());
-        } else if bc.today_fit == TodayFitLevel::Borderline {
-            if e_cand.is_some_and(|ec| ec.today_fit == TodayFitLevel::Pass) {
-                reasons.push(WinnerChangeReason::QualificationGateDiff);
-                notes.push("baseline Borderline vs experiment Pass".to_string());
-            }
+        } else if bc.today_fit == TodayFitLevel::Borderline
+            && e_cand.is_some_and(|ec| ec.today_fit == TodayFitLevel::Pass)
+        {
+            reasons.push(WinnerChangeReason::QualificationGateDiff);
+            notes.push("baseline Borderline vs experiment Pass".to_string());
         }
     }
 
     // 3. style_score 차이
-    if let (Some(bc), Some(ec)) = (b_cand, e_cand) {
-        if bc.experiment_style_score < ec.experiment_style_score {
-            reasons.push(WinnerChangeReason::StyleScoreDiff);
-            notes.push(format!(
-                "v2 style: baseline={} < experiment={}",
-                bc.experiment_style_score, ec.experiment_style_score
-            ));
-        }
+    if let (Some(bc), Some(ec)) = (b_cand, e_cand)
+        && bc.experiment_style_score < ec.experiment_style_score
+    {
+        reasons.push(WinnerChangeReason::StyleScoreDiff);
+        notes.push(format!(
+            "v2 style: baseline={} < experiment={}",
+            bc.experiment_style_score, ec.experiment_style_score
+        ));
     }
 
     // 4. serving adjustment 차이
-    if let (Some(bc), Some(ec)) = (b_cand, e_cand) {
-        if bc.serving_adjustment != ec.serving_adjustment && bc.serving_score < ec.serving_score {
-            reasons.push(WinnerChangeReason::AccessoryPenaltyDiff);
-            notes.push(format!(
-                "serving adj: baseline={} vs experiment={}",
-                bc.serving_adjustment, ec.serving_adjustment
-            ));
-        }
+    if let (Some(bc), Some(ec)) = (b_cand, e_cand)
+        && bc.serving_adjustment != ec.serving_adjustment
+        && bc.serving_score < ec.serving_score
+    {
+        reasons.push(WinnerChangeReason::AccessoryPenaltyDiff);
+        notes.push(format!(
+            "serving adj: baseline={} vs experiment={}",
+            bc.serving_adjustment, ec.serving_adjustment
+        ));
     }
 
     // 5. recency/diversity tie-break
     if let Some(ec) = e_cand {
-        let e_oc = reranked.iter().find(|r| r.ai_candidate_index == ec.ai_candidate_index);
+        let e_oc = reranked
+            .iter()
+            .find(|r| r.ai_candidate_index == ec.ai_candidate_index);
         if let (Some(bo), Some(eo)) = (b_oc, e_oc) {
             if bo.recency_penalty > eo.recency_penalty {
                 reasons.push(WinnerChangeReason::RecencyTiebreak);

@@ -1,6 +1,6 @@
 use axum::{
-    extract::{FromRequestParts, State},
-    http::{header, request::Parts, StatusCode},
+    extract::FromRequestParts,
+    http::{StatusCode, header, request::Parts},
 };
 
 use crate::AppState;
@@ -32,22 +32,25 @@ where
         match token {
             Some(token) => {
                 // DB에서 토큰으로 유저 찾기
-                let row = sqlx::query_scalar::<_, String>(
-                    "SELECT id FROM app_user WHERE api_token = ?"
-                )
-                .bind(token)
-                .fetch_optional(&app_state.db)
-                .await
-                .unwrap_or(None);
+                let row =
+                    sqlx::query_scalar::<_, String>("SELECT id FROM app_user WHERE api_token = ?")
+                        .bind(token)
+                        .fetch_optional(&app_state.db)
+                        .await
+                        .unwrap_or(None);
 
                 match row {
                     Some(user_id) => Ok(AuthUser { user_id }),
-                    None => Ok(AuthUser { user_id: "default".to_string() }), // 잘못된 토큰 → default
+                    None => Ok(AuthUser {
+                        user_id: "default".to_string(),
+                    }), // 잘못된 토큰 → default
                 }
             }
             None => {
                 // 토큰 없음 → default 유저 (하위호환)
-                Ok(AuthUser { user_id: "default".to_string() })
+                Ok(AuthUser {
+                    user_id: "default".to_string(),
+                })
             }
         }
     }

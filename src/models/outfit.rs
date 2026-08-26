@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::models::clothing::Clothing;
+use crate::models::style_vocab::Role;
 
 /// Request body for outfit evaluation
 #[derive(Debug, Deserialize)]
@@ -35,14 +36,19 @@ impl SlotKind {
     }
 
     /// 슬롯별 기대 역할
-    pub fn expected_roles(&self, has_outer: bool) -> &'static [&'static str] {
+    pub fn expected_roles(&self, has_outer: bool) -> &'static [Role] {
         match self {
-            SlotKind::Top if has_outer => &["베이스", "연결템"],
-            SlotKind::Top => &["베이스", "포인트", "약한포인트", "연결템"],
-            SlotKind::Bottom => &["베이스", "구조템", "연결템"],
-            SlotKind::Outer => &["포인트", "약한포인트", "구조템", "연결템"],
-            SlotKind::Shoes => &["연결템", "구조템", "베이스"],
-            SlotKind::Bag => &["연결템", "구조템", "베이스"],
+            SlotKind::Top if has_outer => &[Role::Base, Role::Connector],
+            SlotKind::Top => &[Role::Base, Role::Accent, Role::SoftAccent, Role::Connector],
+            SlotKind::Bottom => &[Role::Base, Role::Structural, Role::Connector],
+            SlotKind::Outer => &[
+                Role::Accent,
+                Role::SoftAccent,
+                Role::Structural,
+                Role::Connector,
+            ],
+            SlotKind::Shoes => &[Role::Connector, Role::Structural, Role::Base],
+            SlotKind::Bag => &[Role::Connector, Role::Structural, Role::Base],
         }
     }
 }

@@ -96,9 +96,8 @@ pub async fn delete_reference(pool: &MySqlPool, id: &str) -> Result<bool, sqlx::
 }
 
 pub async fn count_references(pool: &MySqlPool) -> Result<i64, sqlx::Error> {
-    let (count,): (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM clothing_reference")
-            .fetch_one(pool)
-            .await?;
+    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM clothing_reference")
+        .fetch_one(pool)
+        .await?;
     Ok(count)
 }

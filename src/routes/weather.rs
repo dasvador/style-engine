@@ -1,21 +1,19 @@
-use axum::{extract::State, routing::get, Json, Router};
+use axum::{Json, Router, extract::State, routing::get};
 
+use crate::AppState;
 use crate::db::region_repo;
 use crate::errors::AppError;
 use crate::models::weather::WeatherResponse;
 use crate::services::weather as weather_service;
-use crate::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new().route("/", get(get_weather))
 }
 
-async fn get_weather(
-    State(state): State<AppState>,
-) -> Result<Json<WeatherResponse>, AppError> {
-    let region = region_repo::get_region(&state.db)
-        .await?
-        .ok_or_else(|| AppError::NotFound("No region configured. Set a region first.".to_string()))?;
+async fn get_weather(State(state): State<AppState>) -> Result<Json<WeatherResponse>, AppError> {
+    let region = region_repo::get_region(&state.db).await?.ok_or_else(|| {
+        AppError::NotFound("No region configured. Set a region first.".to_string())
+    })?;
 
     let current = weather_service::fetch_weather(
         &state.http_client,

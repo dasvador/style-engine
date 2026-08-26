@@ -9,7 +9,11 @@ pub async fn insert_feedback(
     req: &FeedbackRequest,
 ) -> Result<String, sqlx::Error> {
     let id = Uuid::new_v4().to_string();
-    let reason_str = if req.reasons.is_empty() { None } else { Some(req.reasons.join(",")) };
+    let reason_str = if req.reasons.is_empty() {
+        None
+    } else {
+        Some(req.reasons.join(","))
+    };
 
     sqlx::query(
         "INSERT INTO outfit_feedback (id, user_id, feedback_type, reason, inner_name, outer_name, bottom_name, shoes_name, bag_name, anchor_name, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -40,8 +44,11 @@ pub async fn insert_feedback(
         _ => 0,
     };
     let items = [
-        &req.inner_name, &req.outer_name, &req.bottom_name,
-        &req.shoes_name, &req.bag_name,
+        &req.inner_name,
+        &req.outer_name,
+        &req.bottom_name,
+        &req.shoes_name,
+        &req.bag_name,
     ];
     for item in items.iter().filter_map(|i| i.as_ref()) {
         if !item.is_empty() {

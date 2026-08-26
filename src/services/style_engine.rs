@@ -4,6 +4,7 @@ use crate::models::outfit::{
     EvaluationResult, IssueCode, OutfitContext, OutfitSlot, OutfitStrength, RuleProblem, SlotKind,
     StructuredSuggestion, Verdict,
 };
+use crate::models::style_vocab::{Role, Saturation, Style, Tone, Weight};
 
 // --- 감점 상수 ---
 const DEDUCT_BANCHAN_OVERLOAD: i32 = 20;
@@ -85,8 +86,8 @@ fn rule_base_accent(
     let has_outer = ctx.slots.iter().any(|s| s.slot == SlotKind::Outer);
 
     for slot in &ctx.slots {
-        match slot.clothing.role.as_deref() {
-            Some("포인트") => {
+        match slot.clothing.role {
+            Some(Role::Accent) => {
                 accent_count += 1;
                 accent_names.push(slot.clothing.name.as_str());
                 // 이너(아우터 있을 때) 또는 하의에 포인트는 더 심각
@@ -94,8 +95,8 @@ fn rule_base_accent(
                     accent_in_wrong_slot = true;
                 }
             }
-            Some("베이스") => base_count += 1,
-            Some("약한포인트") => weak_accent_count += 1,
+            Some(Role::Base) => base_count += 1,
+            Some(Role::SoftAccent) => weak_accent_count += 1,
             _ => {}
         }
     }
@@ -129,7 +130,8 @@ fn rule_base_accent(
     if base_count >= 1 && accent_count == 1 && accent_count + weak_accent_count <= 1 {
         strengths.push(OutfitStrength {
             rule: "베이스/포인트 밸런스".to_string(),
-            detail: "베이스와 포인트의 비율이 적절합니다. 포인트 아이템이 잘 살아납니다".to_string(),
+            detail: "베이스와 포인트의 비율이 적절합니다. 포인트 아이템이 잘 살아납니다"
+                .to_string(),
         });
     }
 
@@ -143,11 +145,7 @@ fn rule_base_accent(
 
 /// Rule 2: 중심축 부재 (LackOfStructure 재정의)
 /// "베이스 없음"이 아니라 "중심축 없음"으로 판단
-fn rule_lack_of_structure(
-    ctx: &OutfitContext,
-    score: &mut i32,
-    problems: &mut Vec<RuleProblem>,
-) {
+fn rule_lack_of_structure(ctx: &OutfitContext, score: &mut i32, problems: &mut Vec<RuleProblem>) {
     if ctx.slots.is_empty() {
         return;
     }
@@ -155,26 +153,26 @@ fn rule_lack_of_structure(
     let has_structure = ctx
         .slots
         .iter()
-        .any(|s| s.clothing.role.as_deref() == Some("구조템"));
+        .any(|s| s.clothing.role == Some(Role::Structural));
 
     let base_count = ctx
         .slots
         .iter()
-        .filter(|s| s.clothing.role.as_deref() == Some("베이스"))
+        .filter(|s| s.clothing.role == Some(Role::Base))
         .count();
 
     let accent_count = ctx
         .slots
         .iter()
-        .filter(|s| s.clothing.role.as_deref() == Some("포인트"))
+        .filter(|s| s.clothing.role == Some(Role::Accent))
         .count();
 
     // 베이스가 있더라도 전부 가벼우면 중심축 약함
     let all_base_light = ctx
         .slots
         .iter()
-        .filter(|s| s.clothing.role.as_deref() == Some("베이스"))
-        .all(|s| s.clothing.weight.as_deref() == Some("가벼움"));
+        .filter(|s| s.clothing.role == Some(Role::Base))
+        .all(|s| s.clothing.weight == Some(Weight::Light));
 
     let warm_count = ctx
         .slots
@@ -194,11 +192,8 @@ fn rule_lack_of_structure(
     // 2) 베이스는 있지만 전부 가벼움 + (accent 2개 이상 또는 warm 편중)
     let no_axis = if !has_structure && base_count == 0 {
         true
-    } else if !has_structure && base_count > 0 && all_base_light && (accent_count >= 2 || warm_dominant)
-    {
-        true
     } else {
-        false
+        !has_structure && base_count > 0 && all_base_light && (accent_count >= 2 || warm_dominant)
     };
 
     if no_axis {
@@ -207,40 +202,36 @@ fn rule_lack_of_structure(
             code: IssueCode::LackOfStructure,
             rule: "중심축 부재".to_string(),
             deduction: DEDUCT_NO_AXIS,
-            detail: "코디의 중심축이 부족합니다. 시각적 무게감을 잡아줄 베이스 또는 구조템이 필요합니다".to_string(),
+            detail:
+                "코디의 중심축이 부족합니다. 시각적 무게감을 잡아줄 베이스 또는 구조템이 필요합니다"
+                    .to_string(),
         });
     }
 }
 
 /// Rule 2b: 베이스+연결템만으로 구성된 심심한 코디
 /// 안정적이지만 스타일적 재미가 부족한 경우 약하게 감점
-fn rule_flat_outfit(
-    ctx: &OutfitContext,
-    score: &mut i32,
-    problems: &mut Vec<RuleProblem>,
-) {
+fn rule_flat_outfit(ctx: &OutfitContext, score: &mut i32, problems: &mut Vec<RuleProblem>) {
     if ctx.slots.len() < 2 {
         return;
     }
 
     let all_basic = ctx.slots.iter().all(|s| {
         matches!(
-            s.clothing.role.as_deref(),
-            Some("베이스") | Some("연결템") | Some("구조템")
+            s.clothing.role,
+            Some(Role::Base) | Some(Role::Connector) | Some(Role::Structural)
         )
     });
 
-    let has_accent = ctx.slots.iter().any(|s| {
-        matches!(
-            s.clothing.role.as_deref(),
-            Some("포인트") | Some("약한포인트")
-        )
-    });
+    let has_accent = ctx
+        .slots
+        .iter()
+        .any(|s| matches!(s.clothing.role, Some(Role::Accent) | Some(Role::SoftAccent)));
 
     let has_structure = ctx
         .slots
         .iter()
-        .any(|s| s.clothing.role.as_deref() == Some("구조템"));
+        .any(|s| s.clothing.role == Some(Role::Structural));
 
     // 포인트 0개 + 구조템 0개 = 베이스+연결템만 → 심심한 코디
     if all_basic && !has_accent && !has_structure {
@@ -261,18 +252,14 @@ fn rule_brightness(
     problems: &mut Vec<RuleProblem>,
     strengths: &mut Vec<OutfitStrength>,
 ) {
-    let tones: Vec<&str> = ctx
-        .slots
-        .iter()
-        .filter_map(|s| s.clothing.tone.as_deref())
-        .collect();
+    let tones: Vec<Tone> = ctx.slots.iter().filter_map(|s| s.clothing.tone).collect();
 
     if tones.len() < 2 {
         return;
     }
 
-    let all_dark = tones.iter().all(|t| *t == "어두움");
-    let all_bright = tones.iter().all(|t| *t == "밝음");
+    let all_dark = tones.iter().all(|t| *t == Tone::Dark);
+    let all_bright = tones.iter().all(|t| *t == Tone::Bright);
 
     if all_dark {
         *score -= DEDUCT_ALL_DARK;
@@ -291,8 +278,8 @@ fn rule_brightness(
             detail: "모든 아이템이 밝은 톤이라 흐려 보일 수 있습니다".to_string(),
         });
     } else {
-        let has_dark = tones.iter().any(|t| *t == "어두움");
-        let has_bright = tones.iter().any(|t| *t == "밝음");
+        let has_dark = tones.contains(&Tone::Dark);
+        let has_bright = tones.contains(&Tone::Bright);
         if has_dark && has_bright {
             strengths.push(OutfitStrength {
                 rule: "밝기 밸런스".to_string(),
@@ -309,12 +296,12 @@ fn rule_lack_of_contrast(
     problems: &mut Vec<RuleProblem>,
     strengths: &mut Vec<OutfitStrength>,
 ) {
-    let items: Vec<(&str, &str)> = ctx
+    let items: Vec<(Tone, Saturation)> = ctx
         .slots
         .iter()
         .filter_map(|s| {
-            let tone = s.clothing.tone.as_deref()?;
-            let sat = s.clothing.saturation.as_deref()?;
+            let tone = s.clothing.tone?;
+            let sat = s.clothing.saturation?;
             Some((tone, sat))
         })
         .collect();
@@ -323,14 +310,14 @@ fn rule_lack_of_contrast(
         return;
     }
 
-    let has_bright = items.iter().any(|(t, _)| *t == "밝음");
-    let has_dark = items.iter().any(|(t, _)| *t == "어두움");
-    let all_mid = items.iter().all(|(t, _)| *t == "중간");
+    let has_bright = items.iter().any(|(t, _)| *t == Tone::Bright);
+    let has_dark = items.iter().any(|(t, _)| *t == Tone::Dark);
+    let all_mid = items.iter().all(|(t, _)| *t == Tone::Mid);
 
     // Case 1: 톤과 채도가 모두 동일하고 중간이면 밋밋
     let first = items[0];
     let all_same = items.iter().all(|i| *i == first);
-    if all_same && first.0 == "중간" && first.1 == "중간" {
+    if all_same && first.0 == Tone::Mid && first.1 == Saturation::Mid {
         *score -= DEDUCT_LACK_OF_CONTRAST;
         problems.push(RuleProblem {
             code: IssueCode::LackOfContrast,
@@ -349,13 +336,15 @@ fn rule_lack_of_contrast(
             code: IssueCode::LackOfContrast,
             rule: "대비 부족".to_string(),
             deduction,
-            detail: "모든 아이템이 중간 톤이라 대비가 약합니다. 밝거나 어두운 아이템을 하나 넣어보세요".to_string(),
+            detail:
+                "모든 아이템이 중간 톤이라 대비가 약합니다. 밝거나 어두운 아이템을 하나 넣어보세요"
+                    .to_string(),
         });
         return;
     }
 
     // 강점: 다양한 톤
-    let unique_tones: std::collections::HashSet<&str> = items.iter().map(|(t, _)| *t).collect();
+    let unique_tones: std::collections::HashSet<Tone> = items.iter().map(|(t, _)| *t).collect();
     if unique_tones.len() >= 3 {
         strengths.push(OutfitStrength {
             rule: "대비".to_string(),
@@ -387,12 +376,12 @@ fn rule_natural_tone(ctx: &OutfitContext, score: &mut i32, problems: &mut Vec<Ru
     let has_structure = ctx
         .slots
         .iter()
-        .any(|s| s.clothing.role.as_deref() == Some("구조템"));
+        .any(|s| s.clothing.role == Some(Role::Structural));
 
     let has_cool_anchor = ctx
         .slots
         .iter()
-        .any(|s| s.clothing.tone.as_deref() == Some("어두움"));
+        .any(|s| s.clothing.tone == Some(Tone::Dark));
 
     let deduction = if !has_structure && !has_cool_anchor {
         DEDUCT_NATURAL_TONE_SEVERE
@@ -415,15 +404,15 @@ fn rule_natural_tone(ctx: &OutfitContext, score: &mut i32, problems: &mut Vec<Ru
 
 /// Rule 6: 스타일 충돌 — 밀리터리+포멀(tailoring)은 밸런싱 페어로 재분류
 fn rule_style_conflict(ctx: &OutfitContext, score: &mut i32, problems: &mut Vec<RuleProblem>) {
-    let styles: Vec<&str> = ctx
+    let styles: Vec<Style> = ctx
         .slots
         .iter()
-        .filter_map(|s| s.clothing.style.as_deref())
-        .filter(|s| *s != "베이직")
+        .filter_map(|s| s.clothing.style)
+        .filter(|s| *s != Style::Basic)
         .collect();
 
     // 진짜 충돌만 남김 (밀리터리+포멀은 제거 — 밸런싱 페어)
-    let hard_conflicts = [("포멀", "스포츠")];
+    let hard_conflicts = [(Style::Formal, Style::Sport)];
 
     for (a, b) in &hard_conflicts {
         let has_a = styles.iter().any(|s| s == a);
@@ -440,7 +429,7 @@ fn rule_style_conflict(ctx: &OutfitContext, score: &mut i32, problems: &mut Vec<
         }
     }
 
-    let strong_styles = ["워크", "밀리터리"];
+    let strong_styles = [Style::Work, Style::Military];
     for ss in &strong_styles {
         let count = styles.iter().filter(|s| **s == *ss).count();
         if count >= 2 {
@@ -537,7 +526,7 @@ fn rule_slot_role(ctx: &OutfitContext, score: &mut i32, problems: &mut Vec<RuleP
     let has_outer = ctx.slots.iter().any(|s| s.slot == SlotKind::Outer);
 
     for slot in &ctx.slots {
-        let role = match slot.clothing.role.as_deref() {
+        let role = match slot.clothing.role {
             Some(r) => r,
             None => continue,
         };
@@ -555,7 +544,11 @@ fn rule_slot_role(ctx: &OutfitContext, score: &mut i32, problems: &mut Vec<RuleP
                     slot.slot.label(),
                     role,
                     slot.slot.label(),
-                    expected.join("/")
+                    expected
+                        .iter()
+                        .map(|r| r.as_str())
+                        .collect::<Vec<_>>()
+                        .join("/")
                 ),
             });
         }
@@ -571,9 +564,9 @@ fn rule_inner(ctx: &OutfitContext, score: &mut i32, problems: &mut Vec<RuleProbl
 
     let top = ctx.slots.iter().find(|s| s.slot == SlotKind::Top);
     if let Some(top_slot) = top {
-        let is_strong_inner = top_slot.clothing.role.as_deref() == Some("포인트")
-            || (top_slot.clothing.tone.as_deref() == Some("어두움")
-                && top_slot.clothing.saturation.as_deref() == Some("높음"));
+        let is_strong_inner = top_slot.clothing.role == Some(Role::Accent)
+            || (top_slot.clothing.tone == Some(Tone::Dark)
+                && top_slot.clothing.saturation == Some(Saturation::High));
 
         if is_strong_inner {
             *score -= DEDUCT_INNER_ISSUE;
@@ -606,9 +599,9 @@ fn rule_bag(
 
     let shoes_slot = ctx.slots.iter().find(|s| s.slot == SlotKind::Shoes);
     let bag_name = &bag_slot.clothing.name;
-    let bag_role = bag_slot.clothing.role.as_deref().unwrap_or("");
-    let bag_style = bag_slot.clothing.style.as_deref().unwrap_or("베이직");
-    let bag_tone = bag_slot.clothing.tone.as_deref().unwrap_or("중간");
+    let bag_role = bag_slot.clothing.role.map(|v| v.as_str()).unwrap_or("");
+    let bag_style = bag_slot.clothing.style.unwrap_or(Style::Basic);
+    let bag_tone = bag_slot.clothing.tone.unwrap_or(Tone::Mid);
 
     let mut adjustment = 0i32;
     let mut reasons_good: Vec<String> = Vec::new();
@@ -619,12 +612,7 @@ fn rule_bag(
         .slots
         .iter()
         .filter(|s| s.slot != SlotKind::Bag)
-        .filter(|s| {
-            matches!(
-                s.clothing.role.as_deref(),
-                Some("포인트") | Some("약한포인트")
-            )
-        })
+        .filter(|s| matches!(s.clothing.role, Some(Role::Accent) | Some(Role::SoftAccent)))
         .count();
 
     match bag_role {
@@ -658,24 +646,24 @@ fn rule_bag(
     }
 
     // ─── 2. 스타일 호환 ───
-    let dominant_styles: Vec<&str> = ctx
+    let dominant_styles: Vec<Style> = ctx
         .slots
         .iter()
         .filter(|s| s.slot != SlotKind::Bag)
-        .filter_map(|s| s.clothing.style.as_deref())
-        .filter(|s| *s != "베이직")
+        .filter_map(|s| s.clothing.style)
+        .filter(|s| *s != Style::Basic)
         .collect();
 
-    if bag_style == "베이직" {
+    if bag_style == Style::Basic {
         // 베이직 가방은 항상 안전
-    } else if !dominant_styles.is_empty() {
-        let dominant = dominant_styles.first().unwrap_or(&"");
+    } else if let Some(dominant) = dominant_styles.first() {
         if bag_style == *dominant {
             adjustment += 2;
             reasons_good.push(format!("{} 스타일 통일", bag_style));
         } else {
-            let clash = (*dominant == "포멀" && (bag_style == "스포츠" || bag_style == "밀리터리"))
-                || (*dominant == "밀리터리" && bag_style == "포멀");
+            let clash = (*dominant == Style::Formal
+                && (bag_style == Style::Sport || bag_style == Style::Military))
+                || (*dominant == Style::Military && bag_style == Style::Formal);
             if clash {
                 adjustment -= 5;
                 reasons_bad.push(format!(
@@ -691,18 +679,18 @@ fn rule_bag(
         .slots
         .iter()
         .find(|s| s.slot == SlotKind::Bottom)
-        .and_then(|s| s.clothing.tone.as_deref())
-        .unwrap_or("중간");
+        .and_then(|s| s.clothing.tone)
+        .unwrap_or(Tone::Mid);
 
-    if bag_tone == bottom_tone || bag_tone == "중간" {
+    if bag_tone == bottom_tone || bag_tone == Tone::Mid {
         adjustment += 1;
     }
 
     // ─── 4. 신발과의 관계: 둘 다 포인트면 감점 ───
     if let Some(shoes) = shoes_slot {
         let shoes_accent = matches!(
-            shoes.clothing.role.as_deref(),
-            Some("포인트") | Some("약한포인트")
+            shoes.clothing.role,
+            Some(Role::Accent) | Some(Role::SoftAccent)
         );
         let bag_accent = matches!(bag_role, "포인트" | "약한포인트");
         if shoes_accent && bag_accent {
@@ -737,16 +725,16 @@ fn rule_bag(
         .slots
         .iter()
         .find(|s| s.slot == SlotKind::Top)
-        .and_then(|s| s.clothing.tone.as_deref())
-        .unwrap_or("중간");
+        .and_then(|s| s.clothing.tone)
+        .unwrap_or(Tone::Mid);
 
-    let outfit_all_dark = top_tone == "어두움" && bottom_tone == "어두움";
-    let outfit_all_bright = top_tone == "밝음" && bottom_tone == "밝음";
+    let outfit_all_dark = top_tone == Tone::Dark && bottom_tone == Tone::Dark;
+    let outfit_all_bright = top_tone == Tone::Bright && bottom_tone == Tone::Bright;
 
-    if outfit_all_dark && bag_tone == "밝음" {
+    if outfit_all_dark && bag_tone == Tone::Bright {
         adjustment += 2;
         reasons_good.push("어두운 코디에 밝은 가방으로 포인트".to_string());
-    } else if outfit_all_bright && bag_tone == "어두움" {
+    } else if outfit_all_bright && bag_tone == Tone::Dark {
         adjustment += 2;
         reasons_good.push("밝은 코디에 어두운 가방으로 앵커".to_string());
     }
@@ -798,9 +786,9 @@ fn rule_shoes(
 
     let top = ctx.slots.iter().find(|s| s.slot == SlotKind::Top);
     let bottom = ctx.slots.iter().find(|s| s.slot == SlotKind::Bottom);
-    let shoe_tone = shoes_slot.clothing.tone.as_deref().unwrap_or("중간");
-    let shoe_role = shoes_slot.clothing.role.as_deref().unwrap_or("");
-    let shoe_style = shoes_slot.clothing.style.as_deref().unwrap_or("베이직");
+    let shoe_tone = shoes_slot.clothing.tone.unwrap_or(Tone::Mid);
+    let shoe_role = shoes_slot.clothing.role.map(|v| v.as_str()).unwrap_or("");
+    let shoe_style = shoes_slot.clothing.style.unwrap_or(Style::Basic);
     let shoe_name = &shoes_slot.clothing.name;
 
     let mut adjustment = 0i32;
@@ -826,12 +814,7 @@ fn rule_shoes(
                 .slots
                 .iter()
                 .filter(|s| s.slot != SlotKind::Shoes)
-                .any(|s| {
-                    matches!(
-                        s.clothing.role.as_deref(),
-                        Some("포인트") | Some("약한포인트")
-                    )
-                });
+                .any(|s| matches!(s.clothing.role, Some(Role::Accent) | Some(Role::SoftAccent)));
             if has_other_accent {
                 adjustment -= 10;
                 reasons_bad.push("신발까지 포인트라 산만합니다".to_string());
@@ -844,8 +827,8 @@ fn rule_shoes(
     }
 
     // ─── 2. 대비 보강 ───
-    let top_tone = top.and_then(|s| s.clothing.tone.as_deref()).unwrap_or("중간");
-    let bottom_tone = bottom.and_then(|s| s.clothing.tone.as_deref()).unwrap_or("중간");
+    let top_tone = top.and_then(|s| s.clothing.tone).unwrap_or(Tone::Mid);
+    let bottom_tone = bottom.and_then(|s| s.clothing.tone).unwrap_or(Tone::Mid);
 
     let outfit_low_contrast = top_tone == bottom_tone;
 
@@ -857,40 +840,38 @@ fn rule_shoes(
         }
     } else {
         // 코디 대비가 충분한데 신발이 한쪽과 맞으면 안정감
-        if shoe_tone == bottom_tone || shoe_tone == "중간" {
+        if shoe_tone == bottom_tone || shoe_tone == Tone::Mid {
             adjustment += 2;
         }
     }
 
     // 전부 밝은 코디에 어두운 신발 = 강한 보강
-    if top_tone == "밝음" && bottom_tone == "밝음" && shoe_tone == "어두움" {
+    if top_tone == Tone::Bright && bottom_tone == Tone::Bright && shoe_tone == Tone::Dark {
         adjustment += 3; // 위 대비 보강과 합산되면 +8
         reasons_good.push("밝은 코디에 시각적 앵커".to_string());
     }
 
     // ─── 3. 스타일 호환 ───
-    let dominant_styles: Vec<&str> = ctx
+    let dominant_styles: Vec<Style> = ctx
         .slots
         .iter()
         .filter(|s| s.slot != SlotKind::Shoes)
-        .filter_map(|s| s.clothing.style.as_deref())
-        .filter(|s| *s != "베이직")
+        .filter_map(|s| s.clothing.style)
+        .filter(|s| *s != Style::Basic)
         .collect();
 
-    if shoe_style == "베이직" {
+    if shoe_style == Style::Basic {
         // 베이직 신발은 항상 안전
         adjustment += 1;
-    } else if !dominant_styles.is_empty() {
-        let dominant = dominant_styles.first().unwrap_or(&"");
+    } else if let Some(dominant) = dominant_styles.first() {
         if shoe_style == *dominant {
             // 동일 스타일 = 좋은 매치
             adjustment += 3;
             reasons_good.push(format!("{} 스타일 통일", shoe_style));
         } else {
             // 스타일 충돌 체크
-            let clash = (*dominant == "포멀" && shoe_style == "스포츠")
-                || (*dominant == "포멀" && shoe_style == "아웃도어")
-                || (*dominant == "밀리터리" && shoe_style == "포멀");
+            let clash = (*dominant == Style::Formal && shoe_style == Style::Sport)
+                || (*dominant == Style::Military && shoe_style == Style::Formal);
             if clash {
                 adjustment -= 8;
                 reasons_bad.push(format!(
@@ -974,10 +955,10 @@ fn rule_world_overmatching(
         .map(|w| w.as_str())
         .collect();
 
-    let outer_style = outer_slot.clothing.style.as_deref().unwrap_or("");
+    let outer_style = outer_slot.clothing.style;
     let is_thematic_outer = !outer_thematic.is_empty()
-        || outer_style == "밀리터리"
-        || outer_style == "워크";
+        || outer_style == Some(Style::Military)
+        || outer_style == Some(Style::Work);
 
     if !is_thematic_outer {
         return;
@@ -985,14 +966,18 @@ fn rule_world_overmatching(
 
     // 하의 속성
     let bottom_color = bottom_slot.clothing.color.as_deref().unwrap_or("");
-    let bottom_temp = bottom_slot.clothing.color_temperature.as_deref().unwrap_or("");
-    let bottom_tone = bottom_slot.clothing.tone.as_deref().unwrap_or("");
-    let bottom_role = bottom_slot.clothing.role.as_deref().unwrap_or("");
+    let bottom_temp = bottom_slot
+        .clothing
+        .color_temperature
+        .as_deref()
+        .unwrap_or("");
+    let bottom_tone = bottom_slot.clothing.tone;
+    let bottom_role = bottom_slot.clothing.role;
 
     // 인디고/다크 계열은 안정화 앵커 역할
     let anchor_colors = ["인디고", "블랙", "차콜", "다크", "네이비"];
-    let is_anchor_bottom = anchor_colors.iter().any(|c| bottom_color.contains(c))
-        || bottom_tone == "어두움";
+    let is_anchor_bottom =
+        anchor_colors.iter().any(|c| bottom_color.contains(c)) || bottom_tone == Some(Tone::Dark);
 
     if is_anchor_bottom {
         strengths.push(OutfitStrength {
@@ -1006,9 +991,18 @@ fn rule_world_overmatching(
     }
 
     // 자연톤/warm 하의 감지
-    let natural_colors = ["올리브", "카키", "카멜", "베이지", "탄", "브라운", "샌드", "러스트"];
+    let natural_colors = [
+        "올리브",
+        "카키",
+        "카멜",
+        "베이지",
+        "탄",
+        "브라운",
+        "샌드",
+        "러스트",
+    ];
     let is_natural_bottom = natural_colors.iter().any(|c| bottom_color.contains(c))
-        || (bottom_temp == "warm" && bottom_tone == "중간");
+        || (bottom_temp == "warm" && bottom_tone == Some(Tone::Mid));
 
     if !is_natural_bottom {
         return;
@@ -1021,17 +1015,19 @@ fn rule_world_overmatching(
         .filter(|w| thematic_worlds.contains(&w.as_str()))
         .map(|w| w.as_str())
         .collect();
-    let shared_world = outer_thematic
-        .iter()
-        .any(|w| bottom_thematic.contains(w));
+    let shared_world = outer_thematic.iter().any(|w| bottom_thematic.contains(w));
 
     // 톤 대비가 없는지
-    let outer_temp = outer_slot.clothing.color_temperature.as_deref().unwrap_or("");
-    let outer_tone = outer_slot.clothing.tone.as_deref().unwrap_or("");
-    let both_warm_mid = (outer_temp == "warm" || outer_tone == "중간")
-        && (bottom_temp == "warm" || bottom_tone == "중간");
+    let outer_temp = outer_slot
+        .clothing
+        .color_temperature
+        .as_deref()
+        .unwrap_or("");
+    let outer_tone = outer_slot.clothing.tone;
+    let both_warm_mid = (outer_temp == "warm" || outer_tone == Some(Tone::Mid))
+        && (bottom_temp == "warm" || bottom_tone == Some(Tone::Mid));
 
-    let is_structure = bottom_role == "구조템";
+    let is_structure = bottom_role == Some(Role::Structural);
 
     // 심각도 결정
     let deduction = if shared_world && both_warm_mid && !is_structure {
@@ -1047,13 +1043,14 @@ fn rule_world_overmatching(
     };
 
     if deduction > 0 {
-        let theme_label = if outer_style == "밀리터리" || outer_thematic.contains(&"military") {
-            "밀리터리"
-        } else if outer_style == "워크" || outer_thematic.contains(&"workwear") {
-            "워크웨어"
-        } else {
-            "테마"
-        };
+        let theme_label =
+            if outer_style == Some(Style::Military) || outer_thematic.contains(&"military") {
+                "밀리터리"
+            } else if outer_style == Some(Style::Work) || outer_thematic.contains(&"workwear") {
+                "워크웨어"
+            } else {
+                "테마"
+            };
 
         *score -= deduction;
         problems.push(RuleProblem {
@@ -1071,11 +1068,7 @@ fn rule_world_overmatching(
 }
 
 /// Rule 11: 격식 수준 vs 상황
-fn rule_formality_situation(
-    ctx: &OutfitContext,
-    score: &mut i32,
-    problems: &mut Vec<RuleProblem>,
-) {
+fn rule_formality_situation(ctx: &OutfitContext, score: &mut i32, problems: &mut Vec<RuleProblem>) {
     let situation = match ctx.situation.as_deref() {
         Some(s) => s,
         None => return,
@@ -1104,7 +1097,13 @@ fn rule_formality_situation(
     if avg < min_formality {
         // 격차가 클수록 추가 감점
         let gap = min_formality - avg;
-        let extra = if gap >= 1.0 { 8 } else if gap >= 0.5 { 4 } else { 0 };
+        let extra = if gap >= 1.0 {
+            8
+        } else if gap >= 0.5 {
+            4
+        } else {
+            0
+        };
         let deduction = DEDUCT_FORMALITY_MISMATCH + extra;
         *score -= deduction;
         problems.push(RuleProblem {
@@ -1118,7 +1117,13 @@ fn rule_formality_situation(
         });
     } else if avg > max_formality {
         let gap = avg - max_formality;
-        let extra = if gap >= 1.0 { 8 } else if gap >= 0.5 { 4 } else { 0 };
+        let extra = if gap >= 1.0 {
+            8
+        } else if gap >= 0.5 {
+            4
+        } else {
+            0
+        };
         let deduction = DEDUCT_FORMALITY_MISMATCH + extra;
         *score -= deduction;
         problems.push(RuleProblem {
@@ -1275,7 +1280,11 @@ fn generate_structured_suggestions(problems: &[RuleProblem]) -> Vec<StructuredSu
                 reason_code: p.code.clone(),
                 reason: "포인트 아이템이 너무 많아 시선이 분산됩니다".to_string(),
                 recommended_roles: vec!["베이스".to_string(), "연결템".to_string()],
-                recommended_colors: vec!["화이트".to_string(), "그레이".to_string(), "베이지".to_string()],
+                recommended_colors: vec![
+                    "화이트".to_string(),
+                    "그레이".to_string(),
+                    "베이지".to_string(),
+                ],
                 recommended_examples: vec![
                     "화이트 크루넥 티셔츠".to_string(),
                     "그레이 스웻셔츠".to_string(),
@@ -1287,7 +1296,11 @@ fn generate_structured_suggestions(problems: &[RuleProblem]) -> Vec<StructuredSu
                 reason_code: p.code.clone(),
                 reason: "코디의 중심축이 부족합니다".to_string(),
                 recommended_roles: vec!["구조템".to_string(), "베이스".to_string()],
-                recommended_colors: vec!["인디고".to_string(), "차콜".to_string(), "블랙".to_string()],
+                recommended_colors: vec![
+                    "인디고".to_string(),
+                    "차콜".to_string(),
+                    "블랙".to_string(),
+                ],
                 recommended_examples: vec![
                     "인디고 셀비지 데님".to_string(),
                     "차콜 울 팬츠".to_string(),
@@ -1301,7 +1314,11 @@ fn generate_structured_suggestions(problems: &[RuleProblem]) -> Vec<StructuredSu
                         reason_code: p.code.clone(),
                         reason: "전체적으로 어두워 답답해 보입니다".to_string(),
                         recommended_roles: vec!["베이스".to_string()],
-                        recommended_colors: vec!["화이트".to_string(), "크림".to_string(), "라이트그레이".to_string()],
+                        recommended_colors: vec![
+                            "화이트".to_string(),
+                            "크림".to_string(),
+                            "라이트그레이".to_string(),
+                        ],
                         recommended_examples: vec![
                             "화이트 크루넥 티셔츠".to_string(),
                             "크림 헨리넥".to_string(),
@@ -1313,7 +1330,11 @@ fn generate_structured_suggestions(problems: &[RuleProblem]) -> Vec<StructuredSu
                         reason_code: p.code.clone(),
                         reason: "전체적으로 밝아 흐려 보입니다".to_string(),
                         recommended_roles: vec!["베이스".to_string(), "구조템".to_string()],
-                        recommended_colors: vec!["인디고".to_string(), "블랙".to_string(), "차콜".to_string()],
+                        recommended_colors: vec![
+                            "인디고".to_string(),
+                            "블랙".to_string(),
+                            "차콜".to_string(),
+                        ],
                         recommended_examples: vec![
                             "인디고 데님".to_string(),
                             "블랙 팬츠".to_string(),
@@ -1325,7 +1346,11 @@ fn generate_structured_suggestions(problems: &[RuleProblem]) -> Vec<StructuredSu
                         reason_code: p.code.clone(),
                         reason: "톤 대비가 부족해 밋밋합니다".to_string(),
                         recommended_roles: vec!["베이스".to_string(), "포인트".to_string()],
-                        recommended_colors: vec!["화이트".to_string(), "블랙".to_string(), "인디고".to_string()],
+                        recommended_colors: vec![
+                            "화이트".to_string(),
+                            "블랙".to_string(),
+                            "인디고".to_string(),
+                        ],
                         recommended_examples: vec![
                             "밝거나 어두운 아이템으로 대비를 만들어보세요".to_string(),
                         ],
@@ -1337,7 +1362,11 @@ fn generate_structured_suggestions(problems: &[RuleProblem]) -> Vec<StructuredSu
                 reason_code: p.code.clone(),
                 reason: "전체가 따뜻한 톤으로 몰려 있어 답답해 보여요".to_string(),
                 recommended_roles: vec!["구조템".to_string(), "베이스".to_string()],
-                recommended_colors: vec!["차콜".to_string(), "인디고".to_string(), "블랙".to_string()],
+                recommended_colors: vec![
+                    "차콜".to_string(),
+                    "인디고".to_string(),
+                    "블랙".to_string(),
+                ],
                 recommended_examples: vec![
                     "진그레이 바지".to_string(),
                     "인디고 데님".to_string(),
@@ -1369,7 +1398,11 @@ fn generate_structured_suggestions(problems: &[RuleProblem]) -> Vec<StructuredSu
                 reason_code: p.code.clone(),
                 reason: "이너가 너무 강해서 아우터와 경쟁합니다".to_string(),
                 recommended_roles: vec!["베이스".to_string(), "연결템".to_string()],
-                recommended_colors: vec!["화이트".to_string(), "그레이".to_string(), "크림".to_string()],
+                recommended_colors: vec![
+                    "화이트".to_string(),
+                    "그레이".to_string(),
+                    "크림".to_string(),
+                ],
                 recommended_examples: vec![
                     "화이트 크루넥 티셔츠".to_string(),
                     "그레이 스웻셔츠".to_string(),
@@ -1380,7 +1413,11 @@ fn generate_structured_suggestions(problems: &[RuleProblem]) -> Vec<StructuredSu
                 reason_code: p.code.clone(),
                 reason: "가방이 코디와 어울리지 않습니다".to_string(),
                 recommended_roles: vec!["연결템".to_string(), "구조템".to_string()],
-                recommended_colors: vec!["블랙".to_string(), "네이비".to_string(), "카키".to_string()],
+                recommended_colors: vec![
+                    "블랙".to_string(),
+                    "네이비".to_string(),
+                    "카키".to_string(),
+                ],
                 recommended_examples: vec![
                     "블랙 캔버스 토트".to_string(),
                     "네이비 나일론 백팩".to_string(),
@@ -1440,7 +1477,11 @@ fn generate_structured_suggestions(problems: &[RuleProblem]) -> Vec<StructuredSu
                 reason_code: p.code.clone(),
                 reason: "밀리터리 아우터와 자연톤 하의가 너무 비슷해 군복처럼 보입니다".to_string(),
                 recommended_roles: vec!["베이스".to_string(), "구조템".to_string()],
-                recommended_colors: vec!["인디고".to_string(), "차콜".to_string(), "블랙".to_string()],
+                recommended_colors: vec![
+                    "인디고".to_string(),
+                    "차콜".to_string(),
+                    "블랙".to_string(),
+                ],
                 recommended_examples: vec![
                     "인디고 셀비지 데님".to_string(),
                     "차콜 울 팬츠".to_string(),
@@ -1467,10 +1508,10 @@ pub fn format_items_description(slots: &[OutfitSlot]) -> String {
                 s.slot.label(),
                 s.clothing.name,
                 s.clothing.color.as_deref().unwrap_or("N/A"),
-                s.clothing.tone.as_deref().unwrap_or("N/A"),
+                s.clothing.tone.map(|v| v.as_str()).unwrap_or("N/A"),
                 s.clothing.color_temperature.as_deref().unwrap_or("N/A"),
-                s.clothing.role.as_deref().unwrap_or("N/A"),
-                s.clothing.style.as_deref().unwrap_or("N/A"),
+                s.clothing.role.map(|v| v.as_str()).unwrap_or("N/A"),
+                s.clothing.style.map(|v| v.as_str()).unwrap_or("N/A"),
                 tw,
                 s.clothing.formality_level.map(|l| l.to_string()).unwrap_or("N/A".to_string()),
                 s.clothing.statement_level.map(|l| l.to_string()).unwrap_or("N/A".to_string()),

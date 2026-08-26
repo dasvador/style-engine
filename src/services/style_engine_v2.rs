@@ -13,6 +13,7 @@
 use serde::Serialize;
 
 use crate::models::outfit::{OutfitContext, OutfitSlot, SlotKind};
+use crate::models::style_vocab::{Role, Saturation, Style, Tone, Weight};
 
 /// 하드필터 탈락 사유 코드. 각 사유는 서로 독립적이며 중복 적재 가능.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -89,10 +90,7 @@ pub struct OutfitEvaluation {
 // ─────────────────────────────────────────────────────────────────────────
 
 /// 하드필터 실행. 점수화/가중치 금지 — 탈락 사유만 수집.
-pub fn run_hard_filter(
-    ctx: &OutfitContext,
-    current_season: Option<&str>,
-) -> HardFilterResult {
+pub fn run_hard_filter(ctx: &OutfitContext, current_season: Option<&str>) -> HardFilterResult {
     let mut reasons = Vec::new();
 
     if detect_style_hard_conflict(ctx) {
@@ -107,10 +105,10 @@ pub fn run_hard_filter(
     if detect_all_one_tone_without_rescue(ctx) {
         reasons.push(HardFilterReason::AllOneTone);
     }
-    if let Some(season) = current_season {
-        if detect_season_complete_mismatch(ctx, season) {
-            reasons.push(HardFilterReason::SeasonCompleteMismatch);
-        }
+    if let Some(season) = current_season
+        && detect_season_complete_mismatch(ctx, season)
+    {
+        reasons.push(HardFilterReason::SeasonCompleteMismatch);
     }
     if detect_warm_monotone_no_structure(ctx) {
         reasons.push(HardFilterReason::WarmMonotoneNoStructure);
@@ -129,28 +127,28 @@ pub fn run_hard_filter(
 fn detect_style_hard_conflict(ctx: &OutfitContext) -> bool {
     // 가방은 hard style conflict에서 완전 제외 — 액세서리일 뿐이므로 false positive 방지.
     // 신발은 포멀+스포츠 체크에서만 포함 (격식 충돌은 시각적 임팩트가 큼).
-    let no_bag_styles: Vec<(&SlotKind, &str)> = ctx
+    let no_bag_styles: Vec<(&SlotKind, Style)> = ctx
         .slots
         .iter()
         .filter(|s| s.slot != SlotKind::Bag)
-        .filter_map(|s| s.clothing.style.as_deref().map(|st| (&s.slot, st)))
-        .filter(|(_, st)| *st != "베이직")
+        .filter_map(|s| s.clothing.style.map(|st| (&s.slot, st)))
+        .filter(|(_, st)| *st != Style::Basic)
         .collect();
 
     // 포멀+스포츠 — 가방 제외, 신발 포함
-    let has_formal = no_bag_styles.iter().any(|(_, s)| *s == "포멀");
-    let has_sport = no_bag_styles.iter().any(|(_, s)| *s == "스포츠");
+    let has_formal = no_bag_styles.iter().any(|(_, s)| *s == Style::Formal);
+    let has_sport = no_bag_styles.iter().any(|(_, s)| *s == Style::Sport);
     if has_formal && has_sport {
         return true;
     }
 
     // 워크/밀리터리 — 상의+하의+아우터(큰 슬롯)에서만 카운트. 가방·신발 제외.
-    let big_slot_styles: Vec<&str> = no_bag_styles
+    let big_slot_styles: Vec<Style> = no_bag_styles
         .iter()
         .filter(|(slot, _)| matches!(slot, SlotKind::Top | SlotKind::Bottom | SlotKind::Outer))
         .map(|(_, st)| *st)
         .collect();
-    for strong in ["워크", "밀리터리"] {
+    for strong in [Style::Work, Style::Military] {
         if big_slot_styles.iter().filter(|s| **s == strong).count() >= 3 {
             return true;
         }
@@ -167,9 +165,9 @@ fn detect_strong_inner_violation(ctx: &OutfitContext) -> bool {
         return false;
     };
 
-    let role_is_accent = top.clothing.role.as_deref() == Some("포인트");
-    let strong_contrast = top.clothing.tone.as_deref() == Some("어두움")
-        && top.clothing.saturation.as_deref() == Some("높음");
+    let role_is_accent = top.clothing.role == Some(Role::Accent);
+    let strong_contrast =
+        top.clothing.tone == Some(Tone::Dark) && top.clothing.saturation == Some(Saturation::High);
     role_is_accent || strong_contrast
 }
 
@@ -181,7 +179,7 @@ fn detect_lack_of_structure(ctx: &OutfitContext) -> bool {
     let has_structure = ctx
         .slots
         .iter()
-        .any(|s| s.clothing.role.as_deref() == Some("구조템"));
+        .any(|s| s.clothing.role == Some(Role::Structural));
     if has_structure {
         return false;
     }
@@ -189,12 +187,12 @@ fn detect_lack_of_structure(ctx: &OutfitContext) -> bool {
     let bases: Vec<&OutfitSlot> = ctx
         .slots
         .iter()
-        .filter(|s| s.clothing.role.as_deref() == Some("베이스"))
+        .filter(|s| s.clothing.role == Some(Role::Base))
         .collect();
     let accent_count = ctx
         .slots
         .iter()
-        .filter(|s| s.clothing.role.as_deref() == Some("포인트"))
+        .filter(|s| s.clothing.role == Some(Role::Accent))
         .count();
 
     if bases.is_empty() {
@@ -202,8 +200,8 @@ fn detect_lack_of_structure(ctx: &OutfitContext) -> bool {
         let stable_connectors = ctx
             .slots
             .iter()
-            .filter(|s| s.clothing.role.as_deref() == Some("연결템"))
-            .filter(|s| s.clothing.weight.as_deref() != Some("가벼움"))
+            .filter(|s| s.clothing.role == Some(Role::Connector))
+            .filter(|s| s.clothing.weight != Some(Weight::Light))
             .count();
         if stable_connectors >= 2 {
             return false;
@@ -213,22 +211,18 @@ fn detect_lack_of_structure(ctx: &OutfitContext) -> bool {
 
     let all_light = bases
         .iter()
-        .all(|s| s.clothing.weight.as_deref() == Some("가벼움"));
+        .all(|s| s.clothing.weight == Some(Weight::Light));
     all_light && accent_count >= 2
 }
 
 fn detect_all_one_tone_without_rescue(ctx: &OutfitContext) -> bool {
-    let tones: Vec<&str> = ctx
-        .slots
-        .iter()
-        .filter_map(|s| s.clothing.tone.as_deref())
-        .collect();
+    let tones: Vec<Tone> = ctx.slots.iter().filter_map(|s| s.clothing.tone).collect();
     if tones.len() < 2 {
         return false;
     }
 
-    let all_dark = tones.iter().all(|t| *t == "어두움");
-    let all_bright = tones.iter().all(|t| *t == "밝음");
+    let all_dark = tones.iter().all(|t| *t == Tone::Dark);
+    let all_bright = tones.iter().all(|t| *t == Tone::Bright);
     if !(all_dark || all_bright) {
         return false;
     }
@@ -238,7 +232,7 @@ fn detect_all_one_tone_without_rescue(ctx: &OutfitContext) -> bool {
         .slots
         .iter()
         .filter(|s| matches!(s.slot, SlotKind::Outer | SlotKind::Bottom))
-        .any(|s| s.clothing.role.as_deref() == Some("구조템"));
+        .any(|s| s.clothing.role == Some(Role::Structural));
     if has_structural_rescue {
         return false;
     }
@@ -288,11 +282,11 @@ fn detect_warm_monotone_no_structure(ctx: &OutfitContext) -> bool {
     let has_structure = ctx
         .slots
         .iter()
-        .any(|s| s.clothing.role.as_deref() == Some("구조템"));
+        .any(|s| s.clothing.role == Some(Role::Structural));
     let has_dark_anchor = ctx
         .slots
         .iter()
-        .any(|s| s.clothing.tone.as_deref() == Some("어두움"));
+        .any(|s| s.clothing.tone == Some(Tone::Dark));
 
     if has_structure || has_dark_anchor {
         return false;
@@ -301,11 +295,11 @@ fn detect_warm_monotone_no_structure(ctx: &OutfitContext) -> bool {
     // Weak anchor: tone==중간 + formality>=2 + role in {구조,연결} + worlds∩{workwear,minimal} ≠ ∅
     // 어스톤 조합에서 중간톤 워크/미니멀 아이템이 시각적 무게를 줘서 warm 일색을 구제.
     let has_weak_anchor = ctx.slots.iter().any(|s| {
-        let tone_mid = s.clothing.tone.as_deref() == Some("중간");
+        let tone_mid = s.clothing.tone == Some(Tone::Mid);
         let formal_enough = s.clothing.formality_level.unwrap_or(0) >= 2;
         let role_ok = matches!(
-            s.clothing.role.as_deref(),
-            Some("구조템") | Some("연결템")
+            s.clothing.role,
+            Some(Role::Structural) | Some(Role::Connector)
         );
         let world_ok = s
             .texture_worlds
@@ -327,7 +321,7 @@ fn detect_formal_with_athletic_shoes(ctx: &OutfitContext) -> bool {
     ctx.slots
         .iter()
         .filter(|s| s.slot == SlotKind::Shoes)
-        .any(|s| s.clothing.style.as_deref() == Some("스포츠"))
+        .any(|s| s.clothing.style == Some(Style::Sport))
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -366,12 +360,7 @@ fn score_balance(ctx: &OutfitContext) -> i32 {
     let accent_count = ctx
         .slots
         .iter()
-        .filter(|s| {
-            matches!(
-                s.clothing.role.as_deref(),
-                Some("포인트") | Some("약한포인트")
-            )
-        })
+        .filter(|s| matches!(s.clothing.role, Some(Role::Accent) | Some(Role::SoftAccent)))
         .count();
     if accent_count >= 3 {
         s -= 8;
@@ -380,23 +369,19 @@ fn score_balance(ctx: &OutfitContext) -> i32 {
     }
 
     // 밝기/대비: all_dark/all_bright 중 hard filter에 걸리지 않고 구조 구제된 경우만 여기로 옴
-    let tones: Vec<&str> = ctx
-        .slots
-        .iter()
-        .filter_map(|s| s.clothing.tone.as_deref())
-        .collect();
+    let tones: Vec<Tone> = ctx.slots.iter().filter_map(|s| s.clothing.tone).collect();
     if tones.len() >= 2 {
-        let all_dark = tones.iter().all(|t| *t == "어두움");
-        let all_bright = tones.iter().all(|t| *t == "밝음");
-        let all_mid = tones.iter().all(|t| *t == "중간");
+        let all_dark = tones.iter().all(|t| *t == Tone::Dark);
+        let all_bright = tones.iter().all(|t| *t == Tone::Bright);
+        let all_mid = tones.iter().all(|t| *t == Tone::Mid);
         if all_dark || all_bright {
             // hard filter(AllOneTone) 미발동 == outer/bottom에 구조템 존재 → 소폭 감점만
             s -= 4;
         } else if all_mid {
             s -= if tones.len() >= 3 { 6 } else { 4 };
         } else {
-            let has_bright = tones.iter().any(|t| *t == "밝음");
-            let has_dark = tones.iter().any(|t| *t == "어두움");
+            let has_bright = tones.contains(&Tone::Bright);
+            let has_dark = tones.contains(&Tone::Dark);
             if has_bright && has_dark {
                 s += 2; // 밝음+어두움 대비 보너스
             }
@@ -428,19 +413,20 @@ fn score_coherence(ctx: &OutfitContext) -> i32 {
         .collect();
 
     // sweat+tailoring — 현 hard filter에 미포함(사용자 지시로 hard 유지) → soft 강 감점
-    if worlds.iter().any(|w| *w == "sweat") && worlds.iter().any(|w| *w == "tailoring") {
+    if worlds.contains(&"sweat") && worlds.contains(&"tailoring") {
         s -= 12;
     }
     // outdoor+tailoring 미세 충돌
-    if worlds.iter().any(|w| *w == "outdoor") && worlds.iter().any(|w| *w == "tailoring") {
+    if worlds.contains(&"outdoor") && worlds.contains(&"tailoring") {
         s -= 5;
     }
 
     // 밸런싱 페어 보너스
-    let has_mil = worlds.iter().any(|w| *w == "military");
-    let has_tai = worlds.iter().any(|w| *w == "tailoring");
-    let has_work = worlds.iter().any(|w| *w == "workwear");
-    if (has_mil && has_tai) || (has_work && has_mil) {
+    let has_mil = worlds.contains(&"military");
+    let has_tai = worlds.contains(&"tailoring");
+    let has_work = worlds.contains(&"workwear");
+    // 밀리터리에 테일러링이나 워크웨어가 섞이면 서로를 눌러주는 조합이 된다.
+    if has_mil && (has_tai || has_work) {
         s += 3;
     }
 
@@ -454,11 +440,13 @@ fn score_coherence(ctx: &OutfitContext) -> i32 {
     let bot = ctx.slots.iter().find(|s| s.slot == SlotKind::Bottom);
     if let (Some(t), Some(b)) = (top, bot) {
         let shared_world = !t.texture_worlds.is_empty()
-            && t.texture_worlds.iter().any(|w| b.texture_worlds.contains(w));
+            && t.texture_worlds
+                .iter()
+                .any(|w| b.texture_worlds.contains(w));
         let both_warm = t.clothing.color_temperature.as_deref() == Some("warm")
             && b.clothing.color_temperature.as_deref() == Some("warm");
-        let neither_structure = t.clothing.role.as_deref() != Some("구조템")
-            && b.clothing.role.as_deref() != Some("구조템");
+        let neither_structure =
+            t.clothing.role != Some(Role::Structural) && b.clothing.role != Some(Role::Structural);
         if shared_world && both_warm && neither_structure {
             world_penalty = 8;
         }
@@ -466,12 +454,8 @@ fn score_coherence(ctx: &OutfitContext) -> i32 {
 
     // 강스타일 편중: 전체 슬롯 기준 워크/밀리터리 카운트
     {
-        let all_styles: Vec<&str> = ctx
-            .slots
-            .iter()
-            .filter_map(|s| s.clothing.style.as_deref())
-            .collect();
-        for strong in ["워크", "밀리터리"] {
+        let all_styles: Vec<Style> = ctx.slots.iter().filter_map(|s| s.clothing.style).collect();
+        for strong in [Style::Work, Style::Military] {
             let count = all_styles.iter().filter(|s| **s == strong).count();
             if count >= 3 {
                 strong_style_penalty = strong_style_penalty.max(6);
@@ -492,20 +476,18 @@ fn score_coherence(ctx: &OutfitContext) -> i32 {
     if ctx.slots.len() >= 2 {
         let all_basic = ctx.slots.iter().all(|s| {
             matches!(
-                s.clothing.role.as_deref(),
-                Some("베이스") | Some("연결템") | Some("구조템")
+                s.clothing.role,
+                Some(Role::Base) | Some(Role::Connector) | Some(Role::Structural)
             )
         });
-        let has_accent = ctx.slots.iter().any(|s| {
-            matches!(
-                s.clothing.role.as_deref(),
-                Some("포인트") | Some("약한포인트")
-            )
-        });
+        let has_accent = ctx
+            .slots
+            .iter()
+            .any(|s| matches!(s.clothing.role, Some(Role::Accent) | Some(Role::SoftAccent)));
         let has_structure = ctx
             .slots
             .iter()
-            .any(|s| s.clothing.role.as_deref() == Some("구조템"));
+            .any(|s| s.clothing.role == Some(Role::Structural));
         if all_basic && !has_accent && !has_structure {
             s -= 5;
         }
@@ -543,7 +525,7 @@ fn score_utility(ctx: &OutfitContext, current_season: Option<&str>) -> i32 {
     let has_outer = ctx.slots.iter().any(|s| s.slot == SlotKind::Outer);
     let mut mismatch = 0;
     for slot in &ctx.slots {
-        let Some(role) = slot.clothing.role.as_deref() else {
+        let Some(role) = slot.clothing.role else {
             continue;
         };
         let expected = slot.slot.expected_roles(has_outer);
@@ -625,7 +607,7 @@ fn score_accessory(ctx: &OutfitContext) -> i32 {
             }
 
             // 스포츠 슈즈 + 격식 옷 (situation이 출근/비즈니스일 땐 hard filter 소관)
-            if shoe.clothing.style.as_deref() == Some("스포츠") && clothing_avg_formality >= 3.0 {
+            if shoe.clothing.style == Some(Style::Sport) && clothing_avg_formality >= 3.0 {
                 let is_formal_sit = ctx
                     .situation
                     .as_deref()

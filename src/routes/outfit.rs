@@ -1,13 +1,14 @@
-use axum::{routing::post, Json, Router};
+use axum::{Json, Router, routing::post};
 use chrono::Datelike;
 
+use crate::AppState;
 use crate::db::clothing_repo;
 use crate::errors::AppError;
 use crate::models::outfit::{
     OutfitContext, OutfitEvaluateRequest, OutfitEvaluateResponse, OutfitSlot, SlotKind,
 };
-use crate::services::{openai, style_engine};
-use crate::AppState;
+use crate::services::llm::LlmTask;
+use crate::services::{prompts, style_engine};
 
 pub fn router() -> Router<AppState> {
     Router::new().route("/evaluate", post(evaluate_outfit))
@@ -77,12 +78,9 @@ async fn evaluate_outfit(
         .map(|s| format!("\n상황: {}", s))
         .unwrap_or_default();
 
-    let explanation = if !state.openai_api_key.is_empty()
-        && state.openai_api_key != "sk-your-key-here"
-    {
-        openai::generate_outfit_explanation(
-            &state.http_client,
-            &state.openai_api_key,
+    let explanation = match state.llm.ensure_configured(LlmTask::OutfitExplanation) {
+        Ok(()) => prompts::generate_outfit_explanation(
+            &state.llm,
             &format!("{}{}", items_desc, situation_text),
             eval.verdict.label(),
             &strengths_desc,
@@ -93,9 +91,11 @@ async fn evaluate_outfit(
         .unwrap_or_else(|e| {
             tracing::warn!("Failed to generate outfit explanation: {}", e);
             "설명을 생성할 수 없습니다".to_string()
-        })
-    } else {
-        "OpenAI API 키가 설정되지 않아 설명을 생성할 수 없습니다".to_string()
+        }),
+        Err(e) => {
+            tracing::warn!("Skipping outfit explanation: {}", e);
+            "API 키가 설정되지 않아 설명을 생성할 수 없습니다".to_string()
+        }
     };
 
     let verdict_label = eval.verdict.label().to_string();

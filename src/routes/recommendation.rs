@@ -1,22 +1,24 @@
-use axum::{extract::State, routing::post, Json, Router};
+use axum::{Json, Router, extract::State, routing::post};
 use chrono::Datelike;
 use tracing::warn;
 
+use crate::AppState;
 use crate::db::clothing_repo;
 use crate::db::recommendation_history_repo::RecommendationHistoryRepo;
 use crate::errors::AppError;
+use crate::middleware::auth::AuthUser;
 use crate::models::clothing::Clothing;
-use crate::models::outfit::{OutfitContext, OutfitSlot, SlotKind};
 use crate::models::outfit::Verdict;
+use crate::models::outfit::{OutfitContext, OutfitSlot, SlotKind};
 use crate::models::recommendation::{
     ModeRecommendation, MultiModeRecommendationResponse, OutfitCandidate, OutfitItem,
     RecommendationRequest, RecommendationResponse, ScoringDetail,
 };
-use crate::middleware::auth::AuthUser;
+use crate::models::style_vocab::{Role, Style, Tone};
+use crate::services::llm::LlmTask;
 use crate::services::recommendation_diversity;
 use crate::services::recommendation_service;
-use crate::services::{openai, style_engine, weather as weather_service};
-use crate::AppState;
+use crate::services::{prompts, style_engine, weather as weather_service};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -30,11 +32,10 @@ async fn get_recommendation(
     Json(body): Json<RecommendationRequest>,
 ) -> Result<Json<RecommendationResponse>, AppError> {
     let user_id = &auth.user_id;
-    if state.openai_api_key.is_empty() || state.openai_api_key == "sk-your-key-here" {
-        return Err(AppError::BadRequest(
-            "OPENAI_API_KEY is not configured".to_string(),
-        ));
-    }
+    state
+        .llm
+        .ensure_configured(LlmTask::OutfitCandidates)
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
 
     // 1. Get region
     let region = crate::db::region_repo::get_region(&state.db)
@@ -59,7 +60,8 @@ async fn get_recommendation(
             &state.db,
             body.gender.as_deref(),
             body.style_mood.as_deref(),
-        ).await?
+        )
+        .await?
     } else {
         clothing_repo::list_clothing(&state.db).await?
     };
@@ -69,9 +71,8 @@ async fn get_recommendation(
     let recent_hint = build_recent_hint(&state.db, &clothes, user_id).await;
 
     // 5. Call OpenAI for 3 candidates
-    let multi_result = openai::get_outfit_candidates(
-        &state.http_client,
-        &state.openai_api_key,
+    let multi_result = prompts::get_outfit_candidates(
+        &state.llm,
         &weather,
         &grouped,
         body.occasion.as_deref(),
@@ -109,9 +110,7 @@ async fn get_recommendation(
             } else {
                 // Rerank with history penalties
                 let reranked = recommendation_service::rerank_candidates_with_history(
-                    &state.db,
-                    user_id,
-                    candidates,
+                    &state.db, user_id, candidates,
                 )
                 .await
                 .unwrap_or_default();
@@ -137,9 +136,8 @@ async fn get_recommendation(
                 warn!("Multi-candidate failed, falling back to single: {e}");
             }
             let flat_descriptions = build_flat_descriptions(&clothes);
-            let ai_result = openai::get_outfit_recommendation(
-                &state.http_client,
-                &state.openai_api_key,
+            let ai_result = prompts::get_outfit_recommendation(
+                &state.llm,
                 &weather,
                 &flat_descriptions,
                 body.occasion.as_deref(),
@@ -158,8 +156,11 @@ async fn get_recommendation(
         .map(|ai_item| {
             let matched = find_matching_clothing(&clothes, &ai_item.name);
             let image_url = matched.and_then(|c| c.image_url.clone());
-            let material = matched
-                .and_then(|c| c.material_primary.clone().or_else(|| c.texture_keywords.clone()));
+            let material = matched.and_then(|c| {
+                c.material_primary
+                    .clone()
+                    .or_else(|| c.texture_keywords.clone())
+            });
             OutfitItem {
                 category: ai_item.category,
                 name: ai_item.name,
@@ -173,9 +174,8 @@ async fn get_recommendation(
     // 8. Save history — either from scored candidate or from raw outfit
     match selected_candidate {
         Some(sel) => {
-            let _ =
-                recommendation_service::save_selected_recommendation(&state.db, user_id, &sel)
-                    .await;
+            let _ = recommendation_service::save_selected_recommendation(&state.db, user_id, &sel)
+                .await;
         }
         None => {
             // Fallback: save from matched outfit items
@@ -214,11 +214,10 @@ async fn get_multi_recommendation(
     Json(body): Json<RecommendationRequest>,
 ) -> Result<Json<MultiModeRecommendationResponse>, AppError> {
     let user_id = &auth.user_id;
-    if state.openai_api_key.is_empty() || state.openai_api_key == "sk-your-key-here" {
-        return Err(AppError::BadRequest(
-            "OPENAI_API_KEY is not configured".to_string(),
-        ));
-    }
+    state
+        .llm
+        .ensure_configured(LlmTask::OutfitCandidates)
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
 
     let region = crate::db::region_repo::get_region(&state.db)
         .await?
@@ -240,7 +239,8 @@ async fn get_multi_recommendation(
             &state.db,
             body.gender.as_deref(),
             body.style_mood.as_deref(),
-        ).await?
+        )
+        .await?
     } else {
         clothing_repo::list_clothing(&state.db).await?
     };
@@ -250,16 +250,26 @@ async fn get_multi_recommendation(
 
     // 최근 추천 아이템 ID 수집 (shortlist recency penalty용)
     let recent_ids: std::collections::HashSet<String> = {
-        let recent = RecommendationHistoryRepo::find_recent_by_user(
-            &state.db, user_id, 7,
-        ).await.unwrap_or_default();
+        let recent = RecommendationHistoryRepo::find_recent_by_user(&state.db, user_id, 7)
+            .await
+            .unwrap_or_default();
         let mut ids = std::collections::HashSet::new();
         for r in &recent {
-            if let Some(id) = &r.top_id { ids.insert(id.clone()); }
-            if let Some(id) = &r.bottom_id { ids.insert(id.clone()); }
-            if let Some(id) = &r.outer_id { ids.insert(id.clone()); }
-            if let Some(id) = &r.shoes_id { ids.insert(id.clone()); }
-            if let Some(id) = &r.bag_id { ids.insert(id.clone()); }
+            if let Some(id) = &r.top_id {
+                ids.insert(id.clone());
+            }
+            if let Some(id) = &r.bottom_id {
+                ids.insert(id.clone());
+            }
+            if let Some(id) = &r.outer_id {
+                ids.insert(id.clone());
+            }
+            if let Some(id) = &r.shoes_id {
+                ids.insert(id.clone());
+            }
+            if let Some(id) = &r.bag_id {
+                ids.insert(id.clone());
+            }
         }
         ids
     };
@@ -276,9 +286,8 @@ async fn get_multi_recommendation(
     let grouped = shortlist.to_grouped();
 
     // LLM: 5후보 생성 (shortlist 기반 카테고리별 그룹 입력)
-    let ai_candidates = openai::get_outfit_candidates(
-        &state.http_client,
-        &state.openai_api_key,
+    let ai_candidates = prompts::get_outfit_candidates(
+        &state.llm,
         &weather,
         &grouped,
         body.occasion.as_deref(),
@@ -289,9 +298,7 @@ async fn get_multi_recommendation(
     .map_err(AppError::Internal)?;
 
     if ai_candidates.candidates.is_empty() {
-        return Err(AppError::Internal(anyhow::anyhow!(
-            "No candidates from AI"
-        )));
+        return Err(AppError::Internal(anyhow::anyhow!("No candidates from AI")));
     }
 
     // style_engine 점수 + 이력 penalty/bonus 계산
@@ -321,13 +328,10 @@ async fn get_multi_recommendation(
 
     // 휴면 아이템 감지
     let all_ids: Vec<String> = clothes.iter().map(|c| c.id.clone()).collect();
-    let dormant_ids = RecommendationHistoryRepo::find_dormant_item_ids(
-        &state.db,
-        user_id,
-        &all_ids,
-    )
-    .await
-    .unwrap_or_default();
+    let dormant_ids =
+        RecommendationHistoryRepo::find_dormant_item_ids(&state.db, user_id, &all_ids)
+            .await
+            .unwrap_or_default();
 
     // 공유 weather_summary (첫 번째 후보에서)
     let shared_weather = ai_candidates
@@ -339,11 +343,8 @@ async fn get_multi_recommendation(
     // ─── 순차 모드 선택 (하드 필터링) ───
 
     // Step 1: 오늘의 추천 — 최고 점수
-    let todays = recommendation_service::select_todays_pick(
-        &reranked,
-        weather.temperature,
-        &clothes,
-    );
+    let todays =
+        recommendation_service::select_todays_pick(&reranked, weather.temperature, &clothes);
 
     // Step 2: 다른 조합 — Today와 상의+하의가 다른 후보
     let variation = match &todays {
@@ -353,17 +354,30 @@ async fn get_multi_recommendation(
 
     // Step 3: 안 입은 옷 — 휴면 아이템 포함 후보
     let dormant = match &todays {
-        Some(t) => {
-            recommendation_service::select_dormant(&reranked, &dormant_ids, &t.candidate)
-        }
+        Some(t) => recommendation_service::select_dormant(&reranked, &dormant_ids, &t.candidate),
         None => None,
     };
 
     // 결과 조립
     let mode_defs = [
-        ("todays_pick", "오늘의 추천", "오늘 날씨와 상황에 가장 잘 맞는 코디", &todays),
-        ("variation", "다른 조합", "비슷한 퀄리티로 다른 아이템 조합", &variation),
-        ("dormant_revival", "안 입은 옷 활용", "최근에 안 입은 옷으로 괜찮은 코디", &dormant),
+        (
+            "todays_pick",
+            "오늘의 추천",
+            "오늘 날씨와 상황에 가장 잘 맞는 코디",
+            &todays,
+        ),
+        (
+            "variation",
+            "다른 조합",
+            "비슷한 퀄리티로 다른 아이템 조합",
+            &variation,
+        ),
+        (
+            "dormant_revival",
+            "안 입은 옷 활용",
+            "최근에 안 입은 옷으로 괜찮은 코디",
+            &dormant,
+        ),
     ];
 
     let mut modes = Vec::new();
@@ -432,7 +446,7 @@ async fn get_multi_recommendation(
             &clothes,
         );
 
-        let reason = build_mode_reason(*key, scoring, &revival_items, todays_idx, ai_idx);
+        let reason = build_mode_reason(key, scoring, &revival_items, todays_idx, ai_idx);
 
         modes.push(ModeRecommendation {
             mode: key.to_string(),
@@ -452,12 +466,9 @@ async fn get_multi_recommendation(
 
     // 이력 저장: Mode 1 (오늘의 추천) winner만
     if let Some(ref t) = todays {
-        let _ = recommendation_service::save_selected_recommendation(
-            &state.db,
-            user_id,
-            &t.candidate,
-        )
-        .await;
+        let _ =
+            recommendation_service::save_selected_recommendation(&state.db, user_id, &t.candidate)
+                .await;
     }
 
     // ─── SHADOW EXPERIMENT (S2) — log-only, baseline 영향 0 ───
@@ -528,8 +539,11 @@ fn build_outfit_items(
         .map(|ai_item| {
             let matched = find_matching_clothing(clothes, &ai_item.name);
             let image_url = matched.and_then(|c| c.image_url.clone());
-            let material = matched
-                .and_then(|c| c.material_primary.clone().or_else(|| c.texture_keywords.clone()));
+            let material = matched.and_then(|c| {
+                c.material_primary
+                    .clone()
+                    .or_else(|| c.texture_keywords.clone())
+            });
             OutfitItem {
                 category: ai_item.category.clone(),
                 name: ai_item.name.clone(),
@@ -573,7 +587,9 @@ async fn build_outfit_candidate(
         if db_slot != Some(slot_kind) {
             tracing::warn!(
                 "LLM slot mismatch: '{}' assigned to {} but DB category is {}",
-                clothing.name, ai_item.category, clothing.category
+                clothing.name,
+                ai_item.category,
+                clothing.category
             );
             continue;
         }
@@ -608,33 +624,31 @@ async fn build_outfit_candidate(
     }
 
     // LLM이 신발을 안 넣은 경우 → 결정론적 매칭
-    if shoes_id.is_none() {
-        if let Some((shoe, shoe_seasons, shoe_tw)) =
+    if shoes_id.is_none()
+        && let Some((shoe, shoe_seasons, shoe_tw)) =
             select_best_shoe(clothes, db, &top_id, &bottom_id, &outer_id).await
-        {
-            shoes_id = Some(shoe.id.clone());
-            slots.push(OutfitSlot {
-                slot: SlotKind::Shoes,
-                clothing: shoe,
-                seasons: shoe_seasons,
-                texture_worlds: shoe_tw,
-            });
-        }
+    {
+        shoes_id = Some(shoe.id.clone());
+        slots.push(OutfitSlot {
+            slot: SlotKind::Shoes,
+            clothing: shoe,
+            seasons: shoe_seasons,
+            texture_worlds: shoe_tw,
+        });
     }
 
     // LLM이 가방을 안 넣은 경우 → 결정론적 매칭
-    if bag_id.is_none() {
-        if let Some((bag, bag_seasons, bag_tw)) =
+    if bag_id.is_none()
+        && let Some((bag, bag_seasons, bag_tw)) =
             select_best_bag(clothes, db, &top_id, &bottom_id, &outer_id, &shoes_id).await
-        {
-            bag_id = Some(bag.id.clone());
-            slots.push(OutfitSlot {
-                slot: SlotKind::Bag,
-                clothing: bag,
-                seasons: bag_seasons,
-                texture_worlds: bag_tw,
-            });
-        }
+    {
+        bag_id = Some(bag.id.clone());
+        slots.push(OutfitSlot {
+            slot: SlotKind::Bag,
+            clothing: bag,
+            seasons: bag_seasons,
+            texture_worlds: bag_tw,
+        });
     }
 
     let ctx = OutfitContext {
@@ -679,9 +693,15 @@ async fn build_recent_hint(db: &sqlx::MySqlPool, clothes: &[Clothing], user_id: 
         };
 
         // Collect all slot IDs from this history row
-        for slot_id in [&row.top_id, &row.bottom_id, &row.outer_id, &row.shoes_id, &row.bag_id]
-            .into_iter()
-            .flatten()
+        for slot_id in [
+            &row.top_id,
+            &row.bottom_id,
+            &row.outer_id,
+            &row.shoes_id,
+            &row.bag_id,
+        ]
+        .into_iter()
+        .flatten()
         {
             if !seen_ids.insert(slot_id.clone()) {
                 continue;
@@ -705,10 +725,7 @@ async fn select_best_shoe(
     bottom_id: &Option<String>,
     outer_id: &Option<String>,
 ) -> Option<(Clothing, Vec<String>, Vec<String>)> {
-    let shoes: Vec<&Clothing> = clothes
-        .iter()
-        .filter(|c| c.category == "신발")
-        .collect();
+    let shoes: Vec<&Clothing> = clothes.iter().filter(|c| c.category == "신발").collect();
 
     if shoes.is_empty() {
         return None;
@@ -724,21 +741,21 @@ async fn select_best_shoe(
         .as_ref()
         .and_then(|id| clothes.iter().find(|c| c.id == *id));
 
-    let top_tone = top.and_then(|t| t.tone.as_deref()).unwrap_or("중간");
-    let bottom_tone = bottom.and_then(|b| b.tone.as_deref()).unwrap_or("중간");
+    let top_tone = top.and_then(|t| t.tone).unwrap_or(Tone::Mid);
+    let bottom_tone = bottom.and_then(|b| b.tone).unwrap_or(Tone::Mid);
     let outfit_style = outer
-        .and_then(|o| o.style.as_deref())
-        .or_else(|| top.and_then(|t| t.style.as_deref()))
-        .unwrap_or("베이직");
+        .and_then(|o| o.style)
+        .or_else(|| top.and_then(|t| t.style))
+        .unwrap_or(Style::Basic);
 
     // 점수 매기기
     let mut scored: Vec<(&Clothing, i32)> = shoes
         .iter()
         .map(|shoe| {
             let mut score = 0i32;
-            let shoe_tone = shoe.tone.as_deref().unwrap_or("중간");
-            let shoe_role = shoe.role.as_deref().unwrap_or("");
-            let shoe_style = shoe.style.as_deref().unwrap_or("베이직");
+            let shoe_tone = shoe.tone.unwrap_or(Tone::Mid);
+            let shoe_role = shoe.role.map(|v| v.as_str()).unwrap_or("");
+            let shoe_style = shoe.style.unwrap_or(Style::Basic);
 
             // 1. 역할 선호: 구조템 > 연결템 > 베이스 > 포인트
             match shoe_role {
@@ -757,16 +774,16 @@ async fn select_best_shoe(
                 score += 5; // 하나와만 다름
             }
             // 상의+하의 둘 다 밝으면 어두운 신발 강력 선호
-            if top_tone == "밝음" && bottom_tone == "밝음" && shoe_tone == "어두움" {
+            if top_tone == Tone::Bright && bottom_tone == Tone::Bright && shoe_tone == Tone::Dark {
                 score += 10;
             }
 
             // 3. 스타일 매치: 코디 스타일과 동일하면 보너스
-            if shoe_style == outfit_style || shoe_style == "베이직" {
+            if shoe_style == outfit_style || shoe_style == Style::Basic {
                 score += 8;
             }
             // 포멀 코디에 러닝화 감점
-            if outfit_style == "포멀" && shoe.name.contains("러닝") {
+            if outfit_style == Style::Formal && shoe.name.contains("러닝") {
                 score -= 15;
             }
 
@@ -803,10 +820,7 @@ async fn select_best_bag(
     outer_id: &Option<String>,
     shoes_id: &Option<String>,
 ) -> Option<(Clothing, Vec<String>, Vec<String>)> {
-    let bags: Vec<&Clothing> = clothes
-        .iter()
-        .filter(|c| c.category == "가방")
-        .collect();
+    let bags: Vec<&Clothing> = clothes.iter().filter(|c| c.category == "가방").collect();
 
     if bags.is_empty() {
         return None;
@@ -822,30 +836,29 @@ async fn select_best_bag(
         .as_ref()
         .and_then(|id| clothes.iter().find(|c| c.id == *id));
 
-    let bottom_tone = bottom.and_then(|b| b.tone.as_deref()).unwrap_or("중간");
+    let bottom_tone = bottom.and_then(|b| b.tone).unwrap_or(Tone::Mid);
     let outfit_style = outer
-        .and_then(|o| o.style.as_deref())
-        .or_else(|| bottom.and_then(|b| b.style.as_deref()))
-        .unwrap_or("베이직");
+        .and_then(|o| o.style)
+        .or_else(|| bottom.and_then(|b| b.style))
+        .unwrap_or(Style::Basic);
 
     // 코디에 이미 포인트가 있는지
     let has_accent = [top_id, bottom_id, outer_id]
         .iter()
         .filter_map(|id| id.as_ref())
         .filter_map(|id| clothes.iter().find(|c| c.id == *id))
-        .any(|c| matches!(c.role.as_deref(), Some("포인트") | Some("약한포인트")));
+        .any(|c| matches!(c.role, Some(Role::Accent) | Some(Role::SoftAccent)));
 
-    let shoes_accent = shoes.is_some_and(|s| {
-        matches!(s.role.as_deref(), Some("포인트") | Some("약한포인트"))
-    });
+    let shoes_accent =
+        shoes.is_some_and(|s| matches!(s.role, Some(Role::Accent) | Some(Role::SoftAccent)));
 
     let mut scored: Vec<(&Clothing, i32)> = bags
         .iter()
         .map(|bag| {
             let mut score = 0i32;
-            let bag_role = bag.role.as_deref().unwrap_or("");
-            let bag_style = bag.style.as_deref().unwrap_or("베이직");
-            let bag_tone = bag.tone.as_deref().unwrap_or("중간");
+            let bag_role = bag.role.map(|v| v.as_str()).unwrap_or("");
+            let bag_style = bag.style.unwrap_or(Style::Basic);
+            let bag_tone = bag.tone.unwrap_or(Tone::Mid);
 
             // 1. 역할: 구조템/연결템 선호
             match bag_role {
@@ -859,12 +872,12 @@ async fn select_best_bag(
             }
 
             // 2. 스타일 매치
-            if bag_style == outfit_style || bag_style == "베이직" {
+            if bag_style == outfit_style || bag_style == Style::Basic {
                 score += 5;
             }
 
             // 3. 하의와 톤 조화
-            if bag_tone == bottom_tone || bag_tone == "중간" {
+            if bag_tone == bottom_tone || bag_tone == Tone::Mid {
                 score += 3;
             }
 
@@ -938,22 +951,42 @@ fn find_matching_clothing<'a>(clothes: &'a [Clothing], name: &str) -> Option<&'a
 }
 
 /// 카테고리별 그룹화된 옷장 데이터를 생성. LLM이 슬롯별 후보만 보게 해서 혼동 방지.
-fn build_grouped_clothes(clothes: &[Clothing]) -> openai::GroupedClothes {
+fn build_grouped_clothes(clothes: &[Clothing]) -> prompts::GroupedClothes {
     let fmt = |c: &Clothing| {
         format!(
             "- {} | role:{} | tone:{} | style:{}",
             c.name,
-            c.role.as_deref().unwrap_or("-"),
-            c.tone.as_deref().unwrap_or("-"),
-            c.style.as_deref().unwrap_or("-"),
+            c.role.map(|v| v.as_str()).unwrap_or("-"),
+            c.tone.map(|v| v.as_str()).unwrap_or("-"),
+            c.style.map(|v| v.as_str()).unwrap_or("-"),
         )
     };
-    openai::GroupedClothes {
-        tops: clothes.iter().filter(|c| c.category == "상의").map(fmt).collect(),
-        bottoms: clothes.iter().filter(|c| c.category == "하의").map(fmt).collect(),
-        outers: clothes.iter().filter(|c| c.category == "아우터").map(fmt).collect(),
-        shoes: clothes.iter().filter(|c| c.category == "신발").map(fmt).collect(),
-        bags: clothes.iter().filter(|c| c.category == "가방").map(fmt).collect(),
+    prompts::GroupedClothes {
+        tops: clothes
+            .iter()
+            .filter(|c| c.category == "상의")
+            .map(fmt)
+            .collect(),
+        bottoms: clothes
+            .iter()
+            .filter(|c| c.category == "하의")
+            .map(fmt)
+            .collect(),
+        outers: clothes
+            .iter()
+            .filter(|c| c.category == "아우터")
+            .map(fmt)
+            .collect(),
+        shoes: clothes
+            .iter()
+            .filter(|c| c.category == "신발")
+            .map(fmt)
+            .collect(),
+        bags: clothes
+            .iter()
+            .filter(|c| c.category == "가방")
+            .map(fmt)
+            .collect(),
     }
 }
 
@@ -964,10 +997,11 @@ fn build_flat_descriptions(clothes: &[Clothing]) -> Vec<String> {
         .map(|c| {
             format!(
                 "{} | 카테고리:{} | 톤:{} | 역할:{} | 스타일:{}",
-                c.name, c.category,
-                c.tone.as_deref().unwrap_or("-"),
-                c.role.as_deref().unwrap_or("-"),
-                c.style.as_deref().unwrap_or("-"),
+                c.name,
+                c.category,
+                c.tone.map(|v| v.as_str()).unwrap_or("-"),
+                c.role.map(|v| v.as_str()).unwrap_or("-"),
+                c.style.map(|v| v.as_str()).unwrap_or("-"),
             )
         })
         .collect()

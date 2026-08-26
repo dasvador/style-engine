@@ -1,11 +1,11 @@
-use axum::{extract::State, routing::post, Json, Router};
+use axum::{Json, Router, extract::State, routing::post};
 use serde::Serialize;
 
+use crate::AppState;
 use crate::db::feedback_repo;
 use crate::errors::AppError;
 use crate::middleware::auth::AuthUser;
 use crate::models::feedback::FeedbackRequest;
-use crate::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new().route("/", post(submit_feedback))

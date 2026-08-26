@@ -3,12 +3,12 @@ pub mod clothes;
 pub mod feedback;
 pub mod health;
 pub mod home;
-pub mod user;
 pub mod outfit;
 pub mod recommendation;
 pub mod reference;
 pub mod region;
 pub mod style_mood;
+pub mod user;
 pub mod weather;
 
 use axum::Router;

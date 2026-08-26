@@ -8,10 +8,11 @@
 |------|------|
 | Framework | Axum (Rust) + Tokio |
 | Database | MySQL (sqlx, 런타임 쿼리) |
-| Vision AI | OpenAI gpt-4o-mini |
-| Embedding | OpenAI text-embedding-3-small (1536차원, API) |
+| LLM | provider 추상화 (`services/llm`) — OpenAI / Anthropic, task 단위 라우팅 |
+| Vision AI | 기본값 gpt-4o-mini (`LLM_TASK_VISION_*`로 교체) |
+| Embedding | 기본값 text-embedding-3-small (1536차원, API) |
 | Weather | KMA 초단기실황 API |
-| Style Engine | 결정론적 룰 엔진 (15+ 룰, 0-95점) |
+| Style Engine | 결정론적 룰 엔진 (15 룰, 0-95점) |
 
 ---
 
@@ -315,11 +316,18 @@ src/
 ├── errors.rs                            # 에러 타입 + HTTP 매핑
 ├── middleware/                           # 미들웨어
 ├── services/
-│   ├── style_engine.rs                  # 결정론적 룰 엔진 (15+ 룰)
+│   ├── llm/                             # provider 추상화 (라우팅·재시도·계측)
+│   │   ├── mod.rs                       #   LlmClient
+│   │   ├── config.rs                    #   task → provider/model 라우팅
+│   │   ├── provider.rs                  #   Chat/Embedding/Image trait
+│   │   ├── openai.rs                    #   OpenAI 구현
+│   │   ├── anthropic.rs                 #   Anthropic 구현 (chat/vision)
+│   │   ├── types.rs / usage.rs / error.rs
+│   ├── style_engine.rs                  # 결정론적 룰 엔진 (15 룰)
 │   ├── recommendation_service.rs        # 3-모드 선택 + 적합도 게이트
 │   ├── recommendation_diversity.rs      # 리센시 페널티/보너스/휴면 감지
-│   ├── openai.rs                        # Vision API, 5후보 추천, 코디 설명
-│   ├── embedding.rs                     # OpenAI 임베딩, 캐시, 검색, 시드
+│   ├── prompts.rs                       # 스타일 도메인 LLM task 정의 (프롬프트 전용)
+│   ├── embedding.rs                     # 임베딩 캐시, 검색, 시드
 │   └── weather.rs                       # KMA 초단기실황 API
 ├── routes/
 │   ├── recommendation.rs                # 추천 핸들러 (/multi 포함)

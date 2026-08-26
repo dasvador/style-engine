@@ -1,10 +1,11 @@
 pub mod candidate_pipeline;
 pub mod embedding;
-pub mod openai;
+pub mod llm;
+pub mod outfit_scorer;
+pub mod prompts;
 pub mod recommendation_diversity;
 pub mod recommendation_experiment;
 pub mod recommendation_service;
-pub mod outfit_scorer;
 pub mod serving_ranker;
 pub mod shortlist;
 pub mod style_engine;

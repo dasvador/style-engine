@@ -1,20 +1,22 @@
 use axum::{
+    Json, Router,
     extract::{Path, State},
     routing::get,
-    Json, Router,
 };
 
+use crate::AppState;
 use crate::db::reference_repo;
 use crate::errors::AppError;
 use crate::models::reference::{CreateReferenceRequest, ReferenceResponse};
-use crate::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_references).post(create_reference))
         .route(
             "/{id}",
-            get(get_reference).put(update_reference).delete(delete_reference),
+            get(get_reference)
+                .put(update_reference)
+                .delete(delete_reference),
         )
 }
 
@@ -27,9 +29,9 @@ async fn create_reference(
         .embedding
         .embed_text(&body.description)
         .await
-        .map_err(|e| AppError::Internal(e))?;
-    let emb_json = serde_json::to_value(&embedding)
-        .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
+        .map_err(AppError::Internal)?;
+    let emb_json =
+        serde_json::to_value(&embedding).map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
 
     let reference = reference_repo::insert_reference(
         &state.db,
@@ -78,9 +80,9 @@ async fn update_reference(
         .embedding
         .embed_text(&body.description)
         .await
-        .map_err(|e| AppError::Internal(e))?;
-    let emb_json = serde_json::to_value(&embedding)
-        .map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
+        .map_err(AppError::Internal)?;
+    let emb_json =
+        serde_json::to_value(&embedding).map_err(|e| AppError::Internal(anyhow::anyhow!(e)))?;
 
     let reference = reference_repo::update_reference(
         &state.db,
