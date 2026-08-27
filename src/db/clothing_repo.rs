@@ -2,7 +2,7 @@ use sqlx::MySqlPool;
 use uuid::Uuid;
 
 use crate::models::clothing::Clothing;
-use crate::models::style_vocab::{Role, Saturation, Style, Tone, Weight};
+use crate::models::style_vocab::{Role, Saturation, Style, Thickness, Tone, Weight};
 
 const SELECT_COLS: &str = "id, name, category, gender, style_mood, color, thickness, image_url, tone, saturation, style, weight, role, color_temperature, versatility, statement_level, formality_level, visual_weight, texture_depth, visual_weight_v2, texture_depth_v2, grounding_score, shadow_tone, silhouette_volume, material_primary, sub_category, floating_score, strong_style_score, texture_keywords, created_at, updated_at";
 
@@ -12,7 +12,7 @@ pub async fn insert_clothing(
     name: &str,
     category: &str,
     color: Option<&str>,
-    thickness: &str,
+    thickness: Thickness,
     image_url: Option<&str>,
     tone: Option<Tone>,
     saturation: Option<Saturation>,
@@ -170,7 +170,7 @@ pub async fn update_clothing(
     name: Option<&str>,
     category: Option<&str>,
     color: Option<&str>,
-    thickness: Option<&str>,
+    thickness: Option<Thickness>,
     image_url: Option<&str>,
     tone: Option<Tone>,
     saturation: Option<Saturation>,

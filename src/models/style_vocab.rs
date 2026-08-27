@@ -190,6 +190,20 @@ style_vocab! {
     }
 }
 
+style_vocab! {
+    /// 원단 두께. 온도 게이트가 이 값을 본다.
+    ///
+    /// 다른 어휘와 달리 값이 영어인 이유: 이 필드의 계약은 처음부터 `thin/medium/thick`
+    /// 이었다 — 데이터 모델 문서, 등록 폼의 option value, Vision 프롬프트가 모두 그렇게
+    /// 적고 있고 UI는 표시할 때만 한국어로 옮긴다. 2026-05 여성 시드가 `얇은/중간/두꺼운`
+    /// 을 넣은 것이 이탈이었고, 정규화 방향은 선언된 계약 쪽이다.
+    Thickness {
+        Thin => "thin",
+        Medium => "medium",
+        Thick => "thick",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,6 +225,9 @@ mod tests {
         for &s in Saturation::ALL {
             assert_eq!(s.as_str().parse::<Saturation>().unwrap(), s);
         }
+        for &t in Thickness::ALL {
+            assert_eq!(t.as_str().parse::<Thickness>().unwrap(), t);
+        }
     }
 
     /// 실제로 DB를 오염시켰던 값들. 이제는 조용히 무시되지 않고 오류가 되어야 한다.
@@ -224,6 +241,12 @@ mod tests {
         }
         for bad in ["boho", "casual", "office", "street", "minimal"] {
             assert!(bad.parse::<Style>().is_err(), "{bad} 는 거부되어야 한다");
+        }
+        for bad in ["얇은", "중간", "두꺼운", "보통"] {
+            assert!(
+                bad.parse::<Thickness>().is_err(),
+                "{bad} 는 거부되어야 한다"
+            );
         }
     }
 

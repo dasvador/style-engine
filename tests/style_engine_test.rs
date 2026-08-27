@@ -3,7 +3,7 @@ use style_engine::models::clothing::Clothing;
 use style_engine::models::outfit::{
     EvaluationResult, IssueCode, OutfitContext, OutfitSlot, SlotKind,
 };
-use style_engine::models::style_vocab::{Role, Saturation, Style, Tone, Weight};
+use style_engine::models::style_vocab::{Role, Saturation, Style, Thickness, Tone, Weight};
 use style_engine::services::style_engine as engine;
 
 // ─── Test helper: build Clothing without needing DB ───
@@ -33,7 +33,7 @@ impl ItemBuilder {
             name: self.name.to_string(),
             category: self.category.to_string(),
             color: Some(self.color.to_string()),
-            thickness: "medium".to_string(),
+            thickness: Thickness::Medium,
             image_url: None,
             tone: Some(self.tone),
             saturation: Some(self.saturation),

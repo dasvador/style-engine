@@ -222,7 +222,7 @@ DB 저장 (clothing + season + texture_world)
 | name | VARCHAR(100) | 아이템명 |
 | category | VARCHAR(50) | 상의/하의/아우터/신발/가방 |
 | color | VARCHAR(50) | 색상 |
-| thickness | VARCHAR(20) | thin/medium/thick |
+| thickness | VARCHAR(20) | thin/medium/thick (CHECK 제약) |
 | image_url | LONGTEXT | base64 이미지 |
 | tone | VARCHAR(20) | 밝음/중간/어두움 |
 | saturation | VARCHAR(20) | 낮음/중간/높음 |

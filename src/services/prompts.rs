@@ -303,7 +303,7 @@ name 작성 원칙:
   "name": "구체적인 아이템 이름",
   "category": "카테고리",
   "color": "색상",
-  "thickness": "두께",
+  "thickness": "thin/medium/thick 중 하나",
   "seasons": ["계절1", "계절2"],
   "tone": "밝음/중간/어두움 중 하나",
   "saturation": "낮음/중간/높음 중 하나",
