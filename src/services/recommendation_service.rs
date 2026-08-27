@@ -6,7 +6,7 @@ use sqlx::MySqlPool;
 use crate::db::recommendation_history_repo::RecommendationHistoryRepo;
 use crate::models::clothing::Clothing;
 use crate::models::recommendation::{OutfitCandidate, ScoringDetail};
-use crate::models::style_vocab::{Role, Style, Tone, Weight};
+use crate::models::style_vocab::{Role, Style, Thickness, Tone, Weight};
 use crate::services::recommendation_diversity::{
     calculate_diversity_bonus, calculate_dormant_bonus, calculate_recency_penalty,
 };
@@ -96,7 +96,7 @@ fn evaluate_today_fitness(
 
     // ─── 1. 온도 적합성 ───
     let is_light_top =
-        top.is_some_and(|t| t.weight == Some(Weight::Light) || t.thickness == "thin");
+        top.is_some_and(|t| t.weight == Some(Weight::Light) || t.thickness == Thickness::Thin);
     let has_outer = outer.is_some();
 
     let temp_suitable = if temperature <= 13.0 {

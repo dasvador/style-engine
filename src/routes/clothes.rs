@@ -11,6 +11,7 @@ use crate::errors::AppError;
 use crate::models::clothing::{
     ClothingResponse, CreateClothingRequest, ImageUploadRequest, UpdateClothingRequest,
 };
+use crate::models::style_vocab::Thickness;
 use crate::services::llm::LlmTask;
 use crate::services::prompts;
 
@@ -36,7 +37,7 @@ async fn create_clothing(
     body.validate()
         .map_err(|e| AppError::Validation(e.to_string()))?;
 
-    let thickness = body.thickness.as_deref().unwrap_or("medium");
+    let thickness = body.thickness.unwrap_or(Thickness::Medium);
 
     let clothing = clothing_repo::insert_clothing(
         &state.db,
@@ -110,7 +111,7 @@ async fn update_clothing(
         body.name.as_deref(),
         body.category.as_deref(),
         body.color.as_deref(),
-        body.thickness.as_deref(),
+        body.thickness,
         body.image_url.as_deref(),
         body.tone,
         body.saturation,
@@ -189,7 +190,7 @@ async fn upload_clothing_image(
         .category
         .ok_or_else(|| AppError::BadRequest("AI가 카테고리를 인식하지 못했습니다.".to_string()))?;
     let color = analysis.color;
-    let thickness = analysis.thickness.as_deref().unwrap_or("medium");
+    let thickness = analysis.thickness.unwrap_or(Thickness::Medium);
     let seasons = analysis.seasons.unwrap_or_default();
     let texture_worlds = analysis.texture_worlds.unwrap_or_default();
 

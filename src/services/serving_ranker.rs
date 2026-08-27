@@ -8,7 +8,7 @@
 //! baseline에 영향 없음 — shadow experiment 경로에서만 사용.
 
 use crate::models::outfit::{OutfitContext, SlotKind};
-use crate::models::style_vocab::{Style, Weight};
+use crate::models::style_vocab::{Style, Thickness, Weight};
 use crate::services::style_engine_v2::TodayFitLevel;
 
 /// Today 적합도 판정.
@@ -73,7 +73,7 @@ pub fn compute_today_fit(ctx: &OutfitContext, temperature: f64) -> TodayFitLevel
 
     // ─── 2. Temperature gate ───
     let is_light_top = top.is_some_and(|t| {
-        t.clothing.weight == Some(Weight::Light) || t.clothing.thickness == "thin"
+        t.clothing.weight == Some(Weight::Light) || t.clothing.thickness == Thickness::Thin
     });
 
     if temperature <= 13.0 && is_light_top && !has_outer {
@@ -203,5 +203,110 @@ fn compute_formality_avg(ctx: &OutfitContext) -> f32 {
         2.0
     } else {
         levels.iter().sum::<f32>() / levels.len() as f32
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::clothing::Clothing;
+    use crate::models::outfit::OutfitSlot;
+    use crate::models::style_vocab::Tone;
+    use chrono::NaiveDateTime;
+
+    fn ts() -> NaiveDateTime {
+        NaiveDateTime::parse_from_str("2026-08-01 00:00:00", "%Y-%m-%d %H:%M:%S").unwrap()
+    }
+
+    /// 온도 게이트가 보는 두 속성만 지정하고 나머지는 중립값으로 채운다.
+    fn top(weight: Weight, thickness: Thickness) -> OutfitSlot {
+        OutfitSlot {
+            slot: SlotKind::Top,
+            clothing: Clothing {
+                id: "t".into(),
+                name: "테스트 상의".into(),
+                category: "상의".into(),
+                gender: None,
+                style_mood: None,
+                color: None,
+                thickness,
+                image_url: None,
+                tone: Some(Tone::Mid),
+                saturation: None,
+                style: None,
+                weight: Some(weight),
+                role: None,
+                color_temperature: None,
+                versatility: None,
+                statement_level: None,
+                formality_level: Some(2),
+                visual_weight: None,
+                texture_depth: None,
+                visual_weight_v2: None,
+                texture_depth_v2: None,
+                grounding_score: None,
+                shadow_tone: None,
+                silhouette_volume: None,
+                material_primary: None,
+                sub_category: None,
+                floating_score: None,
+                strong_style_score: None,
+                texture_keywords: None,
+                created_at: ts(),
+                updated_at: ts(),
+            },
+            seasons: Vec::new(),
+            texture_worlds: Vec::new(),
+        }
+    }
+
+    fn ctx(slot: OutfitSlot) -> OutfitContext {
+        OutfitContext {
+            slots: vec![slot],
+            situation: None,
+        }
+    }
+
+    /// 온도 게이트는 `weight == 가벼움` 또는 `thickness == thin` 중 하나만 참이어도 걸린다.
+    /// 이 테스트가 필요한 이유: 케이스 카탈로그에는 시각적 무게가 '중간'이면서 원단만 얇은
+    /// 상의를 저온에 세우는 케이스가 없어서, eval 로는 thickness 분기가 한 번도 실행되지 않는다.
+    /// 실제로 프로덕션에서는 이 분기가 어휘 불일치로 39건에 대해 죽어 있었다.
+    #[test]
+    fn thin_fabric_alone_triggers_the_cold_gate() {
+        // 시각적 무게는 중간 — weight 조건으로는 걸리지 않는다.
+        let mid_thin = ctx(top(Weight::Mid, Thickness::Thin));
+        assert_eq!(compute_today_fit(&mid_thin, 10.0), TodayFitLevel::Fail);
+        assert_eq!(
+            compute_today_fit(&mid_thin, 16.0),
+            TodayFitLevel::Borderline
+        );
+        assert_eq!(compute_today_fit(&mid_thin, 22.0), TodayFitLevel::Pass);
+    }
+
+    #[test]
+    fn light_weight_alone_triggers_the_cold_gate() {
+        let light_medium = ctx(top(Weight::Light, Thickness::Medium));
+        assert_eq!(compute_today_fit(&light_medium, 10.0), TodayFitLevel::Fail);
+        assert_eq!(
+            compute_today_fit(&light_medium, 16.0),
+            TodayFitLevel::Borderline
+        );
+    }
+
+    /// 두 조건 모두 거짓이면 저온이어도 통과해야 한다.
+    #[test]
+    fn mid_weight_medium_fabric_passes_in_the_cold() {
+        let mid_medium = ctx(top(Weight::Mid, Thickness::Medium));
+        assert_eq!(compute_today_fit(&mid_medium, 10.0), TodayFitLevel::Pass);
+    }
+
+    /// 아우터가 있으면 얇은 상의여도 게이트가 걸리지 않는다.
+    #[test]
+    fn an_outer_layer_lifts_the_gate() {
+        let mut c = ctx(top(Weight::Light, Thickness::Thin));
+        let mut outer = top(Weight::Heavy, Thickness::Thick);
+        outer.slot = SlotKind::Outer;
+        c.slots.push(outer);
+        assert_eq!(compute_today_fit(&c, 10.0), TodayFitLevel::Pass);
     }
 }

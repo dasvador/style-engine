@@ -6,6 +6,7 @@
 [items.white_crewneck_tee]
 name = "화이트 크루넥 티셔츠"
 category = "상의"
+thickness = "thin"
 style = "베이직"
 role = "베이스"
 tone = "밝음"
@@ -17,6 +18,7 @@ formality_level = 1
 [items.heather_gray_henley]
 name = "헤더그레이 헨리넥 티셔츠"
 category = "상의"
+thickness = "thin"
 style = "베이직"
 role = "베이스"
 tone = "중간"
@@ -121,6 +123,7 @@ formality_level = 2
 [items.beige_linen_tee]
 name = "베이지 린넨 티셔츠"
 category = "상의"
+thickness = "thin"
 style = "베이직"
 role = "베이스"
 tone = "밝음"
@@ -143,6 +146,7 @@ formality_level = 2
 [items.charcoal_wool_knit]
 name = "차콜 울 니트"
 category = "상의"
+thickness = "thick"
 style = "베이직"
 role = "베이스"
 tone = "어두움"
@@ -697,6 +701,7 @@ formality_level = 1
 [items.white_tee]
 name = "화이트 티"
 category = "상의"
+thickness = "thin"
 style = "베이직"
 role = "베이스"
 tone = "밝음"
@@ -752,6 +757,7 @@ formality_level = 2
 [items.black_tee]
 name = "블랙 티"
 category = "상의"
+thickness = "thin"
 style = "베이직"
 role = "베이스"
 tone = "어두움"
@@ -930,6 +936,7 @@ formality_level = 2
 [items.white_shirt]
 name = "화이트 드레스셔츠"
 category = "상의"
+thickness = "thin"
 style = "포멀"
 role = "베이스"
 tone = "밝음"
@@ -1051,6 +1058,7 @@ formality_level = 2
 [items.grey_tee]
 name = "그레이 티셔츠"
 category = "상의"
+thickness = "thin"
 style = "베이직"
 role = "베이스"
 tone = "중간"
@@ -1132,6 +1140,7 @@ texture_worlds = ["tailoring"]
 [items.navy_tee]
 name = "네이비 티셔츠"
 category = "상의"
+thickness = "thin"
 style = "베이직"
 role = "베이스"
 tone = "어두움"
@@ -1211,6 +1220,7 @@ formality_level = 4
 [items.heather_grey_tee]
 name = "헤더그레이 티셔츠"
 category = "상의"
+thickness = "thin"
 style = "베이직"
 role = "베이스"
 tone = "중간"
@@ -1337,6 +1347,7 @@ formality_level = 2
 [items.thick_sweatshirt]
 name = "두꺼운 스웻셔츠"
 category = "상의"
+thickness = "thick"
 style = "베이직"
 role = "베이스"
 tone = "중간"
@@ -1360,6 +1371,7 @@ formality_level = 2
 [items.light_tee]
 name = "라이트 티셔츠"
 category = "상의"
+thickness = "thin"
 style = "베이직"
 role = "베이스"
 tone = "밝음"
@@ -1396,6 +1408,7 @@ seasons = ["가을", "겨울"]
 [items.olive_pocket_tee]
 name = "올리브드랍 포켓 티셔츠"
 category = "상의"
+thickness = "thin"
 style = "밀리터리"
 role = "연결템"
 tone = "중간"
@@ -1456,6 +1469,7 @@ texture_worlds = ["military", "minimal"]
 [items.navy_chambray_shirt]
 name = "네이비 샴브레이 셔츠"
 category = "상의"
+thickness = "thin"
 style = "워크"
 role = "연결템"
 tone = "어두움"

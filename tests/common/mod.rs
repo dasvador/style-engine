@@ -12,7 +12,7 @@ use serde::Deserialize;
 
 use style_engine::models::clothing::Clothing;
 use style_engine::models::outfit::{OutfitContext, OutfitSlot, SlotKind};
-use style_engine::models::style_vocab::{Role, Saturation, Style, Tone, Weight};
+use style_engine::models::style_vocab::{Role, Saturation, Style, Thickness, Tone, Weight};
 use style_engine::services::style_engine_v2::HardFilterReason;
 
 // ─── Fixture schema ───
@@ -32,6 +32,8 @@ pub struct RegistryItem {
     pub saturation: Option<Saturation>,
     pub color_temperature: Option<String>,
     pub weight: Option<Weight>,
+    /// 지정하지 않으면 medium. 온도 게이트를 밟는 케이스에서만 명시하면 된다.
+    pub thickness: Option<Thickness>,
     pub formality_level: Option<i8>,
     #[serde(default)]
     pub seasons: Vec<String>,
@@ -121,7 +123,7 @@ pub fn registry_to_outfit_slot(
             name: item.name.clone(),
             category: item.category.clone(),
             color: None,
-            thickness: "medium".to_string(),
+            thickness: item.thickness.unwrap_or(Thickness::Medium),
             image_url: None,
             tone: item.tone,
             saturation: item.saturation,

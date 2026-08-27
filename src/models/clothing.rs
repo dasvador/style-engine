@@ -2,7 +2,7 @@ use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
-use crate::models::style_vocab::{Role, Saturation, Style, Tone, Weight};
+use crate::models::style_vocab::{Role, Saturation, Style, Thickness, Tone, Weight};
 
 /// DB row for clothing table
 #[derive(Debug, Clone, sqlx::FromRow, Serialize)]
@@ -13,7 +13,7 @@ pub struct Clothing {
     pub gender: Option<String>,
     pub style_mood: Option<String>,
     pub color: Option<String>,
-    pub thickness: String,
+    pub thickness: Thickness,
     pub image_url: Option<String>,
     pub tone: Option<Tone>,
     pub saturation: Option<Saturation>,
@@ -48,8 +48,7 @@ pub struct CreateClothingRequest {
     #[validate(length(min = 1, max = 50))]
     pub category: String,
     pub color: Option<String>,
-    #[validate(length(min = 1, max = 20))]
-    pub thickness: Option<String>,
+    pub thickness: Option<Thickness>,
     pub image_url: Option<String>,
     pub seasons: Option<Vec<String>>,
     pub tone: Option<Tone>,
@@ -70,7 +69,7 @@ pub struct UpdateClothingRequest {
     pub name: Option<String>,
     pub category: Option<String>,
     pub color: Option<String>,
-    pub thickness: Option<String>,
+    pub thickness: Option<Thickness>,
     pub image_url: Option<String>,
     pub seasons: Option<Vec<String>>,
     pub tone: Option<Tone>,
@@ -92,7 +91,7 @@ pub struct VisionAnalysisResult {
     pub name: Option<String>,
     pub category: Option<String>,
     pub color: Option<String>,
-    pub thickness: Option<String>,
+    pub thickness: Option<Thickness>,
     pub seasons: Option<Vec<String>>,
     pub rejection_reason: Option<String>,
     pub tone: Option<Tone>,
@@ -126,7 +125,7 @@ pub struct ClothingResponse {
     pub name: String,
     pub category: String,
     pub color: Option<String>,
-    pub thickness: String,
+    pub thickness: Thickness,
     pub image_url: Option<String>,
     pub seasons: Vec<String>,
     pub tone: Option<Tone>,
