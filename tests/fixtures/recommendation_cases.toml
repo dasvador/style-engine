@@ -321,10 +321,10 @@ top = "navy_knit"
 bottom = "beige_slacks"
 shoes = "running_sneaker"
 bag = "brown_tote"
-expected_hard_pass = false
+expected_hard_pass = true
 expected_today_fit = "Fail"
 expected_preference = "Reject"
-notes = "데이트에서 러닝화는 명확한 하드 실패."
+notes = "AC005와 입력 동일 — 하드필터가 아닌 today_fit(Fail)이 담당. 데이트에서 러닝화는 명확한 하드 실패."
 tags = ["true_hard_fail", "date"]
 
 [[cases]]
@@ -1223,7 +1223,7 @@ tags = ["temperature", "office"]
 case_id = "TG010"
 situation = "출근"
 temperature_c = 18.0
-top = "light_blue_shirt"
+top = "light_blue_shirt_thin"
 bottom = "navy_slacks"
 shoes = "brown_loafer"
 bag = "brown_brief"

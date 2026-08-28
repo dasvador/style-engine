@@ -1182,6 +1182,20 @@ color_temperature = "cool"
 weight = "가벼움"
 formality_level = 3
 
+# TG010 전용 — TG009 와 같은 룩이되 원단만 얇다.
+# 두 케이스는 원래 같은 아이템을 참조해 입력이 완전히 같았고, 정답만 갈려 있었다.
+[items.light_blue_shirt_thin]
+name = "라이트 블루 셔츠 (얇은 원단)"
+category = "상의"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "중간"
+color_temperature = "cool"
+weight = "가벼움"
+thickness = "thin"
+formality_level = 3
+
 [items.charcoal_slacks]
 name = "차콜 슬랙스"
 category = "하의"

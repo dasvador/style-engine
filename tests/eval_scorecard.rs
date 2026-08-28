@@ -374,6 +374,58 @@ fn eval_scorecard_has_no_regression() {
     );
 }
 
+/// 입력이 완전히 같은데 정답이 다른 케이스가 있으면 어떤 엔진도 둘 다 맞출 수 없다.
+///
+/// 이런 쌍은 달성 가능한 정확도에 상한을 씌우므로, 지표를 튜닝하기 전에 없애야 한다.
+/// 실제로 이 검사를 처음 넣었을 때 두 쌍이 걸렸고, 둘 다 fixture 작성 실수였다.
+#[test]
+fn no_contradictory_cases() {
+    let cases = load_cases().cases;
+    let mut by_input: BTreeMap<String, Vec<&TestCase>> = BTreeMap::new();
+    for c in &cases {
+        let key = format!(
+            "{}|{}|{}|{}",
+            c.situation.as_deref().unwrap_or(""),
+            c.temperature_c.unwrap_or(20.0),
+            c.current_season.as_deref().unwrap_or(""),
+            build_outfit_key(c),
+        );
+        by_input.entry(key).or_default().push(c);
+    }
+
+    let mut conflicts = Vec::new();
+    for (_, group) in by_input {
+        if group.len() < 2 {
+            continue;
+        }
+        let first = group[0];
+        for other in &group[1..] {
+            if other.expected_today_fit != first.expected_today_fit
+                || other.expected_hard_pass != first.expected_hard_pass
+                || other.expected_preference != first.expected_preference
+            {
+                conflicts.push(format!(
+                    "{} vs {}: fit {}/{}, hard {}/{}, pref {}/{}",
+                    first.case_id,
+                    other.case_id,
+                    first.expected_today_fit,
+                    other.expected_today_fit,
+                    first.expected_hard_pass,
+                    other.expected_hard_pass,
+                    first.expected_preference,
+                    other.expected_preference,
+                ));
+            }
+        }
+    }
+
+    assert!(
+        conflicts.is_empty(),
+        "\n입력이 같은데 정답이 다른 케이스가 있습니다. 어떤 엔진도 둘 다 맞출 수 없습니다:\n  {}\n",
+        conflicts.join("\n  ")
+    );
+}
+
 /// 케이스 카탈로그가 지표를 의미 있게 만들 만큼 확보돼 있는지.
 #[test]
 fn scorecard_covers_both_classes() {
