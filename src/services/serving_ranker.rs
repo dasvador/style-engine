@@ -11,6 +11,26 @@ use crate::models::outfit::{OutfitContext, SlotKind};
 use crate::models::style_vocab::{Style, Thickness, Weight};
 use crate::services::style_engine_v2::TodayFitLevel;
 
+// ─── 온도 게이트 임계값 ───
+// 케이스 카탈로그의 라벨에 맞춰 정한 값이고, 바꾸면 eval 스코어카드가 즉시 반응한다.
+
+/// 이 온도 미만에서 아우터 없이 가벼운/얇은 상의 단독이면 실패.
+const COLD_FAIL_C: f64 = 13.0;
+/// 아우터 없는 가벼운/얇은 상의의 경계 상한.
+/// 원단이 얇으면 이 온도 자체도 경계로 보고, 시각적으로만 가벼우면 관대하게 넘긴다.
+const MILD_BORDERLINE_C: f64 = 18.0;
+/// 이 온도 이상에서 상하의가 모두 두꺼우면 실패.
+const HEAT_FAIL_C: f64 = 26.0;
+
+/// accessory 격식 gap 패널티가 이 값 이하이면 Pass 를 Borderline 으로 내린다.
+///
+/// 라벨은 "신발만 러닝화로 바꿨다", "가방만 백팩으로 바꿨다" 같은 케이스를 경계로 보는데,
+/// 그 신호는 이미 `compute_serving_adjustment` 가 격식 gap 으로 계산하고 있었다.
+/// today_fit 이 그 값을 보지 않아서 전부 Pass 로 나가던 것을 연결한다.
+/// 값은 현재 Pass 판정 케이스들의 패널티 분포에서 정했다 — 이보다 완만하게 잡으면
+/// 정상 Pass 가 깎이고, 더 엄격하게 잡으면 경계 케이스를 놓친다.
+const ACCESSORY_PENALTY_BORDERLINE: i32 = -4;
+
 /// Today 적합도 판정.
 ///
 /// 순서:
@@ -57,29 +77,56 @@ pub fn compute_today_fit(ctx: &OutfitContext, temperature: f64) -> TodayFitLevel
                     return TodayFitLevel::Borderline;
                 }
             }
-            "데이트"
-                // 스포츠 슈즈 → 격식 수준에 따라 Fail or Borderline
-                // TODO(tuning): HC024 유형 — 사용자 기대는 Fail이지만 현재 formality_avg < 2.5라
-                // Borderline 판정. 임계치를 낮추거나 데이트+스포츠슈즈를 일괄 Fail로 변경 검토.
-                if has_sport_shoes => {
-                    if formality_avg >= 2.5 {
-                        return TodayFitLevel::Fail;
-                    }
-                    return TodayFitLevel::Borderline;
-                }
+            // 데이트에 러닝화는 나머지 착장의 격식과 무관하게 실패로 본다.
+            // 이전에는 formality_avg >= 2.5 일 때만 Fail 이었는데, 캐주얼한 착장일수록
+            // 평균 격식이 낮아져 오히려 통과하는 역전이 있었다.
+            "데이트" if has_sport_shoes => {
+                return TodayFitLevel::Fail;
+            }
             _ => {} // 캐주얼/일상/주말 → 관대
         }
     }
 
     // ─── 2. Temperature gate ───
-    let is_light_top = top.is_some_and(|t| {
-        t.clothing.weight == Some(Weight::Light) || t.clothing.thickness == Thickness::Thin
-    });
+    //
+    // 추위와 더위 양방향을 모두 본다. 이전에는 추위만 있었고, 그래서 28도에 두꺼운
+    // 상하의를 입은 코디가 그대로 Pass 로 나갔다.
+    let thin_fabric = top.is_some_and(|t| t.clothing.thickness == Thickness::Thin);
+    let light_weight = top.is_some_and(|t| t.clothing.weight == Some(Weight::Light));
 
-    if temperature <= 13.0 && is_light_top && !has_outer {
+    if !has_outer && (thin_fabric || light_weight) {
+        // 경계 온도 자체는 더 나쁜 쪽으로 넘기지 않는다 — 13도에 가벼운 셔츠 단독은
+        // "실패"가 아니라 "경계"라는 것이 라벨의 판단이다.
+        if temperature < COLD_FAIL_C {
+            return TodayFitLevel::Fail;
+        }
+        // 원단이 얇은 쪽이 시각적으로만 가벼운 것보다 체감이 낮다 —
+        // 같은 18도라도 얇은 셔츠는 경계, 가볍기만 한 셔츠는 무난하다는 것이 라벨의 판단이다.
+        let borderline = if thin_fabric {
+            temperature <= MILD_BORDERLINE_C
+        } else {
+            temperature < MILD_BORDERLINE_C
+        };
+        if borderline {
+            return TodayFitLevel::Borderline;
+        }
+    }
+
+    // 더위 — 추위 게이트의 대칭.
+    let heavy_layer = |slot: SlotKind| {
+        ctx.slots.iter().filter(|s| s.slot == slot).any(|s| {
+            s.clothing.weight == Some(Weight::Heavy) || s.clothing.thickness == Thickness::Thick
+        })
+    };
+
+    if temperature >= HEAT_FAIL_C && heavy_layer(SlotKind::Top) && heavy_layer(SlotKind::Bottom) {
         return TodayFitLevel::Fail;
     }
-    if temperature <= 18.0 && is_light_top && !has_outer {
+    // ─── 3. Accessory 격식 gap ───
+    // 온도·상황 게이트를 다 통과했어도, 신발/가방의 격식이 착장과 크게 어긋나면
+    // "오늘 그대로 입기엔 애매한" 상태로 본다.
+    let (accessory_adj, _) = compute_serving_adjustment(ctx);
+    if accessory_adj <= ACCESSORY_PENALTY_BORDERLINE {
         return TodayFitLevel::Borderline;
     }
 
