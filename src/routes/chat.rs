@@ -12,7 +12,7 @@ use crate::AppState;
 use crate::models::style_vocab::{Tone, Weight};
 use crate::services::llm::{
     ChatRequest as LlmChatRequest, ImageDetail, ImageRequest as LlmImageRequest, LlmClient,
-    LlmTask, Message, ToolDef,
+    LlmTask, Message, ToolDef, Usage,
 };
 use crate::services::outfit_scorer;
 use crate::services::weather as weather_service;
@@ -544,10 +544,17 @@ async fn generate_image(
         }));
     }
 
-    // 이미지 생성 + 성별 검증 (최대 3회 시도)
-    let mut final_url: Option<String> = None;
+    // 이미지 생성 + 성별 검증.
+    //
+    // 검증에 실패하면 다시 생성한다. 다만 마지막 시도 결과는 실패해도 반환한다 —
+    // 이 기능은 "여성 모델을 보장한다"가 아니라 "가급적 맞춘다"에 가깝다.
+    // 반환하기로 한 이상 캐시에도 넣는다. 여기서 캐시를 건너뛰면 실패가 반복되는
+    // 착장만 매 요청 3장씩 다시 생성하게 되어, 비싼 경우에만 캐시가 안 걸린다.
+    let mut m = ImageGenMetrics::default();
+    let mut outcome: Option<(String, VerificationStatus)> = None;
 
-    for attempt in 0..3 {
+    for attempt in 1..=MAX_IMAGE_ATTEMPTS {
+        let started = std::time::Instant::now();
         let image = state
             .llm
             .generate_image(&LlmImageRequest {
@@ -556,72 +563,141 @@ async fn generate_image(
                 quality: "low".to_string(),
             })
             .await;
+        m.generate_elapsed += started.elapsed();
+        m.generate_calls += 1;
 
-        // b64 → decode → 파일 저장
         let image = match image {
             Ok(image) => image,
             Err(e) => {
-                tracing::warn!("image generation failed (attempt {}): {e}", attempt + 1);
+                tracing::warn!("image generation failed (attempt {attempt}): {e}");
                 break;
             }
         };
+        m.generate_usage.input_tokens += image.usage.input_tokens;
+        m.generate_usage.output_tokens += image.usage.output_tokens;
 
-        {
-            let b64 = image.b64_png.as_str();
-            use base64::Engine;
-            let bytes = base64::engine::general_purpose::STANDARD
-                .decode(b64)
-                .map_err(|e| AppError::Internal(anyhow::anyhow!("base64 decode error: {e}")))?;
-            let filename = format!("{}.png", uuid::Uuid::new_v4());
-            let path = format!("static/images/{}", filename);
-            std::fs::write(&path, &bytes)
-                .map_err(|e| AppError::Internal(anyhow::anyhow!("file write error: {e}")))?;
-            let url = format!("/static/images/{}", filename);
-            tracing::info!(
-                "image saved (attempt {}): {} ({} bytes)",
-                attempt + 1,
-                path,
-                bytes.len()
-            );
+        // b64 → decode → 파일 저장
+        let b64 = image.b64_png.as_str();
+        use base64::Engine;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(b64)
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("base64 decode error: {e}")))?;
+        let filename = format!("{}.png", uuid::Uuid::new_v4());
+        let path = format!("static/images/{}", filename);
+        std::fs::write(&path, &bytes)
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("file write error: {e}")))?;
+        let url = format!("/static/images/{}", filename);
+        tracing::info!(
+            "image saved (attempt {attempt}): {path} ({} bytes)",
+            bytes.len()
+        );
 
-            // 생성물 자동 검수: 성별 검증
-            let is_female = verify_female_model(&state.llm, b64).await;
-            if is_female {
-                tracing::info!("gender check passed (attempt {})", attempt + 1);
-                // DB 캐시 저장
-                let _ = sqlx::query(
-                    "INSERT IGNORE INTO outfit_image (id, outfit_hash, prompt_hash, image_path, prompt_text) VALUES (?, ?, ?, ?, ?)"
-                )
-                .bind(uuid::Uuid::new_v4().to_string())
-                .bind(&outfit_hash)
-                .bind(&prompt_hash)
-                .bind(&url)
-                .bind(prompt.char_indices().nth(500).map_or(&prompt[..], |(i, _)| &prompt[..i]))
-                .execute(&state.db)
-                .await;
-                final_url = Some(url);
+        // 생성물 자동 검수: 성별 검증
+        let started = std::time::Instant::now();
+        let (check, usage) = verify_female_model(&state.llm, b64).await;
+        m.verify_elapsed += started.elapsed();
+        m.verify_calls += 1;
+        m.verify_usage.input_tokens += usage.input_tokens;
+        m.verify_usage.output_tokens += usage.output_tokens;
+
+        match check {
+            GenderCheckResult::Female => {
+                tracing::info!("gender check passed (attempt {attempt})");
+                outcome = Some((url, VerificationStatus::Passed));
                 break;
-            } else {
-                tracing::warn!(
-                    "gender check failed (attempt {}) — male detected, retrying",
-                    attempt + 1
-                );
+            }
+            // 검증기가 죽은 것은 이미지의 문제가 아니다. 다시 생성해도 같은 상태이므로
+            // 재시도하지 않고, 통과와 구분되는 상태로 남긴다.
+            GenderCheckResult::Unavailable => {
+                outcome = Some((url, VerificationStatus::CheckError));
+                break;
+            }
+            GenderCheckResult::NotFemale if attempt < MAX_IMAGE_ATTEMPTS => {
+                tracing::warn!("gender check failed (attempt {attempt}) — retrying");
                 let _ = std::fs::remove_file(&path);
-                if attempt == 2 {
-                    // 마지막 시도도 실패하면 그냥 사용
-                    tracing::warn!("all gender checks failed, using last image");
-                    let filename2 = format!("{}.png", uuid::Uuid::new_v4());
-                    let path2 = format!("static/images/{}", filename2);
-                    let _ = std::fs::write(&path2, &bytes);
-                    final_url = Some(format!("/static/images/{}", filename2));
-                }
+            }
+            GenderCheckResult::NotFemale => {
+                tracing::warn!("gender check failed on final attempt — using last image");
+                outcome = Some((url, VerificationStatus::AcceptedAfterRetries));
             }
         }
     }
 
+    // 생성 자체가 실패한 경우. 기존과 같이 image_url: null 을 돌려주고,
+    // 프런트가 이미지 없이 룩북을 그린다.
+    let Some((url, status)) = outcome else {
+        return Ok(Json(ImageResponse { image_url: None }));
+    };
+
+    let _ = sqlx::query(
+        "INSERT IGNORE INTO outfit_image \
+         (id, outfit_hash, prompt_hash, image_path, prompt_text, verification_status, generation_attempts) \
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(&outfit_hash)
+    .bind(&prompt_hash)
+    .bind(&url)
+    .bind(
+        prompt
+            .char_indices()
+            .nth(500)
+            .map_or(&prompt[..], |(i, _)| &prompt[..i]),
+    )
+    .bind(status.as_str())
+    .bind(m.generate_calls)
+    .execute(&state.db)
+    .await;
+
+    m.record(&state.llm, status, mood);
+
     Ok(Json(ImageResponse {
-        image_url: final_url,
+        image_url: Some(url),
     }))
+}
+
+/// 최종 이미지 1장을 만드는 데 든 것. 생성과 검증을 따로 센다 —
+/// 둘을 합치면 "검증이 전체의 얼마인가"에 답할 수 없다.
+#[derive(Default)]
+struct ImageGenMetrics {
+    generate_calls: u32,
+    verify_calls: u32,
+    generate_usage: Usage,
+    verify_usage: Usage,
+    generate_elapsed: std::time::Duration,
+    verify_elapsed: std::time::Duration,
+}
+
+impl ImageGenMetrics {
+    /// 이미지 1장 단위의 구조화 로그. `outfit_image` 이벤트만 긁으면
+    /// 실패율·평균 시도 횟수·검증이 차지하는 비용과 지연이 나온다.
+    fn record(&self, llm: &LlmClient, status: VerificationStatus, mood: &str) {
+        use crate::services::llm::usage::estimate_cost_usd;
+
+        let image_model = &llm.config().task(LlmTask::ImageGeneration).model;
+        let verify_model = &llm.config().task(LlmTask::GenderVerify).model;
+        let generate_cost = estimate_cost_usd(image_model, &self.generate_usage);
+        let verify_cost = estimate_cost_usd(verify_model, &self.verify_usage);
+
+        tracing::info!(
+            event = "outfit_image",
+            mood = mood,
+            verification_status = status.as_str(),
+            generate_calls = self.generate_calls,
+            verify_calls = self.verify_calls,
+            image_model = %image_model,
+            verify_model = %verify_model,
+            generate_cost_usd = generate_cost,
+            verify_cost_usd = verify_cost,
+            total_cost_usd = match (generate_cost, verify_cost) {
+                (Some(g), Some(v)) => Some(g + v),
+                _ => None,
+            },
+            generate_ms = self.generate_elapsed.as_millis() as u64,
+            verify_ms = self.verify_elapsed.as_millis() as u64,
+            "outfit image complete"
+        );
+    }
 }
 
 // ─── 무드별 이미지 프롬프트 생성 ───
@@ -767,7 +843,44 @@ Avoid: {base_avoid}, tight-fitting clothes, formal styling, luxury campaign mood
 }
 
 // ─── 성별 검증 (GPT-4o-mini vision) ───
-async fn verify_female_model(llm: &LlmClient, b64_image: &str) -> bool {
+
+/// 최대 생성 시도 횟수. 이 횟수만큼 검증에 실패해도 마지막 결과를 사용한다.
+const MAX_IMAGE_ATTEMPTS: u32 = 3;
+
+/// 성별 검증 한 번의 결과.
+///
+/// "여성이 아니다"와 "검증기를 부를 수 없었다"는 다른 사건이다. 둘을 bool 하나로
+/// 뭉개면 재생성해야 할 상황과 그래봐야 소용없는 상황이 구분되지 않고,
+/// 나중에 실제 실패율을 물었을 때도 답할 수 없다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GenderCheckResult {
+    Female,
+    NotFemale,
+    /// 검증 API 오류. 생성 파이프라인을 막지는 않는다.
+    Unavailable,
+}
+
+/// 반환한 이미지가 어떤 경위로 결정됐는지. `outfit_image.verification_status`
+/// ENUM 과 값이 일치해야 한다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VerificationStatus {
+    Passed,
+    AcceptedAfterRetries,
+    CheckError,
+}
+
+impl VerificationStatus {
+    fn as_str(self) -> &'static str {
+        match self {
+            VerificationStatus::Passed => "passed",
+            VerificationStatus::AcceptedAfterRetries => "accepted_after_retries",
+            VerificationStatus::CheckError => "check_error",
+        }
+    }
+}
+
+/// 검증 1회. 사용량도 함께 돌려준다 — 호출부가 검증 비용을 따로 집계한다.
+async fn verify_female_model(llm: &LlmClient, b64_image: &str) -> (GenderCheckResult, Usage) {
     // 옷의 소재나 색이 아니라 사람의 성별만 보면 되므로 저해상도로 충분하다.
     let req = LlmChatRequest::new(vec![Message::user_image_with_detail(
         "Is the person in this photo female? Reply with only 'yes' or 'no'.",
@@ -776,11 +889,19 @@ async fn verify_female_model(llm: &LlmClient, b64_image: &str) -> bool {
     )]);
 
     match llm.chat(LlmTask::GenderVerify, req).await {
-        Ok(resp) => resp.text_or_empty().to_lowercase().contains("yes"),
+        Ok(resp) => {
+            let result = if resp.text_or_empty().to_lowercase().contains("yes") {
+                GenderCheckResult::Female
+            } else {
+                GenderCheckResult::NotFemale
+            };
+            (result, resp.usage)
+        }
         Err(e) => {
-            // 검수기가 죽었다고 생성 파이프라인을 막지는 않는다 — 통과시키고 로그를 남긴다.
-            tracing::warn!("gender verification failed: {e}");
-            true
+            // 검수기가 죽었다고 생성 파이프라인을 막지는 않는다. 다만 통과와
+            // 같이 기록하지도 않는다 — 그러면 검증이 도는지조차 알 수 없다.
+            tracing::warn!("gender verification unavailable: {e}");
+            (GenderCheckResult::Unavailable, Usage::default())
         }
     }
 }
@@ -1307,4 +1428,28 @@ fn is_weather_appropriate(item: &Clothing, temp: f64) -> bool {
         }
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `verification_status` 는 DB ENUM 이다. Rust 쪽 문자열이 하나라도 어긋나면
+    /// 그 상태의 이미지만 INSERT 가 실패하고, 증상은 "특정 경우에만 캐시가 안 걸림"
+    /// 으로 나타난다 — 지금 고치고 있는 버그와 똑같은 모양이다. 정의와 대조해 둔다.
+    #[test]
+    fn verification_status_matches_db_enum() {
+        let sql = include_str!("../../migrations/20260909000001_add_outfit_image_verification.sql");
+        for status in [
+            VerificationStatus::Passed,
+            VerificationStatus::AcceptedAfterRetries,
+            VerificationStatus::CheckError,
+        ] {
+            assert!(
+                sql.contains(&format!("'{}'", status.as_str())),
+                "{} 가 마이그레이션의 ENUM 정의에 없다",
+                status.as_str()
+            );
+        }
+    }
 }
