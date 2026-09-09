@@ -80,7 +80,7 @@ export function ItemDetailPage({ clothes, onReload }: { clothes: Clothing[]; onR
         <img className="detail-image" src={item.image_url} alt={item.name} />
       )}
 
-      <div className="card">
+      <div className="card-plain">
         <div className="card-title">기본 정보</div>
         {basicRows.map(([label, value]) => (
           <div className="detail-row" key={label}>
@@ -90,7 +90,7 @@ export function ItemDetailPage({ clothes, onReload }: { clothes: Clothing[]; onR
         ))}
       </div>
 
-      <div className="card">
+      <div className="card-plain">
         <div className="card-title">스타일 분석</div>
         {item.role && (
           <div className="role-explain" style={{ marginBottom: 12 }}>

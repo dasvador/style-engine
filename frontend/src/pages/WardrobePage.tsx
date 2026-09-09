@@ -7,6 +7,11 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState, ErrorMessage } from '../components/Status';
 import { getRoleChipClass } from '../lib/lookbook';
 
+/** `heather_gray` 처럼 저장된 색상값을 읽을 수 있게 다듬는다. 값 자체는 건드리지 않는다. */
+function humanizeColor(color: string | null): string | null {
+  return color ? color.replace(/_/g, ' ') : null;
+}
+
 const CATEGORY_FILTERS = ['전체', '상의', '하의', '아우터', '신발', '가방'];
 const ROLE_FILTERS = ['전체', '베이스', '포인트', '약한포인트', '연결템', '구조템'];
 
@@ -32,7 +37,7 @@ export function WardrobePage({ clothes, onReload, addPanelOpen, setAddPanelOpen 
 
   return (
     <>
-      <ScreenHeader title="옷장" sub={`${items.length}벌`} />
+      <ScreenHeader title="내 옷장" sub={`${items.length}벌`} />
 
       <div className="filter-bar">
         {CATEGORY_FILTERS.map((c) => (
@@ -55,36 +60,36 @@ export function WardrobePage({ clothes, onReload, addPanelOpen, setAddPanelOpen 
 
       {items.length === 0 ? (
         <EmptyState
-          icon="👕"
-          text={clothes.length === 0 ? '옷장이 비어있어요. 옷을 등록해보세요!' : '해당 조건의 아이템이 없습니다.'}
+          icon="Wardrobe"
+          text={
+            clothes.length === 0
+              ? '아직 등록한 옷이 없습니다. 첫 아이템을 더하면 옷장 편집이 시작됩니다.'
+              : '이 조건에 맞는 아이템이 없습니다. 위의 분류를 바꿔 보세요.'
+          }
         />
       ) : (
         <div className="items-grid">
           {items.map((c) => (
-            <div className="item-card" key={c.id} onClick={() => navigate(`/wardrobe/${c.id}`)}>
-              {c.image_url?.startsWith('data:image/') && (
-                <img
-                  src={c.image_url}
-                  alt=""
-                  style={{ width: '100%', height: 80, objectFit: 'cover', borderRadius: 8, marginBottom: 8 }}
-                />
-              )}
-              <div className="item-card-name">{c.name}</div>
-              <div className="item-card-tags">
-                {c.role && <span className={`chip ${getRoleChipClass(c.role)}`}>{c.role}</span>}
-                {c.tone && <span className="chip chip-neutral">{c.tone}</span>}
-                {c.style && <span className="chip chip-neutral">{c.style}</span>}
-              </div>
-              {c.seasons.length > 0 && (
-                <div className="item-card-seasons">
-                  {c.seasons.map((s) => (
-                    <span className="chip chip-neutral" style={{ fontSize: '0.65rem' }} key={s}>
-                      {s}
-                    </span>
-                  ))}
+            <button className="item-card" key={c.id} onClick={() => navigate(`/wardrobe/${c.id}`)}>
+              {c.image_url?.startsWith('data:image/') ? (
+                <img className="item-thumb" src={c.image_url} alt="" />
+              ) : (
+                /* 이미지가 없어도 자리를 지켜 그리드가 무너지지 않게 한다. */
+                <div className="item-thumb-empty" aria-hidden="true">
+                  <span>{c.category}</span>
                 </div>
               )}
-            </div>
+              <span className="item-card-name">{c.name}</span>
+              {/* 태그를 늘어놓지 않는다. 역할만 칩으로, 나머지는 한 줄 메타로. */}
+              <span className="item-card-meta">
+                {[humanizeColor(c.color), c.tone].filter(Boolean).join(' · ') || c.category}
+              </span>
+              {c.role && (
+                <span className="item-card-tags">
+                  <span className={`chip ${getRoleChipClass(c.role)}`}>{c.role}</span>
+                </span>
+              )}
+            </button>
           ))}
         </div>
       )}
@@ -92,7 +97,10 @@ export function WardrobePage({ clothes, onReload, addPanelOpen, setAddPanelOpen 
       <AddPanel open={addPanelOpen} onClose={() => setAddPanelOpen(false)} onAdded={onReload} />
 
       <button className="fab" onClick={() => setAddPanelOpen(!addPanelOpen)}>
-        +
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+        새 아이템
       </button>
     </>
   );
@@ -275,14 +283,12 @@ function ImageUpload({ onClose, onAdded }: { onClose: () => void; onAdded: () =>
             if (file) readFile(file);
           }}
         />
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--gray-300)" strokeWidth="1.5">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--ink-faint)" strokeWidth="1.4">
           <rect x="3" y="3" width="18" height="18" rx="2" />
           <circle cx="8.5" cy="8.5" r="1.5" />
           <path d="M21 15l-5-5L5 21" />
         </svg>
-        <p style={{ color: 'var(--gray-400)', fontSize: '0.85rem', marginTop: 8 }}>
-          클릭하거나 이미지를 드래그하여 업로드
-        </p>
+        <p className="upload-hint">클릭하거나 이미지를 드래그해 사진을 올려 주세요</p>
         {imageData && <img src={imageData} className="upload-preview" alt="미리보기" />}
       </label>
 
@@ -291,17 +297,17 @@ function ImageUpload({ onClose, onAdded }: { onClose: () => void; onAdded: () =>
           <button className="btn btn-success btn-lg" onClick={() => void upload()} disabled={uploading}>
             {uploading ? (
               <>
-                <span className="spinner" /> AI가 분석 중...
+                <span className="spinner" /> 사진을 분석하는 중...
               </>
             ) : (
-              'AI로 분석하여 등록'
+              '사진으로 등록하기'
             )}
           </button>
         </div>
       )}
 
       {status && (
-        <div className={status.ok ? 'msg' : 'msg msg-error'} style={status.ok ? { color: 'var(--success)' } : undefined}>
+        <div className={status.ok ? 'msg' : 'msg msg-error'} style={status.ok ? { color: 'var(--olive)' } : undefined}>
           {status.text}
         </div>
       )}

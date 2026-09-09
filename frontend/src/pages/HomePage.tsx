@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/endpoints';
 import { errorMessage } from '../api/client';
 import type { Clothing, Gender, MultiModeRecommendation, Region, StyleMood, WeatherResponse } from '../types/api';
-import { ScreenHeader } from '../components/ScreenHeader';
 import { WeatherBar } from '../components/WeatherBar';
 import { RegionBar } from '../components/RegionBar';
 import { RecommendationCard } from '../components/RecommendationCard';
@@ -93,136 +92,144 @@ export function HomePage({
 
   return (
     <>
-      <ScreenHeader title="Wardrobe Edit" />
+      <header className="masthead">
+        <div className="wordmark">Wardrobe Edit</div>
+        <p className="wordmark-sub">오늘의 옷장을 편집합니다</p>
+      </header>
 
-      <WeatherBar
-        weather={weather}
-        loading={weatherLoading}
-        error={weatherError}
-        onOpenRegion={onOpenRegion}
-      />
-      <RegionBar region={region} onClick={onOpenRegion} />
+      <section className="section">
+        <WeatherBar
+          weather={weather}
+          loading={weatherLoading}
+          error={weatherError}
+          onOpenRegion={onOpenRegion}
+        />
+        <RegionBar region={region} onClick={onOpenRegion} />
+      </section>
 
-      <div className="card" style={{ padding: '14px 16px' }}>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-          <button
-            className={`gender-btn${gender === 'male' ? ' active' : ''}`}
-            onClick={() => onGenderChange('male')}
-          >
-            남성
-          </button>
-          <button
-            className={`gender-btn${gender === 'female' ? ' active' : ''}`}
-            onClick={() => onGenderChange('female')}
-          >
-            여성
-          </button>
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {moods.map((m) => (
+      <section className="section">
+        <div className="pick-group">
+          <span className="eyebrow">For whom</span>
+          <div className="gender-tabs" role="group" aria-label="성별 선택">
             <button
-              key={m.mood_key}
-              className={`mood-chip-btn${selectedMood === m.mood_key ? ' active' : ''}`}
-              onClick={() => onMoodChange(m.mood_key)}
+              className={`gender-btn${gender === 'female' ? ' active' : ''}`}
+              aria-pressed={gender === 'female'}
+              onClick={() => onGenderChange('female')}
             >
-              {m.mood_label}
+              여성
             </button>
-          ))}
+            <button
+              className={`gender-btn${gender === 'male' ? ' active' : ''}`}
+              aria-pressed={gender === 'male'}
+              onClick={() => onGenderChange('male')}
+            >
+              남성
+            </button>
+          </div>
         </div>
-        {/* 이름만으로는 장르 간 차이를 알기 어렵다. 고른 장르의 설명을 한 줄 보여준다.
-            문구는 DB(style_mood.description)에 있어 배포 없이 고칠 수 있다. */}
-        {selectedMoodDescription && (
-          <div
-            style={{
-              marginTop: 8,
-              fontSize: '0.78rem',
-              lineHeight: 1.5,
-              color: 'var(--gray-500)',
-            }}
-          >
-            {selectedMoodDescription}
-          </div>
-        )}
-      </div>
 
-      <div className="cta-group">
-        <button className="cta-primary" onClick={() => navigate('/evaluate')}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="M9 12l2 2 4-4" />
-            <circle cx="12" cy="12" r="10" />
-          </svg>
-          지금 입은 코디 평가하기
-        </button>
-        <button className="cta-secondary" onClick={() => void loadAndScroll()}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-          </svg>
-          오늘 추천 보기
-        </button>
-      </div>
-
-      {summary.total > 0 && (
-        <div className="card">
-          <div className="card-title">내 옷장 요약</div>
-          <div className="summary-grid">
-            <div className="summary-item">
-              <div className="summary-val">{summary.total}</div>
-              <div className="summary-lbl">전체</div>
-            </div>
-            <div className="summary-item">
-              <div className="summary-val">{summary.base}</div>
-              <div className="summary-lbl">베이스</div>
-            </div>
-            <div className="summary-item">
-              <div className="summary-val">{summary.accent}</div>
-              <div className="summary-lbl">포인트</div>
-            </div>
-          </div>
-          <div style={{ marginTop: 8 }}>
-            {summary.warnings.map((w) => (
-              <div className="warning-banner" key={w}>
-                <span>⚠️</span>
-                <span>{w}</span>
-              </div>
+        <div className="pick-group">
+          <span className="eyebrow">Style</span>
+          <div className="mood-chips" role="group" aria-label="스타일 장르 선택">
+            {moods.map((m) => (
+              <button
+                key={m.mood_key}
+                className={`mood-chip-btn${selectedMood === m.mood_key ? ' active' : ''}`}
+                aria-pressed={selectedMood === m.mood_key}
+                onClick={() => onMoodChange(m.mood_key)}
+              >
+                {m.mood_label}
+              </button>
             ))}
           </div>
-          <div className="quick-actions">
+          {/* 이름만으로는 장르 간 차이를 알기 어렵다. 고른 장르의 설명을 한 줄 보여준다.
+              문구는 DB(style_mood.description)에 있어 배포 없이 고칠 수 있다. */}
+          {selectedMoodDescription && <p className="mood-note">{selectedMoodDescription}</p>}
+        </div>
+      </section>
+
+      <section className="section cta-group">
+        <button className="cta-primary" onClick={() => void loadAndScroll()}>
+          오늘의 스타일 제안 보기
+          <svg
+            className="cta-arrow"
+            width="18" height="18" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"
+          >
+            <path d="M4 12h15" />
+            <path d="M13 6l6 6-6 6" />
+          </svg>
+        </button>
+        <button className="cta-secondary" onClick={() => navigate('/evaluate')}>
+          내 코디 평가하기
+        </button>
+      </section>
+
+      {summary.total > 0 && (
+        <section className="section wardrobe-note">
+          <span className="eyebrow">My wardrobe</span>
+          <div className="wardrobe-count">
+            {summary.total}
+            <em>pieces</em>
+          </div>
+          <div className="wardrobe-breakdown">
+            베이스 {summary.base} · 포인트 {summary.accent}
+          </div>
+
+          {summary.warnings.map((w) => (
+            <p className="note-warning" key={w}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                <path d="M12 9v4" />
+                <path d="M12 17h.01" />
+                <path d="M10.3 3.9L2.4 18a2 2 0 001.7 3h15.8a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" />
+              </svg>
+              <span>{w}</span>
+            </p>
+          ))}
+
+          <div className="wardrobe-links">
+            <button className="link-action" onClick={() => navigate('/wardrobe')}>
+              옷장 보기 →
+            </button>
             <button
-              className="btn btn-outline btn-sm"
+              className="link-action"
               onClick={() => {
                 navigate('/wardrobe');
                 onOpenAddPanel();
               }}
             >
-              옷 등록
-            </button>
-            <button className="btn btn-outline btn-sm" onClick={() => navigate('/wardrobe')}>
-              옷장 보기
+              + 새 아이템
             </button>
           </div>
-        </div>
+        </section>
       )}
 
-      <div ref={recSectionRef}>
-        <div className="card-title" style={{ marginTop: 8 }}>
-          AI 추천
+      <section ref={recSectionRef} className="section">
+        <div className="section-head">
+          <h2 className="section-title">오늘의 제안</h2>
         </div>
-        {recLoading && <Loading>AI가 코디를 고민 중...</Loading>}
+
+        {recLoading && <Loading>오늘의 조합을 고르는 중...</Loading>}
         {recError && <ErrorMessage>추천을 불러올 수 없습니다: {recError}</ErrorMessage>}
         {!recLoading && !recError && rec && rec.modes.length === 0 && (
           <ErrorMessage>추천 결과가 없습니다</ErrorMessage>
         )}
+        {!recLoading && !recError && !rec && (
+          <p className="prose">
+            위의 제안 보기를 누르면 오늘 날씨와 고른 장르에 맞춰 옷장에서 조합을 골라 드려요.
+          </p>
+        )}
         {!recLoading && !recError && rec && rec.modes.length > 0 && (
           <>
-            <div style={{ fontSize: '0.82rem', color: 'var(--gray-500)', marginBottom: 10 }}>
+            <p className="caption" style={{ marginBottom: 14 }}>
               {rec.weather_summary}
-            </div>
+            </p>
             {rec.modes.map((m) => (
               <RecommendationCard key={m.mode} mode={m} selectedMood={selectedMood} />
             ))}
           </>
         )}
-      </div>
+      </section>
     </>
   );
 }

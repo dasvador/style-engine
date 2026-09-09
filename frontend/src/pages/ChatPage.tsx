@@ -68,32 +68,18 @@ export function ChatPage({ weather, gender, moods, selectedMood }: Props) {
 
   return (
     <>
-      <ScreenHeader title="스타일 상담" sub="옷장 기반 코디 질문" />
+      <ScreenHeader title="스타일 상담" sub="옷장을 두고 나누는 대화" />
 
-      <div
-        style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '0 0 10px', fontSize: '0.78rem' }}
-      >
-        <span style={{ color: 'var(--gray-400)' }}>현재 무드:</span>
-        <span
-          style={{
-            background: 'var(--gray-100)',
-            padding: '4px 10px',
-            borderRadius: 12,
-            fontWeight: 600,
-            color: 'var(--gray-700)',
-          }}
-        >
-          {moodLabel}
-        </span>
+      <div className="chat-mood-line">
+        <span>현재 무드</span>
+        <span className="chat-mood-value">{moodLabel}</span>
       </div>
 
       <div className="chat-container" ref={containerRef}>
         <div className="chat-bubble chat-ai">
-          안녕하세요! 옷장에 있는 아이템 기반으로 코디를 추천해드려요.
+          옷장에 있는 아이템으로 코디를 함께 골라 드려요.
           <br />
-          <span style={{ color: 'var(--gray-400)', fontSize: '0.8rem' }}>
-            예: &quot;네이비 스니커에 맞는 상하의 추천해줘&quot;
-          </span>
+          <span className="chat-hint">예: &quot;네이비 스니커에 맞는 상하의 추천해줘&quot;</span>
         </div>
 
         {messages.map((m) => {
@@ -123,7 +109,7 @@ export function ChatPage({ weather, gender, moods, selectedMood }: Props) {
               );
             case 'error':
               return (
-                <div className="chat-bubble chat-ai" key={m.id} style={{ color: 'var(--danger)' }}>
+                <div className="chat-bubble chat-ai chat-error" key={m.id}>
                   {m.text}
                 </div>
               );
@@ -137,7 +123,7 @@ export function ChatPage({ weather, gender, moods, selectedMood }: Props) {
         <input
           type="text"
           className="chat-input"
-          placeholder="코디 질문을 입력하세요..."
+          placeholder="어떤 코디가 궁금하세요?"
           autoComplete="off"
           value={input}
           onChange={(e) => setInput(e.target.value)}

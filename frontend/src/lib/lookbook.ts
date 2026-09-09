@@ -180,9 +180,9 @@ export function scoreClass(score: number): string {
 }
 
 export function verdictColor(score: number): string {
-  if (score >= 88) return 'var(--success)';
-  if (score >= 73) return 'var(--primary)';
-  if (score >= 55) return 'var(--warning)';
+  if (score >= 88) return 'var(--olive)';
+  if (score >= 73) return 'var(--accent)';
+  if (score >= 55) return 'var(--caution)';
   return 'var(--danger)';
 }
 

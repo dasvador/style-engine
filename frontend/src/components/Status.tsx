@@ -21,11 +21,16 @@ export function ErrorMessage({ children, onRetry }: { children: React.ReactNode;
   );
 }
 
+/**
+ * 빈 화면. 큰 이모지 하나만 두면 미완성처럼 보여서, 지면 머리글처럼
+ * 작은 표식과 한 문장을 둔다. `icon` 은 호출부 호환을 위해 남겨 두고
+ * 표식 자리에 쓴다.
+ */
 export function EmptyState({ icon, text }: { icon: string; text: string }) {
   return (
     <div className="empty-state">
-      <div className="empty-state-icon">{icon}</div>
-      <div className="empty-state-text">{text}</div>
+      <div className="empty-state-mark">{icon}</div>
+      <p className="empty-state-text">{text}</p>
     </div>
   );
 }

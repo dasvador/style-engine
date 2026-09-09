@@ -54,11 +54,14 @@ export function RegionModal({ open, region, onClose, onSaved }: Props) {
     <div className="modal-overlay open" onClick={onClose}>
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="modal-handle" />
-        <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: 16 }}>지역 설정</h3>
-        {region && (
-          <div className="msg" style={{ marginBottom: 12 }}>
-            현재: {region.name} ({region.latitude}, {region.longitude})
-          </div>
+        <h3 className="modal-title">지역 설정</h3>
+        {/* 좌표는 홈 화면에서 빼고 여기로 옮겼다. 바꿀 때만 필요한 값이다. */}
+        {region ? (
+          <p className="modal-current">
+            현재 {region.name} · {region.latitude}, {region.longitude}
+          </p>
+        ) : (
+          <p className="modal-current">날씨를 받아올 지역을 정해 주세요.</p>
         )}
         {error && <ErrorMessage>{error}</ErrorMessage>}
         <form onSubmit={submit}>
@@ -97,11 +100,11 @@ export function RegionModal({ open, region, onClose, onSaved }: Props) {
               />
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>
+          <div className="modal-actions">
+            <button type="button" className="btn btn-outline" onClick={onClose}>
               취소
             </button>
-            <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={saving}>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? '저장 중...' : '저장'}
             </button>
           </div>

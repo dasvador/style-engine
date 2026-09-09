@@ -25,22 +25,25 @@ export function RecommendationCard({ mode, selectedMood }: Props) {
 
       <div className="mode-subtitle">{mode.mode_description}</div>
 
-      {mode.outfit.length > 0 && (
-        <div className="rec-items">
-          {mode.outfit.map((o, i) => (
-            <span className="chip" key={`${o.category}-${o.name}-${i}`}>
-              {o.category}: {o.name}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* 이미지 생성은 '오늘의 추천'에만 붙인다 — 기존 동작과 동일 */}
+      {/* 이미지 생성은 '오늘의 추천'에만 붙인다 — 기존 동작과 동일.
+          이미지가 있으면 글보다 먼저 보이도록 구성 목록 위에 둔다. */}
       {mode.mode === 'todays_pick' && mode.outfit.length > 0 && (
         <OutfitImage items={outfitToImageItems(mode.outfit)} mood={selectedMood} />
       )}
 
-      <div className="mode-reason">{mode.reason}</div>
+      {/* 작은 태그 나열 대신 슬롯과 이름을 나란히 읽는 구성 목록. */}
+      {mode.outfit.length > 0 && (
+        <ul className="rec-pieces">
+          {mode.outfit.map((o, i) => (
+            <li className="rec-piece" key={`${o.category}-${o.name}-${i}`}>
+              <span className="rec-piece-slot">{o.category}</span>
+              <span className="rec-piece-name">{o.name}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <p className="mode-reason">{mode.reason}</p>
 
       <button className="mode-toggle" onClick={() => setOpen((v) => !v)}>
         {open ? '접기 ▴' : '자세히 ▾'}
@@ -48,24 +51,20 @@ export function RecommendationCard({ mode, selectedMood }: Props) {
 
       <div className={`mode-detail${open ? ' open' : ''}`}>
         {mode.outfit.map((o, i) => (
-          <div key={`${o.name}-${i}`} style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 8 }}>
+          <div className="mode-detail-item" key={`${o.name}-${i}`}>
             {o.image_url?.startsWith('data:image/') && (
-              <img
-                src={o.image_url}
-                alt=""
-                style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover' }}
-              />
+              <img className="mode-detail-thumb" src={o.image_url} alt="" />
             )}
             <div>
-              <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{o.name}</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>
+              <div className="item-card-name">{o.name}</div>
+              <div className="item-card-meta">
                 {o.category} · {o.reason}
               </div>
             </div>
           </div>
         ))}
 
-        <div style={{ fontSize: '0.8rem', color: 'var(--gray-600)', marginTop: 8 }}>{mode.recommendation}</div>
+        <p className="mode-reason">{mode.recommendation}</p>
 
         {sd && (
           <div className="scoring-bar">
