@@ -72,6 +72,7 @@ LLM이 씁니다. LLM을 꺼도 이 응답은 `explanation`을 뺀 채로 그대
 | 2 | 호출부는 모델이 아니라 *task*를 지정 — 모델 교체가 코드가 아닌 설정 | [`services/llm/`](src/services/llm/) |
 | 3 | 엔진 품질을 96건 케이스로 수치화하고 회귀하면 CI가 실패 | [`tests/eval_scorecard.rs`](tests/eval_scorecard.rs) |
 | 4 | 도메인 어휘를 타입으로 — 잘못된 값이 네 경계 전부에서 실패하도록 | [`models/style_vocab.rs`](src/models/style_vocab.rs) |
+| 5 | 프런트와 백엔드를 코드로는 나누고 운영에서는 한 프로세스로 — Axum 이 SPA 와 API 를 같은 origin 에서 제공 | [`routes/spa.rs`](src/routes/spa.rs) · [`frontend/`](frontend/) |
 
 2번과 3번은 아래 [Model Orchestration](#model-orchestration-task-기반-provider-추상화),
 [품질 관리](#품질-관리-eval--ci)에서 자세히 다룹니다.
@@ -80,6 +81,7 @@ LLM이 씁니다. LLM을 꺼도 이 응답은 `explanation`을 뺀 채로 그대
 
 | 구분 | 기술 |
 |------|------|
+| Frontend | React 18 + TypeScript + Vite (SPA) |
 | Language | Rust (Edition 2024) |
 | Framework | Axum + Tokio |
 | Database | MySQL (sqlx) |
@@ -282,7 +284,7 @@ fixture 용어를 맞춘 것만으로 (룰은 한 줄도 건드리지 않고):
 |---|---|
 | `cargo fmt --check` | 포맷 미준수 시 실패 |
 | `cargo clippy -- -D warnings` | 경고 0. 예외는 코드에 사유를 적은 `#[allow]`로만 |
-| `cargo test --all-targets` | 114개 |
+| `cargo test --all-targets` | 123개 |
 | eval 스코어카드 | 기준선 대비 회귀 시 실패 |
 | 산출물 동기화 | 커밋된 스코어카드가 현재 엔진과 다르면 실패 |
 
@@ -392,18 +394,19 @@ fixture 용어를 맞춘 것만으로 (룰은 한 줄도 건드리지 않고):
 | POST | `/api/user/register` | 사용자 등록 (API 토큰 발급) |
 | GET | `/api/health` | 헬스 체크 |
 
-## UI (4화면 SPA)
+## UI (React SPA)
 
-| 화면 | 라우트 | 역할 |
-|------|--------|------|
-| 홈 | `#home` | 날씨 + CTA + 추천 카드 + 옷장 요약 |
-| 코디 평가 | `#evaluate` | 슬롯 선택 → 점수/문제/제안/설명 |
-| 옷장 | `#wardrobe` | 카테고리·역할 필터 + 등록(수동/이미지) |
-| 아이템 상세 | `#detail/{id}` | 역할 해석 + 스타일 태그 + "이 옷으로 평가" |
+| 화면 | 경로 | 역할 |
+|------|------|------|
+| 홈 | `/` | 날씨 + 성별·무드 선택 + CTA + 옷장 요약 + AI 추천 3모드 |
+| 상담 | `/chat` | 도구 호출 기반 대화 → 룩북 카드(이미지·Style Note·피드백) |
+| 평가 | `/evaluate` | 슬롯 선택 → 점수/강점/문제/제안/AI 해설 |
+| 옷장 | `/wardrobe` | 카테고리·역할 필터 + 등록(직접 입력 / 사진 분석) |
+| 아이템 상세 | `/wardrobe/:id` | 기본 정보 + 스타일 분석 + "이 옷으로 평가" |
 
-핵심 루프: 홈 → 평가 → 개선 제안 → 옷장 → 아이템 교체 → 다시 평가
-
----
+지역 설정은 홈의 지역 바에서 여는 시트다. 브라우저 주소창으로 하위 경로에 직접 들어가거나
+새로고침해도 동작한다 — 서버가 없는 경로에 `index.html`(200)을 돌려주고 클라이언트 라우터가
+해석한다.
 
 # 프로젝트 구조
 
@@ -427,7 +430,7 @@ src/
 │   ├── recommendation_experiment.rs  # shadow mode 로그 수집기
 │   ├── embedding.rs              # 임베딩 캐시 + 코사인 유사도 검색
 │   └── weather.rs                # 기상청 API (Open-Meteo 폴백)
-├── routes/                       # home(SPA) / outfit / clothes / chat / reference / ...
+├── routes/                       # spa(정적 서빙) / outfit / clothes / chat / reference / ...
 ├── models/
 │   ├── style_vocab.rs            # ★ 표준 어휘 타입 (Role/Tone/Style/Weight/Saturation)
 │   └── clothing · outfit · recommendation · reference · weather
@@ -442,47 +445,119 @@ tests/
 └── style_engine_test.rs          # 규칙별 단위 테스트
 
 migrations/                       # MySQL 마이그레이션
+
+frontend/                         # ★ React SPA
+├── src/
+│   ├── api/                      #   클라이언트 + 엔드포인트 래퍼 (공통 오류 처리)
+│   ├── types/api.ts              #   백엔드 응답에 대응하는 TS 타입
+│   ├── components/               #   레이아웃 · 탭바 · 날씨 · 추천/룩북 카드 · 모달 · 상태 표시
+│   ├── pages/                    #   Home / Chat / Evaluate / Wardrobe / ItemDetail
+│   ├── hooks/                    #   useAsync · useClothes · useOutfitImage
+│   ├── lib/lookbook.ts           #   룩북 제목·태그 추출 등 순수 로직
+│   └── styles/app.css            #   기존 UI 의 CSS 를 그대로 옮긴 것
+└── dist/                         #   빌드 결과 (Axum 이 서빙)
 ```
 
 ---
 
 # 시작하기
 
+## 구조
+
+React SPA 와 Axum 을 **코드는 나누고 운영에서는 하나로** 합친다.
+
+```
+개발    Vite(:5173) ──/api 프록시──> Axum(:3003) ──> MySQL
+운영    Axum(:3003) ─┬─ /api/*     ──> 핸들러
+                     ├─ /static/*  ──> 업로드·생성 이미지
+                     └─ 그 외      ──> frontend/dist (없는 경로는 index.html 200)
+```
+
+브라우저는 항상 같은 origin 으로 `/api/...` 를 호출한다. 그래서 프런트 번들에 서버 주소가
+들어가지 않고, 운영에 Node 프로세스도 필요 없다. `.env` 와 API 키는 서버만 읽으므로 번들에
+포함되지 않는다.
+
 ## 사전 요구사항
 
-- Rust (Edition 2024)
+- Rust (버전은 `rust-toolchain.toml` 이 고정)
+- Node.js 20+
 - MySQL 8.0+
 - OpenAI API Key
-- Anthropic API Key (선택 — 해당 provider로 라우팅할 때만)
+- Anthropic API Key (선택 — 해당 provider 로 라우팅할 때만)
 - 기상청 API Key (선택 — 미설정 시 Open-Meteo 폴백)
 
-## 실행
+## 로컬 개발 (터미널 둘)
 
 ```bash
+# 1) 백엔드
 cp .env.example .env      # DATABASE_URL, OPENAI_API_KEY 등 설정
 mysql -u root -e "CREATE DATABASE rust_web_app"
-cargo run                 # 마이그레이션·시드·임베딩 생성 자동
+cargo run                 # http://localhost:3003 — 마이그레이션·시드 자동
+
+# 2) 프런트엔드
+cd frontend
+npm install
+npm run dev               # http://localhost:5173 — /api 는 3003 으로 프록시
 ```
 
-`http://localhost:3003`에서 시작됩니다. 첫 실행 시 DB 마이그레이션, 밀리터리/빈티지 레퍼런스
-13종 시드, 레퍼런스 임베딩 생성 + 인메모리 캐시 로딩이 자동으로 수행됩니다.
+개발 중에는 `http://localhost:5173` 을 연다. 백엔드 주소가 다르면
+`VITE_BACKEND_ORIGIN=http://... npm run dev` 로 바꾼다.
 
-기동 시 어떤 task가 어떤 모델로 라우팅되는지 로그로 확인할 수 있습니다:
+## 프로덕션 빌드 (Axum 하나만 실행)
 
+```bash
+cd frontend && npm run build && cd ..   # frontend/dist 생성
+cargo build --release
+./target/release/style-engine           # http://localhost:3003 에서 SPA + API
 ```
-INFO LLM 라우팅 task="vision_pass1" provider="openai" model=gpt-4o-mini configured=true
-INFO llm_call task="embedding" provider="openai" model="text-embedding-3-small"
-     input_tokens=369 output_tokens=0 latency_ms=3454 attempts=1 cost_usd=0.00000738
+
+정적 파일 위치는 `FRONTEND_DIST` 로 바꿀 수 있다(기본 `frontend/dist`).
+프런트를 빌드하지 않고 서버만 띄우면 API 는 정상 동작하고, 화면 요청에는 빌드하라는 안내가 나온다.
+
+## Docker
+
+```bash
+docker build -t style-engine .
+docker run --rm -p 3003:3003 --env-file .env \
+  -v "$PWD/static/images:/app/static/images" \
+  style-engine
 ```
+
+multi-stage 빌드로 Node 와 Rust 툴체인은 최종 이미지에 남지 않는다. 생성된 룩북 이미지는
+`/app/static/images` 에 쌓이므로 유지하려면 볼륨을 붙인다. 컨테이너의 health check 는
+`/api/health` 를 쓴다.
+
+DB 는 이미지에 포함되지 않는다. `DATABASE_URL` 이 컨테이너에서 닿는 주소여야 한다
+(호스트 MySQL 이면 `host.docker.internal`).
+
+## 환경변수
+
+| 변수 | 필수 | 설명 |
+|---|---|---|
+| `DATABASE_URL` | ✓ | MySQL 접속 문자열 |
+| `OPENAI_API_KEY` | ✓ | Vision·임베딩·이미지 생성 |
+| `ANTHROPIC_API_KEY` | | 해당 provider 로 라우팅할 때만 |
+| `KMA_API_KEY` | | 기상청. 미설정 시 Open-Meteo 폴백 |
+| `FRONTEND_DIST` | | 정적 파일 경로 (기본 `frontend/dist`) |
+| `LLM_TASK_*` | | task 별 모델 라우팅 재정의 |
+| `LLM_TIMEOUT_SECS` / `LLM_MAX_RETRIES` | | 호출 정책 |
+| `RUST_LOG` | | 로그 레벨 |
+
+전체 목록은 [`.env.example`](.env.example) 참고.
 
 ## 테스트
 
 ```bash
-cargo test                                          # 전체 114개
+# 백엔드
+cargo test                                          # 전체 123개
 cargo test --test eval_scorecard -- --nocapture     # eval 스코어카드
-```
+cargo fmt --check && cargo clippy --all-targets -- -D warnings
 
----
+# 프런트엔드
+cd frontend
+npm run build     # tsc -b + vite build
+npm run lint      # eslint + tsc --noEmit
+```
 
 # 알려진 문제
 
@@ -555,7 +630,13 @@ score가 좋은 코디와 나쁜 코디를 거의 구분하지 못하므로 점�
 테스트를 `serving_ranker` 에 두었습니다. eval 은 "엔진이 사람 판단과 일치하는가", 단위 테스트는
 "코드가 명세대로 도는가" — 다른 질문이고 둘 다 필요합니다.
 
-### 7. 운영 관점의 공백
+### 7. 프런트엔드 타입이 백엔드와 손으로 맞춰져 있음
+
+`frontend/src/types/api.ts` 는 Rust 구조체를 보고 손으로 옮긴 것이다. 코드 생성이 없으므로
+백엔드 응답이 바뀌면 컴파일이 아니라 런타임에야 어긋난다. 어휘 enum 을 타입으로 올려 얻은
+보장이 이 경계에서는 끊긴다 — OpenAPI 스펙이나 `ts-rs` 같은 생성기를 붙이는 것이 후속 작업이다.
+
+### 8. 운영 관점의 공백
 
 - Anthropic 경로는 단위 테스트로만 검증됨 (API 키 없이 실호출 미검증)
 - LLM 호출에 동시성 제한이 없음
