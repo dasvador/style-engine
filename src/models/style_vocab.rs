@@ -204,6 +204,108 @@ style_vocab! {
     }
 }
 
+style_vocab! {
+    /// 사용자가 고르는 스타일 장르 (`clothing.style_mood`, `style_mood.mood_key`).
+    ///
+    /// 표시명은 여기 두지 않는다. 화면에 나가는 한국어 이름과 설명은 `style_mood`
+    /// 테이블이 갖고, 이 enum 은 코드·DB·API 가 공유하는 식별자만 정의한다. 그래야
+    /// 문구를 고치는 데 배포가 필요 없다.
+    ///
+    /// 예전 이름이나 영문 변형은 [`StyleGenre::from_alias`] 로 정규화한다.
+    StyleGenre {
+        // ─── 남성 · 공용 ───
+        Amekaji => "amekaji",
+        /// 남성/공용 "미니멀 캐주얼". 여성 쪽 [`StyleGenre::MinimalClassic`] 과는 다른 값이다.
+        MinimalCasual => "minimal",
+        /// 성별 공용으로 쓰인다.
+        Street => "street",
+
+        // ─── 여성 대표 장르 ───
+        MinimalClassic => "minimal_classic",
+        RomanticFeminine => "romantic_feminine",
+        ModernChic => "modern_chic",
+        Bohemian => "bohemian",
+        ModelOffDuty => "model_off_duty",
+        Mannish => "mannish",
+        SportyCasual => "sporty_casual",
+    }
+}
+
+impl StyleGenre {
+    /// 바깥에서 들어온 값을 표준 식별자로 정규화한다.
+    ///
+    /// LLM 출력, 예전 클라이언트, 마이그레이션 이전 DB 값이 모두 여기를 지난다.
+    /// 대소문자·하이픈·공백 차이를 흡수하고, 예전 이름과 영문 표기를 현재 장르로 옮긴다.
+    ///
+    /// 모르는 값은 `None` 이다. 조용히 기본 장르로 바꾸지 않는다 — 그렇게 하면 잘못된
+    /// 장르로 추천이 나가고도 아무 신호가 남지 않는다.
+    pub fn from_alias(raw: &str) -> Option<Self> {
+        // "Quiet Luxury", "quiet-luxury", "quiet  luxury" 를 모두 같은 키로 만든다.
+        let key: String = raw
+            .trim()
+            .to_ascii_lowercase()
+            .chars()
+            .map(|c| {
+                if c == '-' || c == ' ' || c == '_' {
+                    '_'
+                } else {
+                    c
+                }
+            })
+            .collect();
+        let key = key
+            .split('_')
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join("_");
+
+        // 표준값이면 그대로.
+        if let Ok(genre) = key.parse::<StyleGenre>() {
+            return Some(genre);
+        }
+
+        Some(match key.as_str() {
+            // 미니멀 클래식
+            "quiet_luxury" | "quietluxury" | "퀴엣_럭셔리" | "콰이엇_럭셔리" => {
+                StyleGenre::MinimalClassic
+            }
+            // 로맨틱 페미닌 — 코켓은 하위 표현으로 흡수한다.
+            "coquette" | "코켓" | "feminine_casual" | "feminine" => StyleGenre::RomanticFeminine,
+            // 모던 시크
+            "office_siren" | "officesiren" | "오피스_사이렌" | "office" => {
+                StyleGenre::ModernChic
+            }
+            // 보헤미안
+            // 보헤미안. `vintage` 는 대표 장르가 아니지만 시드 데이터에 남아 있다 —
+            // 코듀로이·스웨이드·플로럴·라탄 같은 구성이라 보헤미안으로 흡수한다.
+            "boho"
+            | "boho_revival"
+            | "bohorevival"
+            | "보호"
+            | "보호_리바이벌"
+            | "보헤미안"
+            | "vintage"
+            | "빈티지" => StyleGenre::Bohemian,
+            // 모델 오프듀티
+            "off_duty"
+            | "offduty"
+            | "model_off_duty"
+            | "modeloffduty"
+            | "오프듀티_모델"
+            | "모델_오프듀티" => StyleGenre::ModelOffDuty,
+            // 스트리트
+            "streetwear" | "스트릿" | "스트리트" => StyleGenre::Street,
+            // 매니시
+            "boyish" | "보이시" | "매니시" => StyleGenre::Mannish,
+            // 스포티 캐주얼
+            "athleisure" | "sporty" | "스포티" | "스포티_캐주얼" => {
+                StyleGenre::SportyCasual
+            }
+            _ => return None,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -245,6 +347,63 @@ mod tests {
         for bad in ["얇은", "중간", "두꺼운", "보통"] {
             assert!(
                 bad.parse::<Thickness>().is_err(),
+                "{bad} 는 거부되어야 한다"
+            );
+        }
+    }
+
+    /// 예전 장르명과 영문 변형이 현재 식별자로 옮겨져야 한다. 이 표가 깨지면
+    /// 기존에 저장된 취향과 옷 데이터가 조용히 다른 장르로 흘러간다.
+    #[test]
+    fn old_genre_names_map_to_current_ones() {
+        let cases = [
+            ("quiet_luxury", StyleGenre::MinimalClassic),
+            ("Quiet Luxury", StyleGenre::MinimalClassic),
+            ("coquette", StyleGenre::RomanticFeminine),
+            ("feminine_casual", StyleGenre::RomanticFeminine),
+            ("office siren", StyleGenre::ModernChic),
+            ("boho", StyleGenre::Bohemian),
+            ("Boho-Revival", StyleGenre::Bohemian),
+            ("vintage", StyleGenre::Bohemian),
+            ("off_duty", StyleGenre::ModelOffDuty),
+            ("model off duty", StyleGenre::ModelOffDuty),
+            ("streetwear", StyleGenre::Street),
+            ("boyish", StyleGenre::Mannish),
+            ("athleisure", StyleGenre::SportyCasual),
+        ];
+        for (raw, expected) in cases {
+            assert_eq!(StyleGenre::from_alias(raw), Some(expected), "{raw}");
+        }
+    }
+
+    /// 표준값은 그대로 통과해야 한다 — 정규화가 이미 옳은 값을 망가뜨리면 안 된다.
+    #[test]
+    fn canonical_genre_ids_round_trip() {
+        for genre in StyleGenre::ALL {
+            assert_eq!(StyleGenre::from_alias(genre.as_str()), Some(*genre));
+            assert_eq!(genre.as_str().parse::<StyleGenre>(), Ok(*genre));
+        }
+    }
+
+    /// 남성/공용 `minimal` 과 여성 `minimal_classic` 은 다른 장르다.
+    /// 하나로 뭉개면 남성 옷장이 여성 장르로 새어 들어간다.
+    #[test]
+    fn male_minimal_is_not_female_minimal_classic() {
+        assert_eq!(
+            StyleGenre::from_alias("minimal"),
+            Some(StyleGenre::MinimalCasual)
+        );
+        assert_ne!(StyleGenre::MinimalCasual, StyleGenre::MinimalClassic);
+    }
+
+    /// 모르는 값을 기본 장르로 바꾸지 않는다. 그러면 사용자가 고른 장르가
+    /// 무시된 채 추천이 나가고도 아무 신호가 남지 않는다.
+    #[test]
+    fn unknown_genre_is_rejected_not_defaulted() {
+        for bad in ["y2k", "", "  ", "미니멀리즘", "quiet_luxury_2"] {
+            assert_eq!(
+                StyleGenre::from_alias(bad),
+                None,
                 "{bad} 는 거부되어야 한다"
             );
         }
