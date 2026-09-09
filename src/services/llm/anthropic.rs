@@ -67,7 +67,8 @@ fn content_parts_to_anthropic(parts: &[ContentPart]) -> Vec<Value> {
         .iter()
         .map(|p| match p {
             ContentPart::Text(t) => json!({ "type": "text", "text": t }),
-            ContentPart::ImageDataUrl(url) => match split_data_url(url) {
+            // Anthropic 에는 detail 에 대응하는 파라미터가 없다. 해상도는 서버가 정한다.
+            ContentPart::ImageDataUrl { url, .. } => match split_data_url(url) {
                 Some((media_type, data)) => json!({
                     "type": "image",
                     "source": { "type": "base64", "media_type": media_type, "data": data }
@@ -314,6 +315,7 @@ fn truncate(s: &str, max: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::types::ImageDetail;
     use super::*;
 
     #[test]
@@ -325,9 +327,10 @@ mod tests {
 
     #[test]
     fn non_data_url_falls_back_to_url_source() {
-        let blocks = content_parts_to_anthropic(&[ContentPart::ImageDataUrl(
-            "https://example.com/a.png".into(),
-        )]);
+        let blocks = content_parts_to_anthropic(&[ContentPart::ImageDataUrl {
+            url: "https://example.com/a.png".into(),
+            detail: ImageDetail::High,
+        }]);
         assert_eq!(blocks[0]["source"]["type"], "url");
     }
 
