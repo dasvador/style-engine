@@ -580,7 +580,7 @@ async fn generate_image(
     let monthly_budget = budget_from_env("IMAGE_MONTHLY_BUDGET_USD", DEFAULT_MONTHLY_BUDGET_USD);
     let spent = image_spend(&state.db).await;
 
-    if !budget_allows_image(&spent, daily_budget, monthly_budget) {
+    if BUDGET_ENFORCED && !budget_allows_image(&spent, daily_budget, monthly_budget) {
         tracing::warn!(
             event = "image_budget_exhausted",
             today_usd = spent.today,
@@ -1003,6 +1003,16 @@ Avoid: {base_avoid}, tight-fitting clothes, formal styling, luxury campaign mood
 // 이 앱에서 돈을 쓰는 곳은 사실상 이미지 하나다 (실측: 이미지 $0.0123/장,
 // 채팅 $0.0023/턴). 그래서 이미지만 막아도 총액이 잡히고, 채팅과 추천은
 // 예산과 무관하게 계속 동작한다 — 채팅으로 $10 을 쓰려면 하루 4,300턴이 필요하다.
+
+/// 상한을 실제로 적용할지.
+///
+/// **지금은 꺼져 있다.** 실사용 데이터가 아직 얼마 없어서 상한이 개발 중에만
+/// 걸리기 때문이다. 지출 기록(`image_daily_spend`)은 계속 쌓이므로, 며칠 뒤
+/// 실제 사용량을 보고 상한값을 정한 다음 `true` 로 되돌리면 된다.
+///
+/// 코드를 주석 처리하지 않고 플래그로 둔 이유: 주석 처리한 코드는 컴파일되지
+/// 않아 조용히 낡는다. 이 상태에서도 예산 로직은 계속 타입 검사와 테스트를 받는다.
+const BUDGET_ENFORCED: bool = false;
 
 /// 한 달 상한. 이게 실제 보장이다. 기본 $10.
 const DEFAULT_MONTHLY_BUDGET_USD: f64 = 10.0;
