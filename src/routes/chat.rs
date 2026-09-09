@@ -546,6 +546,16 @@ async fn generate_image(
     if let Some((path, attempts)) = cached {
         if let Some(path) = path {
             tracing::info!("image cache hit: {}", path);
+            // 적중 횟수는 이 기능의 실제 비용을 좌우한다 — 장당 단가는 미스일 때 값이다.
+            // 실패해도 응답을 막을 이유가 없다.
+            let _ = sqlx::query(
+                "UPDATE outfit_image SET hit_count = hit_count + 1 \
+                 WHERE outfit_hash = ? AND prompt_hash = ?",
+            )
+            .bind(&outfit_hash)
+            .bind(&prompt_hash)
+            .execute(&state.db)
+            .await;
             return Ok(Json(ImageResponse {
                 image_url: Some(path),
             }));
@@ -653,8 +663,8 @@ async fn generate_image(
     if status != VerificationStatus::CheckError {
         let _ = sqlx::query(
             "INSERT INTO outfit_image \
-             (id, outfit_hash, prompt_hash, image_path, prompt_text, verification_status, generation_attempts) \
-             VALUES (?, ?, ?, ?, ?, ?, ?) AS new \
+             (id, outfit_hash, prompt_hash, image_path, prompt_text, mood, verification_status, generation_attempts) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?) AS new \
              ON DUPLICATE KEY UPDATE \
                image_path = new.image_path, \
                verification_status = new.verification_status, \
@@ -670,6 +680,7 @@ async fn generate_image(
                 .nth(500)
                 .map_or(&prompt[..], |(i, _)| &prompt[..i]),
         )
+        .bind(mood)
         .bind(status.as_str())
         .bind(m.generate_calls)
         .execute(&state.db)
