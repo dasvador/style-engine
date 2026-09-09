@@ -526,9 +526,14 @@ async fn generate_image(
     prompt.hash(&mut prompt_hasher);
     let prompt_hash = format!("{:016x}", prompt_hasher.finish());
 
-    // DB 캐시 확인
-    let cached: Option<String> = sqlx::query_scalar(
-        "SELECT image_path FROM outfit_image WHERE outfit_hash = ? AND prompt_hash = ? LIMIT 1",
+    // DB 캐시 확인.
+    //
+    // 캐시에는 두 종류의 결과가 들어 있다. 통과한 이미지(image_path 있음)와,
+    // 통과하지 못했다는 사실(image_path 없음)이다. 후자를 남기지 않으면 검증을
+    // 통과하지 못하는 착장이 요청마다 이미지를 새로 생성한다.
+    let cached: Option<(Option<String>, i32)> = sqlx::query_as(
+        "SELECT image_path, generation_attempts FROM outfit_image \
+         WHERE outfit_hash = ? AND prompt_hash = ? LIMIT 1",
     )
     .bind(&outfit_hash)
     .bind(&prompt_hash)
@@ -537,21 +542,36 @@ async fn generate_image(
     .ok()
     .flatten();
 
-    if let Some(path) = cached {
-        tracing::info!("image cache hit: {}", path);
-        return Ok(Json(ImageResponse {
-            image_url: Some(path),
-        }));
+    let mut prior_attempts: u32 = 0;
+    if let Some((path, attempts)) = cached {
+        if let Some(path) = path {
+            tracing::info!("image cache hit: {}", path);
+            return Ok(Json(ImageResponse {
+                image_url: Some(path),
+            }));
+        }
+        // 통과하지 못한 이력이 있다. 몇 번이나 시도했는지 보고 더 태울지 정한다.
+        prior_attempts = attempts.max(0) as u32;
+        if prior_attempts >= MAX_TOTAL_ATTEMPTS {
+            tracing::info!(
+                outfit_hash = %outfit_hash,
+                attempts = prior_attempts,
+                "검증을 통과하지 못한 착장 — 재생성하지 않고 이미지 없이 응답한다"
+            );
+            return Ok(Json(ImageResponse { image_url: None }));
+        }
     }
 
     // 이미지 생성 + 성별 검증.
     //
-    // 검증에 실패하면 다시 생성한다. 다만 마지막 시도 결과는 실패해도 반환한다 —
-    // 이 기능은 "여성 모델을 보장한다"가 아니라 "가급적 맞춘다"에 가깝다.
-    // 반환하기로 한 이상 캐시에도 넣는다. 여기서 캐시를 건너뛰면 실패가 반복되는
-    // 착장만 매 요청 3장씩 다시 생성하게 되어, 비싼 경우에만 캐시가 안 걸린다.
+    // 검증을 통과하지 못한 이미지는 내보내지 않는다. 여성 모델은 이 제품의
+    // 요구사항이고, 검증기는 남성을 놓치기보다 여성을 과하게 떨어뜨리는 쪽으로
+    // 치우쳐 있다 (측정: 남성 12/12 차단, 여성 오차단 2/40). 그 편향에서는
+    // "실패했지만 내보낸다"가 유일하게 보장을 깨는 경로다.
+    //
+    // 통과하지 못하면 이미지 없이 응답하고, 그 사실을 캐시한다.
     let mut m = ImageGenMetrics::default();
-    let mut outcome: Option<(String, VerificationStatus)> = None;
+    let mut outcome: Option<(Option<String>, VerificationStatus)> = None;
 
     for attempt in 1..=MAX_IMAGE_ATTEMPTS {
         let started = std::time::Instant::now();
@@ -600,25 +620,24 @@ async fn generate_image(
         m.verify_usage.input_tokens += usage.input_tokens;
         m.verify_usage.output_tokens += usage.output_tokens;
 
-        match check {
-            GenderCheckResult::Female => {
+        match next_step(check, attempt) {
+            NextStep::Use => {
                 tracing::info!("gender check passed (attempt {attempt})");
-                outcome = Some((url, VerificationStatus::Passed));
+                outcome = Some((Some(url), VerificationStatus::Passed));
                 break;
             }
-            // 검증기가 죽은 것은 이미지의 문제가 아니다. 다시 생성해도 같은 상태이므로
-            // 재시도하지 않고, 통과와 구분되는 상태로 남긴다.
-            GenderCheckResult::Unavailable => {
-                outcome = Some((url, VerificationStatus::CheckError));
-                break;
-            }
-            GenderCheckResult::NotFemale if attempt < MAX_IMAGE_ATTEMPTS => {
+            NextStep::Retry => {
                 tracing::warn!("gender check failed (attempt {attempt}) — retrying");
                 let _ = std::fs::remove_file(&path);
             }
-            GenderCheckResult::NotFemale => {
-                tracing::warn!("gender check failed on final attempt — using last image");
-                outcome = Some((url, VerificationStatus::AcceptedAfterRetries));
+            NextStep::GiveUp(status) => {
+                tracing::warn!(
+                    status = status.as_str(),
+                    "검증을 통과하지 못했다 — 이미지 없이 응답한다"
+                );
+                let _ = std::fs::remove_file(&path);
+                outcome = Some((None, status));
+                break;
             }
         }
     }
@@ -629,31 +648,37 @@ async fn generate_image(
         return Ok(Json(ImageResponse { image_url: None }));
     };
 
-    let _ = sqlx::query(
-        "INSERT IGNORE INTO outfit_image \
-         (id, outfit_hash, prompt_hash, image_path, prompt_text, verification_status, generation_attempts) \
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
-    )
-    .bind(uuid::Uuid::new_v4().to_string())
-    .bind(&outfit_hash)
-    .bind(&prompt_hash)
-    .bind(&url)
-    .bind(
-        prompt
-            .char_indices()
-            .nth(500)
-            .map_or(&prompt[..], |(i, _)| &prompt[..i]),
-    )
-    .bind(status.as_str())
-    .bind(m.generate_calls)
-    .execute(&state.db)
-    .await;
+    // 검증기 장애는 이 착장의 문제가 아니다. 캐시에 남기면 검증기가 회복된 뒤에도
+    // 이 착장만 계속 막힌다.
+    if status != VerificationStatus::CheckError {
+        let _ = sqlx::query(
+            "INSERT INTO outfit_image \
+             (id, outfit_hash, prompt_hash, image_path, prompt_text, verification_status, generation_attempts) \
+             VALUES (?, ?, ?, ?, ?, ?, ?) AS new \
+             ON DUPLICATE KEY UPDATE \
+               image_path = new.image_path, \
+               verification_status = new.verification_status, \
+               generation_attempts = outfit_image.generation_attempts + new.generation_attempts",
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(&outfit_hash)
+        .bind(&prompt_hash)
+        .bind(&url)
+        .bind(
+            prompt
+                .char_indices()
+                .nth(500)
+                .map_or(&prompt[..], |(i, _)| &prompt[..i]),
+        )
+        .bind(status.as_str())
+        .bind(m.generate_calls)
+        .execute(&state.db)
+        .await;
+    }
 
-    m.record(&state.llm, status, mood);
+    m.record(&state.llm, status, mood, prior_attempts);
 
-    Ok(Json(ImageResponse {
-        image_url: Some(url),
-    }))
+    Ok(Json(ImageResponse { image_url: url }))
 }
 
 /// 최종 이미지 1장을 만드는 데 든 것. 생성과 검증을 따로 센다 —
@@ -671,7 +696,7 @@ struct ImageGenMetrics {
 impl ImageGenMetrics {
     /// 이미지 1장 단위의 구조화 로그. `outfit_image` 이벤트만 긁으면
     /// 실패율·평균 시도 횟수·검증이 차지하는 비용과 지연이 나온다.
-    fn record(&self, llm: &LlmClient, status: VerificationStatus, mood: &str) {
+    fn record(&self, llm: &LlmClient, status: VerificationStatus, mood: &str, prior_attempts: u32) {
         use crate::services::llm::usage::estimate_cost_usd;
 
         let image_model = &llm.config().task(LlmTask::ImageGeneration).model;
@@ -685,6 +710,8 @@ impl ImageGenMetrics {
             verification_status = status.as_str(),
             generate_calls = self.generate_calls,
             verify_calls = self.verify_calls,
+            // 이전 요청들에서 이미 태운 횟수. 이 착장이 반복해서 실패하는지 보인다.
+            prior_attempts = prior_attempts,
             image_model = %image_model,
             verify_model = %verify_model,
             generate_cost_usd = generate_cost,
@@ -844,8 +871,18 @@ Avoid: {base_avoid}, tight-fitting clothes, formal styling, luxury campaign mood
 
 // ─── 성별 검증 (GPT-4o-mini vision) ───
 
-/// 최대 생성 시도 횟수. 이 횟수만큼 검증에 실패해도 마지막 결과를 사용한다.
+/// 한 요청에서 시도할 최대 생성 횟수.
 const MAX_IMAGE_ATTEMPTS: u32 = 3;
+
+/// 한 착장에 대해 누적으로 허용하는 생성 횟수.
+///
+/// 검증기의 오판(측정 5%)은 대체로 무작위라 다시 생성하면 대개 통과한다. 하지만
+/// 어떤 착장은 구조적으로 계속 떨어질 수 있고, 그런 착장에 매 요청 3장씩 무한히
+/// 태울 수는 없다. 여기까지 쓰면 그 착장은 이미지 없이 응답한다.
+const MAX_TOTAL_ATTEMPTS: u32 = 9;
+
+/// 누적 상한이 한 요청분보다 작으면 첫 요청부터 상한에 걸려 재시도가 아예 일어나지 않는다.
+const _: () = assert!(MAX_TOTAL_ATTEMPTS > MAX_IMAGE_ATTEMPTS);
 
 /// 성별 검증 한 번의 결과.
 ///
@@ -865,7 +902,9 @@ enum GenderCheckResult {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VerificationStatus {
     Passed,
-    AcceptedAfterRetries,
+    /// 재시도 후에도 통과하지 못했다. 이미지를 내보내지 않는다.
+    Rejected,
+    /// 검증기를 부를 수 없었다. 검증하지 못한 이미지도 내보내지 않는다.
     CheckError,
 }
 
@@ -873,9 +912,35 @@ impl VerificationStatus {
     fn as_str(self) -> &'static str {
         match self {
             VerificationStatus::Passed => "passed",
-            VerificationStatus::AcceptedAfterRetries => "accepted_after_retries",
+            VerificationStatus::Rejected => "rejected",
             VerificationStatus::CheckError => "check_error",
         }
+    }
+}
+
+/// 검증 결과를 받고 무엇을 할지.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NextStep {
+    /// 이 이미지를 사용한다.
+    Use,
+    /// 이 이미지를 버리고 다시 생성한다.
+    Retry,
+    /// 이 이미지를 버리고 중단한다. 이미지 없이 응답한다.
+    GiveUp(VerificationStatus),
+}
+
+/// 여성 모델 보장이 지켜지는 지점.
+///
+/// `Use` 는 오직 `Female` 에서만 나온다. 검증에 실패했거나 검증하지 못한 이미지는
+/// 어느 경로로도 사용되지 않는다. 네트워크도 DB도 타지 않으므로 테스트로 고정한다.
+fn next_step(check: GenderCheckResult, attempt: u32) -> NextStep {
+    match check {
+        GenderCheckResult::Female => NextStep::Use,
+        // 검증기가 죽은 것은 이미지의 문제가 아니라 다시 생성해도 같은 상태다.
+        // 재시도하지 않고, 검증하지 못한 이미지는 내보내지 않는다.
+        GenderCheckResult::Unavailable => NextStep::GiveUp(VerificationStatus::CheckError),
+        GenderCheckResult::NotFemale if attempt < MAX_IMAGE_ATTEMPTS => NextStep::Retry,
+        GenderCheckResult::NotFemale => NextStep::GiveUp(VerificationStatus::Rejected),
     }
 }
 
@@ -1442,16 +1507,63 @@ mod tests {
     /// 으로 나타난다 — 지금 고치고 있는 버그와 똑같은 모양이다. 정의와 대조해 둔다.
     #[test]
     fn verification_status_matches_db_enum() {
-        let sql = include_str!("../../migrations/20260909000001_add_outfit_image_verification.sql");
+        let sql = include_str!("../../migrations/20260910000001_guarantee_verified_images.sql");
         for status in [
             VerificationStatus::Passed,
-            VerificationStatus::AcceptedAfterRetries,
+            VerificationStatus::Rejected,
             VerificationStatus::CheckError,
         ] {
             assert!(
                 sql.contains(&format!("'{}'", status.as_str())),
                 "{} 가 마이그레이션의 ENUM 정의에 없다",
                 status.as_str()
+            );
+        }
+    }
+
+    /// 이 제품의 요구사항: 검증을 통과하지 못한 이미지는 어떤 경로로도 나가지 않는다.
+    /// 시도 횟수나 검증기 상태와 무관하게 성립해야 한다.
+    #[test]
+    fn only_verified_female_images_are_used() {
+        for attempt in 1..=MAX_IMAGE_ATTEMPTS + 2 {
+            for check in [
+                GenderCheckResult::Female,
+                GenderCheckResult::NotFemale,
+                GenderCheckResult::Unavailable,
+            ] {
+                let used = next_step(check, attempt) == NextStep::Use;
+                assert_eq!(
+                    used,
+                    check == GenderCheckResult::Female,
+                    "check={check:?} attempt={attempt}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn retries_until_the_last_attempt_then_gives_up() {
+        for attempt in 1..MAX_IMAGE_ATTEMPTS {
+            assert_eq!(
+                next_step(GenderCheckResult::NotFemale, attempt),
+                NextStep::Retry,
+                "attempt={attempt}"
+            );
+        }
+        assert_eq!(
+            next_step(GenderCheckResult::NotFemale, MAX_IMAGE_ATTEMPTS),
+            NextStep::GiveUp(VerificationStatus::Rejected)
+        );
+    }
+
+    /// 검증기 장애는 재생성으로 나아지지 않는다. 첫 시도에서 바로 중단해야 한다.
+    #[test]
+    fn verifier_outage_does_not_burn_retries() {
+        for attempt in 1..=MAX_IMAGE_ATTEMPTS {
+            assert_eq!(
+                next_step(GenderCheckResult::Unavailable, attempt),
+                NextStep::GiveUp(VerificationStatus::CheckError),
+                "attempt={attempt}"
             );
         }
     }
