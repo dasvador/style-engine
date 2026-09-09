@@ -59,7 +59,7 @@ async fn get_recommendation(
         clothing_repo::list_clothing_filtered(
             &state.db,
             body.gender.as_deref(),
-            body.style_mood.as_deref(),
+            crate::routes::parse_genre(body.style_mood.as_deref())?,
         )
         .await?
     } else {
@@ -238,7 +238,7 @@ async fn get_multi_recommendation(
         clothing_repo::list_clothing_filtered(
             &state.db,
             body.gender.as_deref(),
-            body.style_mood.as_deref(),
+            crate::routes::parse_genre(body.style_mood.as_deref())?,
         )
         .await?
     } else {

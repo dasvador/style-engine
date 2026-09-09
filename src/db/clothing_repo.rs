@@ -2,7 +2,7 @@ use sqlx::MySqlPool;
 use uuid::Uuid;
 
 use crate::models::clothing::Clothing;
-use crate::models::style_vocab::{Role, Saturation, Style, Thickness, Tone, Weight};
+use crate::models::style_vocab::{Role, Saturation, Style, StyleGenre, Thickness, Tone, Weight};
 
 const SELECT_COLS: &str = "id, name, category, gender, style_mood, color, thickness, image_url, tone, saturation, style, weight, role, color_temperature, versatility, statement_level, formality_level, visual_weight, texture_depth, visual_weight_v2, texture_depth_v2, grounding_score, shadow_tone, silhouette_volume, material_primary, sub_category, floating_score, strong_style_score, texture_keywords, created_at, updated_at";
 
@@ -129,7 +129,7 @@ pub async fn list_clothing(pool: &MySqlPool) -> Result<Vec<Clothing>, sqlx::Erro
 pub async fn list_clothing_filtered(
     pool: &MySqlPool,
     gender: Option<&str>,
-    style_mood: Option<&str>,
+    style_mood: Option<StyleGenre>,
 ) -> Result<Vec<Clothing>, sqlx::Error> {
     let mut sql = format!("SELECT {} FROM clothing WHERE 1=1", SELECT_COLS);
     if gender.is_some() {
