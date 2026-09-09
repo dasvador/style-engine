@@ -572,6 +572,32 @@ async fn generate_image(
         }
     }
 
+    // 예산 확인. 캐시 적중은 돈이 들지 않으므로 위에서 이미 빠져나갔다 —
+    // 예산이 소진돼도 이미 만든 이미지는 계속 보인다.
+    let daily_budget = budget_from_env("IMAGE_DAILY_BUDGET_USD", DEFAULT_DAILY_BUDGET_USD);
+    let monthly_budget = budget_from_env("IMAGE_MONTHLY_BUDGET_USD", DEFAULT_MONTHLY_BUDGET_USD);
+    let spent = image_spend(&state.db).await;
+
+    if !budget_allows_image(&spent, daily_budget, monthly_budget) {
+        tracing::warn!(
+            event = "image_budget_exhausted",
+            today_usd = spent.today,
+            month_usd = spent.this_month,
+            daily_budget_usd = daily_budget,
+            monthly_budget_usd = monthly_budget,
+            "이미지 예산 소진 — 생성하지 않고 이미지 없이 응답한다"
+        );
+        let _ = sqlx::query(
+            "INSERT INTO image_daily_spend (spend_date, blocked_requests) \
+             VALUES (CURRENT_DATE, 1) AS new \
+             ON DUPLICATE KEY UPDATE \
+               blocked_requests = image_daily_spend.blocked_requests + new.blocked_requests",
+        )
+        .execute(&state.db)
+        .await;
+        return Ok(Json(ImageResponse { image_url: None }));
+    }
+
     // 이미지 생성 + 성별 검증.
     //
     // 검증을 통과하지 못한 이미지는 내보내지 않는다. 여성 모델은 이 제품의
@@ -687,9 +713,31 @@ async fn generate_image(
         .await;
     }
 
+    // 쓴 돈은 결과와 무관하게 기록한다. 통과하지 못한 시도도 청구된다.
+    m.record_spend(&state.db, &state.llm).await;
     m.record(&state.llm, status, mood, prior_attempts);
 
     Ok(Json(ImageResponse { image_url: url }))
+}
+
+/// 오늘과 이번 달의 이미지 지출.
+///
+/// 조회에 실패하면 0으로 본다. 예산 조회가 안 된다고 기능을 막으면, DB 장애가
+/// 이미지 전면 중단으로 번진다. 상한을 넘길 위험보다 그쪽이 크다.
+async fn image_spend(db: &sqlx::MySqlPool) -> ImageSpend {
+    sqlx::query_as::<_, ImageSpend>(
+        "SELECT \
+           COALESCE(SUM(CASE WHEN spend_date = CURRENT_DATE THEN cost_usd END), 0) AS today, \
+           COALESCE(SUM(CASE WHEN spend_date >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') \
+                             THEN cost_usd END), 0) AS this_month \
+         FROM image_daily_spend",
+    )
+    .fetch_one(db)
+    .await
+    .unwrap_or_else(|e| {
+        tracing::warn!("이미지 지출 조회 실패 — 0으로 간주한다: {e}");
+        ImageSpend::default()
+    })
 }
 
 /// 최종 이미지 1장을 만드는 데 든 것. 생성과 검증을 따로 센다 —
@@ -705,6 +753,46 @@ struct ImageGenMetrics {
 }
 
 impl ImageGenMetrics {
+    /// 이번 요청에 쓴 추정 비용. 단가표에 없는 모델이면 `None`.
+    fn cost_usd(&self, llm: &LlmClient) -> Option<f64> {
+        use crate::services::llm::usage::estimate_cost_usd;
+        let g = estimate_cost_usd(
+            &llm.config().task(LlmTask::ImageGeneration).model,
+            &self.generate_usage,
+        );
+        let v = estimate_cost_usd(
+            &llm.config().task(LlmTask::GenderVerify).model,
+            &self.verify_usage,
+        );
+        match (g, v) {
+            (Some(g), Some(v)) => Some(g + v),
+            _ => None,
+        }
+    }
+
+    /// 원장에 더한다. 예산은 이 값을 보고 판단한다.
+    async fn record_spend(&self, db: &sqlx::MySqlPool, llm: &LlmClient) {
+        // 비용을 계산할 수 없는 모델이면 원장이 실제보다 낮아진다. 0으로 채우면
+        // 상한이 조용히 무력화되므로, 남기지 않고 경고한다.
+        let Some(cost) = self.cost_usd(llm) else {
+            tracing::warn!("이미지 비용을 추정할 수 없어 예산 원장에 반영하지 못했다");
+            return;
+        };
+        let _ = sqlx::query(
+            "INSERT INTO image_daily_spend (spend_date, cost_usd, generate_calls, verify_calls) \
+             VALUES (CURRENT_DATE, ?, ?, ?) AS new \
+             ON DUPLICATE KEY UPDATE \
+               cost_usd = image_daily_spend.cost_usd + new.cost_usd, \
+               generate_calls = image_daily_spend.generate_calls + new.generate_calls, \
+               verify_calls = image_daily_spend.verify_calls + new.verify_calls",
+        )
+        .bind(cost)
+        .bind(self.generate_calls)
+        .bind(self.verify_calls)
+        .execute(db)
+        .await;
+    }
+
     /// 이미지 1장 단위의 구조화 로그. `outfit_image` 이벤트만 긁으면
     /// 실패율·평균 시도 횟수·검증이 차지하는 비용과 지연이 나온다.
     fn record(&self, llm: &LlmClient, status: VerificationStatus, mood: &str, prior_attempts: u32) {
@@ -881,6 +969,51 @@ Avoid: {base_avoid}, tight-fitting clothes, formal styling, luxury campaign mood
 }
 
 // ─── 성별 검증 (GPT-4o-mini vision) ───
+
+// ─── 이미지 생성 예산 ───
+//
+// 이 앱에서 돈을 쓰는 곳은 사실상 이미지 하나다 (실측: 이미지 $0.0123/장,
+// 채팅 $0.0023/턴). 그래서 이미지만 막아도 총액이 잡히고, 채팅과 추천은
+// 예산과 무관하게 계속 동작한다 — 채팅으로 $10 을 쓰려면 하루 4,300턴이 필요하다.
+
+/// 한 달 상한. 이게 실제 보장이다. 기본 $10.
+const DEFAULT_MONTHLY_BUDGET_USD: f64 = 10.0;
+
+/// 하루 상한. 한 달치를 하루에 태우지 못하게 하는 방지선이다.
+/// 월 상한의 1/10 이라 정상 사용에서는 걸리지 않는다.
+const DEFAULT_DAILY_BUDGET_USD: f64 = 1.0;
+
+/// 이미지 1장(생성 1회 + 검증 1회)의 실측 비용.
+/// 생성 전에는 토큰 수를 모르므로, 예산을 넘길지 판단할 때 이 값을 쓴다.
+const IMAGE_COST_ESTIMATE_USD: f64 = 0.0123;
+
+fn budget_from_env(var: &str, default: f64) -> f64 {
+    match std::env::var(var) {
+        Ok(raw) => match raw.parse::<f64>() {
+            Ok(v) if v >= 0.0 => v,
+            _ => {
+                tracing::warn!("{var} 값을 해석할 수 없어 기본값 {default} 을 사용합니다: {raw}");
+                default
+            }
+        },
+        Err(_) => default,
+    }
+}
+
+/// 이번 요청의 이미지를 만들어도 되는가.
+///
+/// 다 쓴 뒤에 막는 것이 아니라 **한 장 값을 더 써도 상한을 넘지 않을 때만** 허용한다.
+/// 그래야 상한이 실제 상한이 된다.
+fn budget_allows_image(spent: &ImageSpend, daily: f64, monthly: f64) -> bool {
+    spent.today + IMAGE_COST_ESTIMATE_USD <= daily
+        && spent.this_month + IMAGE_COST_ESTIMATE_USD <= monthly
+}
+
+#[derive(Debug, Clone, Copy, Default, sqlx::FromRow)]
+struct ImageSpend {
+    today: f64,
+    this_month: f64,
+}
 
 /// 한 요청에서 시도할 최대 생성 횟수.
 const MAX_IMAGE_ATTEMPTS: u32 = 3;
@@ -1565,6 +1698,40 @@ mod tests {
             next_step(GenderCheckResult::NotFemale, MAX_IMAGE_ATTEMPTS),
             NextStep::GiveUp(VerificationStatus::Rejected)
         );
+    }
+
+    /// 상한은 "다 쓴 뒤"가 아니라 "한 장 값을 더 써도 넘지 않을 때"를 기준으로 해야
+    /// 실제 상한이 된다. 경계에서 한 장이 더 나가면 월 상한을 넘긴다.
+    #[test]
+    fn budget_stops_before_exceeding_not_after() {
+        let (daily, monthly) = (1.0, 10.0);
+        let exactly_one_left = ImageSpend {
+            today: daily - IMAGE_COST_ESTIMATE_USD,
+            this_month: monthly - IMAGE_COST_ESTIMATE_USD,
+        };
+        assert!(budget_allows_image(&exactly_one_left, daily, monthly));
+
+        let a_cent_short = ImageSpend {
+            today: daily - IMAGE_COST_ESTIMATE_USD + 0.0001,
+            this_month: 0.0,
+        };
+        assert!(!budget_allows_image(&a_cent_short, daily, monthly));
+    }
+
+    /// 월 상한이 실제 보장이다. 하루치가 남아 있어도 월이 차면 막혀야 한다.
+    #[test]
+    fn monthly_budget_binds_even_with_daily_room() {
+        let spent = ImageSpend {
+            today: 0.0,
+            this_month: 10.0,
+        };
+        assert!(!budget_allows_image(&spent, 1.0, 10.0));
+    }
+
+    /// 예산을 0 으로 두면 이미지 생성이 완전히 꺼진다.
+    #[test]
+    fn zero_budget_disables_image_generation() {
+        assert!(!budget_allows_image(&ImageSpend::default(), 0.0, 0.0));
     }
 
     /// 검증기 장애는 재생성으로 나아지지 않는다. 첫 시도에서 바로 중단해야 한다.
