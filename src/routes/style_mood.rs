@@ -29,7 +29,9 @@ async fn list_moods(
     State(state): State<AppState>,
     Query(q): Query<MoodQuery>,
 ) -> Result<Json<Vec<StyleMood>>, AppError> {
-    let gender = q.gender.unwrap_or_else(|| "male".to_string());
+    // 프런트는 항상 gender 를 붙여 호출한다. 이 기본값은 파라미터 없이 부른
+    // 경우에만 쓰이며, 앱의 기본 성별과 같아야 한다.
+    let gender = q.gender.unwrap_or_else(|| "female".to_string());
 
     let moods = sqlx::query_as::<_, StyleMood>(
         "SELECT gender, mood_key, mood_label, description FROM style_mood WHERE gender = ? OR gender = 'unisex' ORDER BY sort_order"
