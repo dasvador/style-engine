@@ -32,6 +32,10 @@ const PRICING_PER_MTOK: &[(&str, f64, f64)] = &[
     ("gpt-4o", 2.50, 10.00),
     ("text-embedding-3-small", 0.02, 0.0),
     ("text-embedding-3-large", 0.13, 0.0),
+    // 이미지 생성. output 은 전부 image token 이라 $30, input 은 이 프로젝트가
+    // 참조 이미지 없이 텍스트 프롬프트만 보내므로 text 단가($5)를 쓴다.
+    // 참조 이미지를 붙이게 되면 그 입력분은 $8 이라 과소 추정된다.
+    ("gpt-image", 5.00, 30.00),
     // Anthropic
     ("claude-opus-5", 5.00, 25.00),
     ("claude-opus-4-8", 5.00, 25.00),
@@ -40,7 +44,7 @@ const PRICING_PER_MTOK: &[(&str, f64, f64)] = &[
     ("claude-haiku-4-5", 1.00, 5.00),
 ];
 
-/// 추정 비용(USD). 단가표에 없는 모델(이미지 생성 등 토큰 과금이 아닌 경우 포함)은 `None`.
+/// 추정 비용(USD). 단가표에 없는 모델은 `None`.
 /// 모르는 값을 0으로 채우면 "공짜로 돌고 있다"고 오독되므로 명시적으로 비운다.
 pub fn estimate_cost_usd(model: &str, usage: &Usage) -> Option<f64> {
     let (_, input_rate, output_rate) = PRICING_PER_MTOK
@@ -120,7 +124,30 @@ mod tests {
             input_tokens: 100,
             output_tokens: 100,
         };
-        assert_eq!(estimate_cost_usd("gpt-image-2", &usage), None);
+        assert_eq!(
+            estimate_cost_usd("some-model-we-have-not-priced", &usage),
+            None
+        );
+    }
+
+    /// 이미지 모델은 이름에 버전이 붙어도 같은 접두사로 잡혀야 한다.
+    /// 값은 실제 호출에서 관측한 사용량(input 37 / output 158)을 그대로 쓴다.
+    #[test]
+    fn image_models_share_one_prefix() {
+        let usage = Usage {
+            input_tokens: 37,
+            output_tokens: 158,
+        };
+        let per_image = 37.0 / 1_000_000.0 * 5.00 + 158.0 / 1_000_000.0 * 30.00;
+        for model in [
+            "gpt-image-2",
+            "gpt-image-2.5-flare",
+            "gpt-image-2.5-sunburst",
+        ] {
+            assert_eq!(estimate_cost_usd(model, &usage), Some(per_image), "{model}");
+        }
+        // 1장에 1센트 미만이라는 자릿수 확인 — 회귀 시 이 단언이 먼저 깨진다.
+        assert!(per_image < 0.01);
     }
 
     #[test]
