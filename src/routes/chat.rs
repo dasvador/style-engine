@@ -881,11 +881,14 @@ impl VerificationStatus {
 
 /// 검증 1회. 사용량도 함께 돌려준다 — 호출부가 검증 비용을 따로 집계한다.
 async fn verify_female_model(llm: &LlmClient, b64_image: &str) -> (GenderCheckResult, Usage) {
-    // 옷의 소재나 색이 아니라 사람의 성별만 보면 되므로 저해상도로 충분하다.
+    // 저해상도로 충분할 것 같지만 아니었다. 같은 40장을 두 해상도로 검증해 보면
+    // 오답이 Low 2/40 → 9/40 로 늘어난다 (전부 여성을 남성으로 판정하는 방향).
+    // 오답 1건은 이미지를 통째로 다시 만들게 하므로, 호출당 아끼는 $0.005 보다
+    // 재생성 비용과 12초가 크다. 검증은 자주 부르는 대신 정확해야 한다.
     let req = LlmChatRequest::new(vec![Message::user_image_with_detail(
         "Is the person in this photo female? Reply with only 'yes' or 'no'.",
         format!("data:image/png;base64,{}", b64_image),
-        ImageDetail::Low,
+        ImageDetail::High,
     )]);
 
     match llm.chat(LlmTask::GenderVerify, req).await {
