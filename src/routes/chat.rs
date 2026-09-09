@@ -835,6 +835,19 @@ impl ImageGenMetrics {
 }
 
 // ─── 무드별 이미지 프롬프트 생성 ───
+//
+// 룩북 이미지는 의류의 등록 성별과 관계없이 여성 모델을 사용한다.
+//
+// 남성복 장르도 여성 모델의 스타일링으로 재해석하는 것이 이 기능의 의도다.
+// 생성 후 성별 검증(`GenderCheckResult`) 역시 이 콘셉트를 유지하기 위해
+// 여성 모델 여부를 확인한다.
+//
+// `gender` 는 의류 검색 범위를 결정하며, 생성 이미지 모델의 성별을 의미하지
+// 않는다. 따라서 이미지 요청(`ImageRequest`)과 캐시 키(`prompt_hash`)에는
+// 모델 성별을 별도로 포함하지 않는다.
+//
+// 그래서 아래 arm 들은 장르마다 옷·소재·상황만 갈라 두고, 인물 묘사는
+// `base_face` / `base_body` 로 공유한다.
 fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
     let hairstyles = [
         "messy long waves with curtain bangs, effortless undone texture",
@@ -977,7 +990,67 @@ Aesthetic: shallow depth of field, muted warm tones, bright afternoon sunlight, 
 
 Avoid: {base_avoid}, feminine delicate styling, formal look, luxury campaign mood."#
         ),
-        StyleGenre::Amekaji | StyleGenre::MinimalCasual => format!(
+        StyleGenre::SmartCasual => format!(
+            r#"Smart casual fashion photo of a poised young woman in her mid 20s on her way to work. She must be female.
+
+Face: {base_face} Clean natural makeup with groomed brows, calm assured expression, small gold earrings.
+
+Body: {base_body}
+
+Outfit: The female model is wearing {items} — styled as put-together everyday dressing: a crisp shirt or fine-gauge knit with tailored trousers, an unstructured blazer worn open. Neat but never stiff, one step down from a suit and one step up from casual. Pressed fabrics, considered proportions, no logos.
+
+Pose: walking with easy purpose, holding a coffee or a slim shoulder bag, one hand adjusting a cuff, relaxed professional body language. Full body visible from head to shoes.
+
+Aesthetic: shallow depth of field, soft neutral palette with warm accents, bright morning daylight, tree-lined office street or cafe terrace before work, calm weekday atmosphere. Everlane / COS lookbook mood.
+
+Avoid: {base_avoid}, gym clothing, distressed vintage, heavy streetwear, evening glamour, romantic frills."#
+        ),
+        StyleGenre::Preppy => format!(
+            r#"Preppy fashion photo of a bright young woman in her early 20s on a college campus. She must be female.
+
+Face: {base_face} Fresh clean makeup with a light flush, cheerful open expression, simple pearl or gold studs.
+
+Body: {base_body}
+
+Outfit: The female model is wearing {items} — styled with Ivy League collegiate polish: an oxford shirt or cable knit, a blazer or cardigan layered over, chinos or a pleated skirt, loafers. Stripes, checks and school-crest energy. Neat collars, tidy layering, classic proportions.
+
+Pose: stepping down stone steps or standing with books held against one arm, light and upbeat posture, easy natural smile. Full body visible from head to shoes.
+
+Aesthetic: shallow depth of field, clear crisp tones with navy and cream accents, bright autumn daylight, brick campus building or ivy-covered wall or library courtyard, collegiate atmosphere. Ralph Lauren / classic American campus mood.
+
+Avoid: {base_avoid}, streetwear, athletic gear, distressed denim, evening wear, bohemian layering."#
+        ),
+        StyleGenre::Workwear => format!(
+            r#"Workwear fashion photo of a grounded young woman in her mid 20s. She must be female.
+
+Face: {base_face} Bare skin with almost no makeup, steady direct expression, no delicate jewelry.
+
+Body: {base_body}
+
+Outfit: The female model is wearing {items} — styled around genuine work clothing: a denim or duck-canvas chore jacket, coverall or work trousers, sturdy boots. Heavy cotton, visible topstitching, functional patch pockets, hardware that looks used. Fabrics show honest wear and fading at seams and cuffs, never decorative distressing.
+
+Pose: standing squarely with hands in jacket pockets or sleeves pushed to the forearm, weight even, unhurried practical body language. Full body visible from head to shoes.
+
+Aesthetic: shallow depth of field, muted indigo and earth tones, flat overcast daylight, garage doorway or lumber yard or workshop exterior with weathered concrete, honest utilitarian atmosphere. Carhartt WIP / vintage workwear catalog mood.
+
+Avoid: {base_avoid}, delicate fabrics, tailored formalwear, athletic gear, romantic frills, glossy luxury styling."#
+        ),
+        StyleGenre::OutdoorCasual => format!(
+            r#"Outdoor casual fashion photo of an active young woman in her early 20s in the city. She must be female.
+
+Face: {base_face} Bare fresh skin with natural glow, relaxed alert expression, hair pulled back or under a cap.
+
+Body: {base_body}
+
+Outfit: The female model is wearing {items} — styled as technical outdoor gear worn as everyday clothing: a shell jacket or windbreaker, a fleece layer, cargo or hiking trousers, trail shoes, a functional pack. Ripstop nylon, taped seams, drawcords, webbing straps. Muted technical colors with one saturated accent. It should read as gear used on real trails, not a gym outfit.
+
+Pose: mid-stride with a pack on one shoulder, adjusting a hood or drawcord, easy capable body language. Full body visible from head to shoes.
+
+Aesthetic: shallow depth of field, cool overcast daylight, city trailhead or park path or urban stairway with greenery, crisp fresh air atmosphere. Arc'teryx / Salomon gorpcore street mood.
+
+Avoid: {base_avoid}, leggings, sports bra, gym styling, tailored formalwear, romantic frills, luxury campaign gloss."#
+        ),
+        StyleGenre::Amekaji => format!(
             // 남성/공용 기본 — 기존 힙스터 스타일
             r#"Street-style fashion photo of a young hipster female fashion model in her early 20s with cool urban energy. She must be female.
 

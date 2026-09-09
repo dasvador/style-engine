@@ -212,22 +212,32 @@ style_vocab! {
     /// 문구를 고치는 데 배포가 필요 없다.
     ///
     /// 예전 이름이나 영문 변형은 [`StyleGenre::from_alias`] 로 정규화한다.
+    ///
+    /// 장르 정의는 성별과 무관한 하나의 목록이고, **누구에게 보여줄지만** 성별로
+    /// 갈린다. 그 노출 목록은 여기가 아니라 `style_mood` 테이블의 `gender` 컬럼이
+    /// 갖는다 — 표시명·설명과 같은 곳에 두어야 한 장르를 한 행에서 다 고칠 수 있다.
+    /// 그래서 남녀 공용 장르(`minimal_classic`, `street`, `sporty_casual`)도 enum
+    /// variant 는 하나이고, `style_mood` 에만 성별별로 행이 있다.
     StyleGenre {
-        // ─── 남성 · 공용 ───
-        Amekaji => "amekaji",
-        /// 남성/공용 "미니멀 캐주얼". 여성 쪽 [`StyleGenre::MinimalClassic`] 과는 다른 값이다.
-        MinimalCasual => "minimal",
-        /// 성별 공용으로 쓰인다.
-        Street => "street",
-
-        // ─── 여성 대표 장르 ───
+        // ─── 남녀 공용 ───
+        /// 남녀 모두에게 노출된다. 예전 남성 `minimal`("미니멀 캐주얼")이 여기로 합쳐졌다.
         MinimalClassic => "minimal_classic",
+        Street => "street",
+        SportyCasual => "sporty_casual",
+
+        // ─── 남성 노출 ───
+        SmartCasual => "smart_casual",
+        Amekaji => "amekaji",
+        Preppy => "preppy",
+        Workwear => "workwear",
+        OutdoorCasual => "outdoor_casual",
+
+        // ─── 여성 노출 ───
         RomanticFeminine => "romantic_feminine",
         ModernChic => "modern_chic",
         Bohemian => "bohemian",
         ModelOffDuty => "model_off_duty",
         Mannish => "mannish",
-        SportyCasual => "sporty_casual",
     }
 }
 
@@ -265,9 +275,31 @@ impl StyleGenre {
         }
 
         Some(match key.as_str() {
-            // 미니멀 클래식
-            "quiet_luxury" | "quietluxury" | "퀴엣_럭셔리" | "콰이엇_럭셔리" => {
-                StyleGenre::MinimalClassic
+            // 미니멀 클래식 — 예전 남성 "미니멀 캐주얼"(`minimal`)이 이 장르로 합쳐졌다.
+            // `minimal` 을 계속 받아주지 않으면 이전 전 저장된 옷과 예전 클라이언트가
+            // 보내는 값이 400 으로 떨어진다.
+            "quiet_luxury"
+            | "quietluxury"
+            | "퀴엣_럭셔리"
+            | "콰이엇_럭셔리"
+            | "minimal"
+            | "minimal_casual"
+            | "미니멀"
+            | "미니멀_캐주얼"
+            | "미니멀_클래식" => StyleGenre::MinimalClassic,
+            // 스마트 캐주얼
+            "business_casual" | "스마트_캐주얼" => StyleGenre::SmartCasual,
+            // 아메카지
+            "american_casual" | "americancasual" | "아메카지" => StyleGenre::Amekaji,
+            // 프레피
+            "ivy" | "ivy_league" | "ivyleague" | "프레피" | "아이비" | "아이비리그" => {
+                StyleGenre::Preppy
+            }
+            // 워크웨어
+            "work_wear" | "워크웨어" => StyleGenre::Workwear,
+            // 아웃도어 캐주얼 — 고프코어를 흡수한다.
+            "gorpcore" | "gorp_core" | "고프코어" | "outdoor" | "아웃도어" | "아웃도어_캐주얼" => {
+                StyleGenre::OutdoorCasual
             }
             // 로맨틱 페미닌 — 코켓은 하위 표현으로 흡수한다.
             "coquette" | "코켓" | "feminine_casual" | "feminine" => StyleGenre::RomanticFeminine,
@@ -294,11 +326,11 @@ impl StyleGenre {
             | "오프듀티_모델"
             | "모델_오프듀티" => StyleGenre::ModelOffDuty,
             // 스트리트
-            "streetwear" | "스트릿" | "스트리트" => StyleGenre::Street,
+            "streetwear" | "street_style" | "스트릿" | "스트리트" => StyleGenre::Street,
             // 매니시
             "boyish" | "보이시" | "매니시" => StyleGenre::Mannish,
             // 스포티 캐주얼
-            "athleisure" | "sporty" | "스포티" | "스포티_캐주얼" => {
+            "athleisure" | "sporty" | "sportswear" | "애슬레저" | "스포티" | "스포티_캐주얼" => {
                 StyleGenre::SportyCasual
             }
             _ => return None,
@@ -376,6 +408,106 @@ mod tests {
         }
     }
 
+    /// 남성 장르가 3개(아메카지·미니멀 캐주얼·스트릿)에서 8개로 늘어나기 전에
+    /// 저장된 값들. 마이그레이션이 DB 를 옮기더라도, 예전 클라이언트가 보내는
+    /// 요청과 이전 전에 만들어진 행이 여전히 읽혀야 한다.
+    #[test]
+    fn old_male_genre_names_map_to_current_ones() {
+        let cases = [
+            // "미니멀 캐주얼"은 이름이 바뀐 것이 아니라 미니멀 클래식으로 합쳐졌다.
+            ("minimal", StyleGenre::MinimalClassic),
+            ("minimal_casual", StyleGenre::MinimalClassic),
+            ("Minimal Casual", StyleGenre::MinimalClassic),
+            ("미니멀 캐주얼", StyleGenre::MinimalClassic),
+            ("아메카지", StyleGenre::Amekaji),
+            ("amekaji", StyleGenre::Amekaji),
+            ("스트릿", StyleGenre::Street),
+            ("street", StyleGenre::Street),
+        ];
+        for (raw, expected) in cases {
+            assert_eq!(StyleGenre::from_alias(raw), Some(expected), "{raw}");
+        }
+    }
+
+    /// 새 남성 장르의 영문·한글 별칭. 모델이나 예전 표기가 이 중 무엇을 반환해도
+    /// 같은 식별자로 모여야 한다.
+    #[test]
+    fn new_male_genre_aliases_normalize() {
+        let cases = [
+            ("smart casual", StyleGenre::SmartCasual),
+            ("Business-Casual", StyleGenre::SmartCasual),
+            ("스마트 캐주얼", StyleGenre::SmartCasual),
+            ("american casual", StyleGenre::Amekaji),
+            ("preppy", StyleGenre::Preppy),
+            ("Ivy League", StyleGenre::Preppy),
+            ("프레피", StyleGenre::Preppy),
+            ("work wear", StyleGenre::Workwear),
+            ("워크웨어", StyleGenre::Workwear),
+            ("gorpcore", StyleGenre::OutdoorCasual),
+            ("Gorp Core", StyleGenre::OutdoorCasual),
+            ("고프코어", StyleGenre::OutdoorCasual),
+            ("outdoor casual", StyleGenre::OutdoorCasual),
+            ("outdoor", StyleGenre::OutdoorCasual),
+            ("sportswear", StyleGenre::SportyCasual),
+            ("애슬레저", StyleGenre::SportyCasual),
+            ("street style", StyleGenre::Street),
+        ];
+        for (raw, expected) in cases {
+            assert_eq!(StyleGenre::from_alias(raw), Some(expected), "{raw}");
+        }
+    }
+
+    /// 남녀 공용 장르는 variant 가 하나여야 한다. 성별마다 복제하면 남성 옷장의
+    /// 스트리트와 여성 옷장의 스트리트가 서로 다른 값이 되어, 필터 하나가 다른
+    /// 쪽 데이터를 통째로 놓친다. 노출 성별은 `style_mood` 테이블이 정한다.
+    #[test]
+    fn shared_genres_have_a_single_identifier() {
+        for shared in ["minimal_classic", "street", "sporty_casual"] {
+            let genre = StyleGenre::from_alias(shared).expect(shared);
+            assert_eq!(genre.as_str(), shared);
+        }
+        // 남성 "미니멀 캐주얼"과 여성 "미니멀 클래식"은 이제 같은 장르다.
+        assert_eq!(
+            StyleGenre::from_alias("minimal"),
+            StyleGenre::from_alias("minimal_classic")
+        );
+    }
+
+    /// 남성 8개 · 여성 8개가 모두 표준값으로 존재해야 한다. 목록이 빠지면
+    /// `style_mood` 시드가 넣은 키를 서버가 디코딩하지 못한다.
+    #[test]
+    fn every_exposed_genre_is_a_canonical_value() {
+        let male = [
+            "minimal_classic",
+            "smart_casual",
+            "amekaji",
+            "preppy",
+            "workwear",
+            "street",
+            "outdoor_casual",
+            "sporty_casual",
+        ];
+        let female = [
+            "minimal_classic",
+            "romantic_feminine",
+            "modern_chic",
+            "bohemian",
+            "model_off_duty",
+            "street",
+            "mannish",
+            "sporty_casual",
+        ];
+        for key in male.iter().chain(female.iter()) {
+            assert!(key.parse::<StyleGenre>().is_ok(), "{key}");
+        }
+        // 노출 목록의 합집합이 enum 전체와 같아야 한다 — 아무에게도 보이지 않는
+        // 장르가 남아 있으면 그 장르로 태깅된 옷은 영영 후보에 들어가지 못한다.
+        let mut exposed: Vec<&str> = male.iter().chain(female.iter()).copied().collect();
+        exposed.sort_unstable();
+        exposed.dedup();
+        assert_eq!(exposed.len(), StyleGenre::ALL.len());
+    }
+
     /// 표준값은 그대로 통과해야 한다 — 정규화가 이미 옳은 값을 망가뜨리면 안 된다.
     #[test]
     fn canonical_genre_ids_round_trip() {
@@ -385,15 +517,30 @@ mod tests {
         }
     }
 
-    /// 남성/공용 `minimal` 과 여성 `minimal_classic` 은 다른 장르다.
-    /// 하나로 뭉개면 남성 옷장이 여성 장르로 새어 들어간다.
+    /// 서로 다른 장르가 조용히 같은 값으로 무너지지 않아야 한다.
+    ///
+    /// 예전에는 남성 `minimal` 과 여성 `minimal_classic` 을 갈라 두는 테스트가
+    /// 여기 있었다. 남성 "미니멀 캐주얼"과 여성 "미니멀 클래식"이 같은 정의(절제된
+    /// 색상·간결한 실루엣)로 합쳐지면서 그 구분은 사라졌다. 대신 지금도 갈라져
+    /// 있어야 하는 쌍을 지킨다 — 아이템이 겹치지만 판단 기준이 다른 장르들이다.
     #[test]
-    fn male_minimal_is_not_female_minimal_classic() {
-        assert_eq!(
-            StyleGenre::from_alias("minimal"),
-            Some(StyleGenre::MinimalCasual)
-        );
-        assert_ne!(StyleGenre::MinimalCasual, StyleGenre::MinimalClassic);
+    fn adjacent_genres_stay_distinct() {
+        let pairs = [
+            // 데님·치노는 둘 다 쓰지만 워크웨어는 작업복 디테일이 기준이다.
+            (StyleGenre::Amekaji, StyleGenre::Workwear),
+            // 둘 다 단정하지만 프레피는 아이비리그 아이템이 기준이다.
+            (StyleGenre::SmartCasual, StyleGenre::Preppy),
+            // 둘 다 기능성 소재를 쓰지만 스포티는 운동복 쪽이다.
+            (StyleGenre::OutdoorCasual, StyleGenre::SportyCasual),
+            // 둘 다 편한 실루엣이지만 스트리트는 그래픽·서브컬처 쪽이다.
+            (StyleGenre::Street, StyleGenre::SportyCasual),
+            // 둘 다 절제돼 있지만 스마트 캐주얼은 활용 상황이 기준이다.
+            (StyleGenre::MinimalClassic, StyleGenre::SmartCasual),
+        ];
+        for (a, b) in pairs {
+            assert_ne!(a, b);
+            assert_ne!(a.as_str(), b.as_str());
+        }
     }
 
     /// 모르는 값을 기본 장르로 바꾸지 않는다. 그러면 사용자가 고른 장르가
@@ -430,5 +577,39 @@ mod tests {
             Role::SoftAccent
         );
         assert!(serde_json::from_str::<Role>("\"base\"").is_err());
+    }
+
+    /// API 로 나가고 들어오는 장르 값. `Clothing` 이 이 enum 을 그대로 직렬화하므로
+    /// 여기서 쓰는 문자열이 곧 클라이언트가 보는 값이고, `style_mood` 의 `mood_key`
+    /// 와도 같아야 한다 — 프런트가 그 키로 선택 상태를 비교한다.
+    #[test]
+    fn genres_serialize_as_their_canonical_identifier() {
+        for &genre in StyleGenre::ALL {
+            let json = serde_json::to_string(&genre).unwrap();
+            assert_eq!(json, format!("\"{}\"", genre.as_str()));
+            assert_eq!(
+                serde_json::from_str::<StyleGenre>(&json).unwrap(),
+                genre,
+                "{genre} 왕복 실패"
+            );
+        }
+
+        // 새 남성 장르가 실제로 이 이름으로 나가는지 눈으로 고정해 둔다.
+        assert_eq!(
+            serde_json::to_string(&StyleGenre::OutdoorCasual).unwrap(),
+            "\"outdoor_casual\""
+        );
+        assert_eq!(
+            serde_json::to_string(&StyleGenre::SmartCasual).unwrap(),
+            "\"smart_casual\""
+        );
+
+        // serde 는 별칭을 받지 않는다 — 별칭은 요청 경계의 `from_alias` 담당이다.
+        // 이 둘이 뭉개지면 DB 에 예전 값이 그대로 다시 쌓인다.
+        assert!(serde_json::from_str::<StyleGenre>("\"gorpcore\"").is_err());
+        assert_eq!(
+            StyleGenre::from_alias("gorpcore"),
+            Some(StyleGenre::OutdoorCasual)
+        );
     }
 }
