@@ -31,7 +31,7 @@ pub async fn get_outfit_recommendation(
     let occasion_text = occasion.unwrap_or("일상");
     let style_text = style_preference.unwrap_or("편한 스타일");
 
-    let system_prompt = r#"당신은 아메카지/빈티지/밀리터리 패션에 익숙한 코디 보조 AI입니다.
+    let system_prompt = r#"당신은 다양한 현대 남녀 패션 스타일과 의류 구성에 익숙한 코디 보조 AI입니다.
 
 중요 원칙:
 - 최종 스타일 판단은 별도의 규칙 엔진이 담당합니다.
@@ -157,7 +157,7 @@ pub async fn get_outfit_candidates(
 
     let today = chrono::Local::now().format("%Y-%m-%d (%A)").to_string();
 
-    let system_prompt = r#"당신은 아메카지/빈티지/밀리터리 패션에 익숙한 코디 보조 AI입니다.
+    let system_prompt = r#"당신은 다양한 현대 남녀 패션 스타일과 의류 구성에 익숙한 코디 보조 AI입니다.
 
 역할:
 - 주어진 슬롯별 후보 목록에서만 아이템을 골라 코디를 구성하는 "초안 생성기"입니다.
@@ -274,7 +274,7 @@ pub async fn analyze_clothing_image(
     llm: &LlmClient,
     image_data_url: &str,
 ) -> anyhow::Result<VisionAnalysisResult> {
-    let system_prompt = r#"당신은 아메카지, 빈티지, 밀리터리, 워크웨어 남성 패션에 익숙한 의류 분석 AI입니다.
+    let system_prompt = r#"당신은 캐주얼, 클래식, 스트리트, 워크웨어, 아웃도어 및 스포츠웨어에 익숙한 의류 분석 AI입니다.
 사용자가 업로드한 이미지에서 의류/신발/가방/모자/벨트 등 패션 아이템을 분석하여 구조화된 정보를 추출하세요.
 
 가장 중요한 원칙:
@@ -343,7 +343,7 @@ pub async fn analyze_clothing_pass1(
     llm: &LlmClient,
     image_data_url: &str,
 ) -> anyhow::Result<Pass1Result> {
-    let system_prompt = r#"당신은 아메카지, 빈티지, 밀리터리, 워크웨어 패션 전문 감정사 AI입니다.
+    let system_prompt = r#"당신은 캐주얼, 클래식, 스트리트, 워크웨어, 아웃도어 및 스포츠웨어에 익숙한 의류 감정사 AI입니다.
 이미지에 보이는 아이템의 외관적 특징을 검색/비교 가능한 형태로 서술하세요.
 
 중요 원칙:
@@ -426,7 +426,7 @@ pub async fn analyze_clothing_pass2(
         .join("\n\n");
 
     let system_prompt = format!(
-        r#"당신은 아메카지, 빈티지, 밀리터리, 워크웨어 패션 전문 감정사 AI입니다.
+        r#"당신은 캐주얼, 클래식, 스트리트, 워크웨어, 아웃도어 및 스포츠웨어에 익숙한 의류 감정사 AI입니다.
 
 ## 후보 레퍼런스 (유사도 순)
 {ref_context}
@@ -540,7 +540,7 @@ pub async fn generate_outfit_explanation(
     problems_desc: &str,
     suggestions_desc: &str,
 ) -> anyhow::Result<String> {
-    let system_prompt = r#"당신은 아메카지/빈티지/밀리터리 패션에 익숙한 스타일 코치입니다.
+    let system_prompt = r#"당신은 다양한 현대 남녀 패션 스타일에 익숙한 스타일 코치입니다.
 이미 결정된 평가 결과를 사용해 자연스럽고 친근한 한국어 설명문을 작성하세요.
 
 중요 원칙:

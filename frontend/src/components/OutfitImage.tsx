@@ -24,6 +24,21 @@ export function OutfitImage({ items, mood }: Props) {
       {state.status === 'ready' && (
         <img src={state.url} alt="추천 착장" style={{ width: '100%', borderRadius: 12, objectFit: 'contain' }} />
       )}
+      {/* 룩북은 남성 장르를 골라도 여성 모델로 그려진다. 이건 제약이 아니라 이
+          기능의 의도라서, 결과만 내놓지 말고 무엇을 하고 있는지 한 줄로 밝힌다.
+          (프롬프트 쪽 설명은 src/routes/chat.rs :: build_image_prompt) */}
+      {state.status !== 'failed' && (
+        <p
+          style={{
+            margin: '8px 2px 0',
+            fontSize: '0.72rem',
+            lineHeight: 1.5,
+            color: 'var(--gray-500)',
+          }}
+        >
+          남성복과 여성복의 경계를 두지 않고, 선택한 아이템을 여성 모델의 새로운 룩으로 구성합니다.
+        </p>
+      )}
     </div>
   );
 }
