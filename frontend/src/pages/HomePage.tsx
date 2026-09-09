@@ -93,7 +93,7 @@ export function HomePage({
 
   return (
     <>
-      <ScreenHeader title="오늘뭐입지" />
+      <ScreenHeader title="Wardrobe Edit" />
 
       <WeatherBar
         weather={weather}
