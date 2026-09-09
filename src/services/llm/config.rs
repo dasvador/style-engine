@@ -111,7 +111,10 @@ fn default_task_config(task: LlmTask) -> TaskConfig {
         LlmTask::ChatAgent => ("gpt-4o-mini", Some(0.5), 1000),
         LlmTask::StyleNote => ("gpt-4o-mini", Some(0.7), 300),
         LlmTask::GenderVerify => ("gpt-4o-mini", None, 5),
-        LlmTask::ImageGeneration => ("gpt-image-2", None, 0),
+        // flare 는 gpt-image-2 와 요청/응답 형식과 토큰 과금이 같고 지연만 절반이다.
+        // 편집 정밀도가 중요한 작업용으로 gpt-image-2.5-sunburst 가 따로 있지만,
+        // 여기 쓰임은 룩북 미리보기 한 장이라 지연이 우선이다.
+        LlmTask::ImageGeneration => ("gpt-image-2.5-flare", None, 0),
         LlmTask::Embedding => ("text-embedding-3-small", None, 0),
     };
 
@@ -284,7 +287,7 @@ mod tests {
             (LlmTask::ChatAgent, "gpt-4o-mini", Some(0.5), 1000),
             (LlmTask::StyleNote, "gpt-4o-mini", Some(0.7), 300),
             (LlmTask::GenderVerify, "gpt-4o-mini", None, 5),
-            (LlmTask::ImageGeneration, "gpt-image-2", None, 0),
+            (LlmTask::ImageGeneration, "gpt-image-2.5-flare", None, 0),
             (LlmTask::Embedding, "text-embedding-3-small", None, 0),
         ];
 
