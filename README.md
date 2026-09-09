@@ -1,8 +1,10 @@
-# Style Engine
+# Wardrobe Edit
+
+> Powered by **Style Engine**
 
 [![CI](https://github.com/dasvador/style-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/dasvador/style-engine/actions/workflows/ci.yml)
 
-Style Engine은 사용자의 옷장과 그날의 상황을 바탕으로 코디를 제안하고, 각 선택의 이유를 설명하는 AI 스타일링 서비스입니다.
+Wardrobe Edit은 사용자의 옷장과 그날의 상황을 바탕으로 코디를 제안하고, 각 선택의 이유를 설명하는 AI 스타일링 서비스입니다.
 
 옷 사진을 등록하면 Vision 모델이 색감, 소재, 실루엣, 격식 등 스타일 정보를 정리합니다. 추천 단계에서는 날씨와 상황, 사용자의 스타일 선호, 최근 추천 이력을 함께 고려합니다. 결과는 점수만 제시하지 않고 조화로운 부분과 조정이 필요한 부분, 대체할 수 있는 아이템의 조건까지 보여줍니다.
 
@@ -19,7 +21,7 @@ Style Engine은 사용자의 옷장과 그날의 상황을 바탕으로 코디�
 
 ## 추천 방식
 
-Style Engine은 LLM의 응답을 그대로 추천 결과로 사용하지 않습니다. 후보 생성과 평가, 최종 노출 순위를 서로 다른 단계로 나눴습니다.
+Wardrobe Edit은 LLM의 응답을 그대로 추천 결과로 사용하지 않습니다. 후보 생성과 평가, 최종 노출 순위를 서로 다른 단계로 나눴습니다.
 
 ```text
 사용자 옷장
