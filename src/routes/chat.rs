@@ -857,26 +857,66 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
     ];
     let hair = hairstyles[(hash as usize) % hairstyles.len()];
 
+    // 얼굴·몸을 치수로 지정하지 않는다.
+    //
+    // 예전 문구는 "very small head proportions", "8.5-head proportion",
+    // "175cm tall figure", "narrow waist", "soft feminine V-line face with smooth
+    // rounded jawline", "thin soft eyebrows" 처럼 사진 요청이 아니라 캐릭터 모델링
+    // 명세에 가까웠다. 거기에 "naturally attractive", "luminous skin" 같은 표현이
+    // 겹치면서 결과가 결점 없는 가상 인물로 수렴했다 — 좌우가 지나치게 대칭인 얼굴,
+    // 모공이 없는 도자기 피부, 비현실적으로 작은 머리와 긴 다리, 배경과 선명도가
+    // 다른 합성 같은 인물.
+    //
+    // 그래서 비율을 지정하는 대신 "실제 사람"이라고만 말하고, 판단은 모델에 맡긴다.
+    // 다만 주름·모공을 강하게 요구하면 반대로 얼굴을 일부러 거칠게 만들기 때문에
+    // subtle / natural / unretouched 수준에서 멈춘다.
     let base_face = format!(
-        "naturally attractive feminine face, very small head proportions relative to body, soft feminine V-line face with smooth rounded jawline — never angular or square jaw, thin soft eyebrows. Hairstyle: {}.",
+        "a real adult woman with natural facial proportions and subtle asymmetry. \
+         Realistic skin with visible pores, fine texture, slight tonal variation, \
+         natural under-eye detail, individual flyaway hairs, and minimal everyday makeup. \
+         Her expression should feel spontaneous rather than posed. Hairstyle: {}.",
         hair
     );
-    let base_body = "fashion model proportions — very small head relative to body (8.5-head proportion), tall and lean with long limbs, long legs, narrow waist, slim with subtle feminine curves, 175cm tall figure.";
-    let base_avoid = "male model, masculine face, angular jaw, square jawline, sharp chin, masculine bone structure, ugly face, distorted face, distorted mouth, open mouth, awkward lip shape, big head, large head relative to body, ordinary pedestrian look, catalog pose, ecommerce posture, mannequin, stiff standing, symmetrical front pose, cropped body, cropped legs, tight framing, oversaturated colors, harsh lighting";
+    let base_body = "realistic adult body proportions, natural head-to-body ratio, \
+         believable shoulder width and waist, ordinary anatomical variation, \
+         natural posture and weight distribution while standing or walking.";
+
+    // 장르마다 분위기는 달라도 촬영 방식은 같다. 여기서 한 번 정의해 모든 arm 이
+    // 같은 문장을 쓴다 — 장르별로 흩어 두면 한쪽만 고쳐지고 나머지가 남는다.
+    let base_photo = "Unretouched documentary fashion photography. \
+         Shot on a full-frame camera with a 50mm lens. \
+         Natural available light, realistic skin texture, subtle sensor grain, \
+         slight motion and imperfect fabric folds. \
+         The subject should look like a real person photographed on location, \
+         not a digitally created fashion avatar.";
+
+    // 회피 목록에서 "ugly face", "big head", "ordinary pedestrian look" 을 뺐다.
+    // 특히 "ordinary pedestrian look" 을 금지하면 현실에서 볼 법한 사람의 특징을
+    // 모델이 의도적으로 지운다. 대신 실제로 걸러야 할 것 — 3D 렌더, 뷰티 필터,
+    // 인위적인 신체 비율 — 을 명시한다.
+    let base_avoid = "male model, masculine face, masculine bone structure, \
+         3D render, CGI, video game character, fashion game avatar, \
+         anime face, doll-like face, porcelain skin, plastic skin, \
+         beauty filter, excessive skin smoothing, oversized eyes, \
+         impossibly small head, elongated limbs, artificial body proportions, \
+         perfect facial symmetry, wax figure, mannequin, \
+         distorted face, distorted mouth, awkward lip shape, \
+         catalog pose, ecommerce posture, stiff standing, symmetrical front pose, \
+         cropped body, cropped legs, tight framing, oversaturated colors, harsh lighting";
 
     match genre {
         StyleGenre::MinimalClassic => format!(
             r#"Quiet luxury fashion photo of an effortlessly elegant young woman in her mid to late 20s. She must be female.
 
-Face: {base_face} Barely-there makeup with luminous natural skin, composed serene expression, understated confidence. Gold minimal jewelry.
+Face: {base_face} Barely-there makeup, composed but unguarded expression. Gold minimal jewelry.
 
 Body: {base_body}
 
-Outfit: The female model is wearing {items} — styled with impeccable fit, no logos, luxurious fabrics (cashmere, silk, fine wool, soft leather). Clean timeless silhouette, understated elegance. Every piece should whisper quality through texture and drape, never through branding.
+Outfit: The female model is wearing {items} — well-fitting but not tailored to perfection, no logos, quality fabrics (cashmere, silk, fine wool, soft leather). Clean timeless silhouette, understated elegance. Every piece should whisper quality through texture and drape, never through branding.
 
 Pose: composed graceful stride or standing with effortless poise, one hand in coat pocket or holding leather tote, quiet confident body language. Full body visible from head to shoes.
 
-Aesthetic: shallow depth of field, soft muted neutral tones, gentle overcast daylight, clean modern architecture or private gallery entrance or quiet tree-lined residential street, understated luxury atmosphere. The Row / Loro Piana / soft luxury editorial mood.
+Aesthetic: shallow depth of field, soft muted neutral tones, gentle overcast daylight, clean modern architecture or private gallery entrance or quiet tree-lined residential street, understated luxury atmosphere. The Row / Loro Piana / soft luxury editorial mood. {base_photo}
 
 Avoid: {base_avoid}, logos, bold patterns, streetwear elements, sporty pieces, romantic frills, oversaturated colors."#
         ),
@@ -891,7 +931,7 @@ Outfit: The female model is wearing {items} — styled with intentional feminini
 
 Pose: graceful ballet-inspired moment, light on feet, one hand touching ribbon or adjusting hair, soft feminine body language with gentle movement. Full body visible from head to shoes.
 
-Aesthetic: shallow depth of field, warm pink-golden soft tones, gentle afternoon sunlight, Parisian patisserie or flower market or pink-toned European streetscape, dreamy romantic atmosphere, soft bokeh. Miu Miu / Sandy Liang / balletcore Pinterest mood.
+Aesthetic: shallow depth of field, warm pink-golden soft tones, gentle afternoon sunlight, Parisian patisserie or flower market or pink-toned European streetscape, dreamy romantic atmosphere, soft bokeh. Miu Miu / Sandy Liang / balletcore Pinterest mood. {base_photo}
 
 Avoid: {base_avoid}, masculine styling, dark heavy tones, oversized baggy fit, street edge, sporty elements."#
         ),
@@ -906,7 +946,7 @@ Outfit: The female model is wearing {items} — styled with sharp tailored silho
 
 Pose: confident power stride or leaning against glass wall, one hand adjusting blazer or holding structured bag, composed commanding body language. Full body visible from head to shoes.
 
-Aesthetic: shallow depth of field, cool neutral tones with warm highlights, soft morning daylight, modern glass office lobby or luxury hotel corridor or sleek city sidewalk, professional power atmosphere. Devil Wears Prada meets The Row. Soft corporate chic mood.
+Aesthetic: shallow depth of field, cool neutral tones with warm highlights, soft morning daylight, modern glass office lobby or luxury hotel corridor or sleek city sidewalk, professional power atmosphere. Devil Wears Prada meets The Row. Soft corporate chic mood. {base_photo}
 
 Avoid: {base_avoid}, casual sneakers, oversized baggy fit, vintage distressing, romantic frills, sporty elements."#
         ),
@@ -921,7 +961,7 @@ Outfit: The female model is wearing {items} — styled with refined bohemian sil
 
 Pose: free-spirited moment, walking through outdoor market or leaning on rustic doorframe, wind-blown hair movement, relaxed bohemian body language. Full body visible from head to shoes.
 
-Aesthetic: shallow depth of field, warm golden earthy tones, golden hour afternoon sunlight, vintage flea market or terracotta-walled alleyway or desert-toned urban landscape, warm textured atmosphere. Isabel Marant / Free People elevated lookbook mood.
+Aesthetic: shallow depth of field, warm golden earthy tones, golden hour afternoon sunlight, vintage flea market or terracotta-walled alleyway or desert-toned urban landscape, warm textured atmosphere. Isabel Marant / Free People elevated lookbook mood. {base_photo}
 
 Avoid: {base_avoid}, minimal clean styling, corporate look, sporty elements, neon colors, tech fabrics."#
         ),
@@ -931,15 +971,15 @@ Avoid: {base_avoid}, minimal clean styling, corporate look, sporty elements, neo
         StyleGenre::SportyCasual => format!(
             r#"Sporty casual fashion photo of a wellness-chic young woman in her early 20s. She must be female.
 
-Face: {base_face} Fresh dewy no-makeup look with healthy inner glow, calm confident expression, effortless athletic radiance.
+Face: {base_face} Fresh no-makeup look, calm expression, slightly flushed from moving.
 
 Body: {base_body}
 
-Outfit: The female model is wearing {items} — styled with elevated athleisure meets luxury street. Body-hugging fitted pieces balanced with relaxed oversized layers. Leggings and biker shorts show sculpted body line. Sports bra tops can be worn alone or layered. Muted neutral tones. The look should feel like a supermodel running errands, not going to the gym.
+Outfit: The female model is wearing {items} — styled with elevated athleisure meets luxury street. Body-hugging fitted pieces balanced with relaxed oversized layers. Leggings and biker shorts fit close to the body. Sports bra tops can be worn alone or layered. Muted neutral tones. The look should feel like someone running errands after a workout, not going to the gym.
 
 Pose: relaxed post-workout moment, calm confident stance, one hand holding iced coffee or yoga mat, natural walking, serene grounded body language. Full body visible from head to shoes.
 
-Aesthetic: shallow depth of field, soft warm natural light, clean bright tones, Hangang riverside park or cafe terrace after workout or Seoul urban hiking trail, fresh green surroundings, wellness lifestyle atmosphere. Alo Yoga / adidas by Stella McCartney / athleisure Pinterest mood.
+Aesthetic: shallow depth of field, soft warm natural light, clean bright tones, Hangang riverside park or cafe terrace after workout or Seoul urban hiking trail, fresh green surroundings, wellness lifestyle atmosphere. Alo Yoga / adidas by Stella McCartney / athleisure Pinterest mood. {base_photo}
 
 Avoid: {base_avoid}, formal styling, vintage distressing, dark moody tones, heavy makeup, aggressive gym energy, harsh lighting."#
         ),
@@ -956,7 +996,7 @@ Outfit: The female model is wearing {items} — styled as effortless basics: wel
 
 Pose: walking naturally mid-stride, carrying a coffee or a tote, looking away from the camera, candid off-guard moment. Full body visible from head to shoes.
 
-Aesthetic: shallow depth of field, natural daylight, neutral city street or outside a cafe, muted everyday palette, paparazzi-style candid framing without flash. Off-duty model street photography mood.
+Aesthetic: shallow depth of field, natural daylight, neutral city street or outside a cafe, muted everyday palette, paparazzi-style candid framing without flash. Off-duty model street photography mood. {base_photo}
 
 Avoid: {base_avoid}, runway styling, evening wear, heavy layering, athletic leggings, sports bra, gym clothing, romantic frills."#
         ),
@@ -971,7 +1011,7 @@ Outfit: The female model is wearing {items} — styled with edgy street silhouet
 
 Pose: dynamic confident stance, weight on one leg, one hand in pocket or adjusting jacket, strong attitude and energy. Full body visible from head to shoes.
 
-Aesthetic: shallow depth of field, high contrast muted tones, bright daylight, graffiti wall or skate park or urban concrete with street art, raw urban energy. Hypebeast / curated chaos street fashion mood.
+Aesthetic: shallow depth of field, high contrast muted tones, bright daylight, graffiti wall or skate park or urban concrete with street art, raw urban energy. Hypebeast / curated chaos street fashion mood. {base_photo}
 
 Avoid: {base_avoid}, feminine soft styling, luxury campaign mood, romantic atmosphere, pastel tones."#
         ),
@@ -986,7 +1026,7 @@ Outfit: The female model is wearing {items} — styled with relaxed oversized fi
 
 Pose: candid cool-girl moment, relaxed stance with hands in pockets, slight head tilt, laid-back confident expression. Full body visible from head to shoes.
 
-Aesthetic: shallow depth of field, muted warm tones, bright afternoon sunlight, vintage shop front with old signage or narrow alleyway with weathered brick, hipster atmosphere. Pinterest street-style mood.
+Aesthetic: shallow depth of field, muted warm tones, bright afternoon sunlight, vintage shop front with old signage or narrow alleyway with weathered brick, hipster atmosphere. Pinterest street-style mood. {base_photo}
 
 Avoid: {base_avoid}, feminine delicate styling, formal look, luxury campaign mood."#
         ),
@@ -1001,7 +1041,7 @@ Outfit: The female model is wearing {items} — styled as put-together everyday 
 
 Pose: walking with easy purpose, holding a coffee or a slim shoulder bag, one hand adjusting a cuff, relaxed professional body language. Full body visible from head to shoes.
 
-Aesthetic: shallow depth of field, soft neutral palette with warm accents, bright morning daylight, tree-lined office street or cafe terrace before work, calm weekday atmosphere. Everlane / COS lookbook mood.
+Aesthetic: shallow depth of field, soft neutral palette with warm accents, bright morning daylight, tree-lined office street or cafe terrace before work, calm weekday atmosphere. Everlane / COS lookbook mood. {base_photo}
 
 Avoid: {base_avoid}, gym clothing, distressed vintage, heavy streetwear, evening glamour, romantic frills."#
         ),
@@ -1016,7 +1056,7 @@ Outfit: The female model is wearing {items} — styled with Ivy League collegiat
 
 Pose: stepping down stone steps or standing with books held against one arm, light and upbeat posture, easy natural smile. Full body visible from head to shoes.
 
-Aesthetic: shallow depth of field, clear crisp tones with navy and cream accents, bright autumn daylight, brick campus building or ivy-covered wall or library courtyard, collegiate atmosphere. Ralph Lauren / classic American campus mood.
+Aesthetic: shallow depth of field, clear crisp tones with navy and cream accents, bright autumn daylight, brick campus building or ivy-covered wall or library courtyard, collegiate atmosphere. Ralph Lauren / classic American campus mood. {base_photo}
 
 Avoid: {base_avoid}, streetwear, athletic gear, distressed denim, evening wear, bohemian layering."#
         ),
@@ -1031,7 +1071,7 @@ Outfit: The female model is wearing {items} — styled around genuine work cloth
 
 Pose: standing squarely with hands in jacket pockets or sleeves pushed to the forearm, weight even, unhurried practical body language. Full body visible from head to shoes.
 
-Aesthetic: shallow depth of field, muted indigo and earth tones, flat overcast daylight, garage doorway or lumber yard or workshop exterior with weathered concrete, honest utilitarian atmosphere. Carhartt WIP / vintage workwear catalog mood.
+Aesthetic: shallow depth of field, muted indigo and earth tones, flat overcast daylight, garage doorway or lumber yard or workshop exterior with weathered concrete, honest utilitarian atmosphere. Carhartt WIP / vintage workwear catalog mood. {base_photo}
 
 Avoid: {base_avoid}, delicate fabrics, tailored formalwear, athletic gear, romantic frills, glossy luxury styling."#
         ),
@@ -1046,7 +1086,7 @@ Outfit: The female model is wearing {items} — styled as technical outdoor gear
 
 Pose: mid-stride with a pack on one shoulder, adjusting a hood or drawcord, easy capable body language. Full body visible from head to shoes.
 
-Aesthetic: shallow depth of field, cool overcast daylight, city trailhead or park path or urban stairway with greenery, crisp fresh air atmosphere. Arc'teryx / Salomon gorpcore street mood.
+Aesthetic: shallow depth of field, cool overcast daylight, city trailhead or park path or urban stairway with greenery, crisp fresh air atmosphere. Arc'teryx / Salomon gorpcore street mood. {base_photo}
 
 Avoid: {base_avoid}, leggings, sports bra, gym styling, tailored formalwear, romantic frills, luxury campaign gloss."#
         ),
@@ -1062,7 +1102,7 @@ Outfit: The female model is wearing {items} — styled with relaxed oversized fi
 
 Pose: candid cool-girl moment, relaxed natural stance with weight on one leg, hands in pockets or holding coffee, slight head tilt, laid-back confident expression. Full body visible from head to shoes.
 
-Aesthetic: shallow depth of field, soft cinematic grading, muted warm tones, bright natural afternoon sunlight, narrow alleyway with graffiti walls, old brick buildings, parked bicycles, weathered textures, hipster atmosphere. Pinterest street-style photography, Kinfolk magazine mood.
+Aesthetic: shallow depth of field, soft cinematic grading, muted warm tones, bright natural afternoon sunlight, narrow alleyway with graffiti walls, old brick buildings, parked bicycles, weathered textures, hipster atmosphere. Pinterest street-style photography, Kinfolk magazine mood. {base_photo}
 
 Avoid: {base_avoid}, tight-fitting clothes, formal styling, luxury campaign mood."#
         ),
