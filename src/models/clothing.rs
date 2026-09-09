@@ -2,7 +2,7 @@ use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
-use crate::models::style_vocab::{Role, Saturation, Style, Thickness, Tone, Weight};
+use crate::models::style_vocab::{Role, Saturation, Style, StyleGenre, Thickness, Tone, Weight};
 
 /// DB row for clothing table
 #[derive(Debug, Clone, sqlx::FromRow, Serialize)]
@@ -11,7 +11,8 @@ pub struct Clothing {
     pub name: String,
     pub category: String,
     pub gender: Option<String>,
-    pub style_mood: Option<String>,
+    /// 사용자가 고르는 스타일 장르. 표준 밖의 값이 들어 있으면 행 디코딩이 실패한다.
+    pub style_mood: Option<StyleGenre>,
     pub color: Option<String>,
     pub thickness: Thickness,
     pub image_url: Option<String>,

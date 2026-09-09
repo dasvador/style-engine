@@ -9,7 +9,7 @@ use crate::models::clothing::Clothing;
 use crate::models::feedback::FeedbackRequest;
 // 라우트의 DTO(ChatRequest/ImageRequest)와 이름이 겹쳐 alias 한다.
 use crate::AppState;
-use crate::models::style_vocab::{Tone, Weight};
+use crate::models::style_vocab::{StyleGenre, Tone, Weight};
 use crate::services::llm::{
     ChatRequest as LlmChatRequest, ImageDetail, ImageRequest as LlmImageRequest, LlmClient,
     LlmTask, Message, ToolDef, Usage,
@@ -63,7 +63,7 @@ async fn chat(
         clothing_repo::list_clothing_filtered(
             &state.db,
             body.gender.as_deref(),
-            body.style_mood.as_deref(),
+            crate::routes::parse_genre(body.style_mood.as_deref())?,
         )
         .await?
     } else {
@@ -519,8 +519,10 @@ async fn generate_image(
     let outfit_hash_val = outfit_hasher.finish();
     let outfit_hash = format!("{:016x}", outfit_hash_val);
 
-    let mood = body.mood.as_deref().unwrap_or("amekaji");
-    let prompt = build_image_prompt(mood, &body.items, outfit_hash_val);
+    // 이미지 프롬프트는 장르마다 다르다. 모르는 값이면 400 으로 돌려준다 —
+    // 엉뚱한 장르의 이미지를 만들어 캐시에 넣는 것보다 낫다.
+    let genre = crate::routes::parse_genre(body.mood.as_deref())?.unwrap_or(StyleGenre::Amekaji);
+    let prompt = build_image_prompt(genre, &body.items, outfit_hash_val);
 
     let mut prompt_hasher = DefaultHasher::new();
     prompt.hash(&mut prompt_hasher);
@@ -706,7 +708,7 @@ async fn generate_image(
                 .nth(500)
                 .map_or(&prompt[..], |(i, _)| &prompt[..i]),
         )
-        .bind(mood)
+        .bind(genre.as_str())
         .bind(status.as_str())
         .bind(m.generate_calls)
         .execute(&state.db)
@@ -715,7 +717,7 @@ async fn generate_image(
 
     // 쓴 돈은 결과와 무관하게 기록한다. 통과하지 못한 시도도 청구된다.
     m.record_spend(&state.db, &state.llm).await;
-    m.record(&state.llm, status, mood, prior_attempts);
+    m.record(&state.llm, status, genre, prior_attempts);
 
     Ok(Json(ImageResponse { image_url: url }))
 }
@@ -795,7 +797,13 @@ impl ImageGenMetrics {
 
     /// 이미지 1장 단위의 구조화 로그. `outfit_image` 이벤트만 긁으면
     /// 실패율·평균 시도 횟수·검증이 차지하는 비용과 지연이 나온다.
-    fn record(&self, llm: &LlmClient, status: VerificationStatus, mood: &str, prior_attempts: u32) {
+    fn record(
+        &self,
+        llm: &LlmClient,
+        status: VerificationStatus,
+        genre: StyleGenre,
+        prior_attempts: u32,
+    ) {
         use crate::services::llm::usage::estimate_cost_usd;
 
         let image_model = &llm.config().task(LlmTask::ImageGeneration).model;
@@ -805,7 +813,7 @@ impl ImageGenMetrics {
 
         tracing::info!(
             event = "outfit_image",
-            mood = mood,
+            genre = genre.as_str(),
             verification_status = status.as_str(),
             generate_calls = self.generate_calls,
             verify_calls = self.verify_calls,
@@ -827,7 +835,7 @@ impl ImageGenMetrics {
 }
 
 // ─── 무드별 이미지 프롬프트 생성 ───
-fn build_image_prompt(mood: &str, items: &str, hash: u64) -> String {
+fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
     let hairstyles = [
         "messy long waves with curtain bangs, effortless undone texture",
         "chin-length blunt bob, slightly tousled",
@@ -843,8 +851,8 @@ fn build_image_prompt(mood: &str, items: &str, hash: u64) -> String {
     let base_body = "fashion model proportions — very small head relative to body (8.5-head proportion), tall and lean with long limbs, long legs, narrow waist, slim with subtle feminine curves, 175cm tall figure.";
     let base_avoid = "male model, masculine face, angular jaw, square jawline, sharp chin, masculine bone structure, ugly face, distorted face, distorted mouth, open mouth, awkward lip shape, big head, large head relative to body, ordinary pedestrian look, catalog pose, ecommerce posture, mannequin, stiff standing, symmetrical front pose, cropped body, cropped legs, tight framing, oversaturated colors, harsh lighting";
 
-    match mood {
-        "quiet_luxury" => format!(
+    match genre {
+        StyleGenre::MinimalClassic => format!(
             r#"Quiet luxury fashion photo of an effortlessly elegant young woman in her mid to late 20s. She must be female.
 
 Face: {base_face} Barely-there makeup with luminous natural skin, composed serene expression, understated confidence. Gold minimal jewelry.
@@ -859,7 +867,7 @@ Aesthetic: shallow depth of field, soft muted neutral tones, gentle overcast day
 
 Avoid: {base_avoid}, logos, bold patterns, streetwear elements, sporty pieces, romantic frills, oversaturated colors."#
         ),
-        "coquette" => format!(
+        StyleGenre::RomanticFeminine => format!(
             r#"Coquette balletcore fashion photo of a charming young woman in her early 20s. She must be female.
 
 Face: {base_face} Soft rosy dewy makeup with pink blush, gentle flirtatious expression with soft smile, pearl or ribbon accessories.
@@ -874,7 +882,7 @@ Aesthetic: shallow depth of field, warm pink-golden soft tones, gentle afternoon
 
 Avoid: {base_avoid}, masculine styling, dark heavy tones, oversized baggy fit, street edge, sporty elements."#
         ),
-        "office_siren" => format!(
+        StyleGenre::ModernChic => format!(
             r#"Office siren fashion photo of a sharp confident young professional woman in her mid 20s. She must be female.
 
 Face: {base_face} Cool polished makeup with defined brows and subtle smoky eyes, sharp intelligent gaze with quiet power, modern glasses optional.
@@ -889,7 +897,7 @@ Aesthetic: shallow depth of field, cool neutral tones with warm highlights, soft
 
 Avoid: {base_avoid}, casual sneakers, oversized baggy fit, vintage distressing, romantic frills, sporty elements."#
         ),
-        "boho" => format!(
+        StyleGenre::Bohemian => format!(
             r#"Luxury bohemian fashion photo of a free-spirited stylish young woman in her early 20s. She must be female.
 
 Face: {base_face} Warm sun-kissed makeup with bronzed glow, relaxed dreamy expression, effortless bohemian beauty.
@@ -904,10 +912,13 @@ Aesthetic: shallow depth of field, warm golden earthy tones, golden hour afterno
 
 Avoid: {base_avoid}, minimal clean styling, corporate look, sporty elements, neon colors, tech fabrics."#
         ),
-        "off_duty" => format!(
-            r#"Off-duty model fashion photo of a wellness-chic young woman in her early 20s. She must be female.
+        // 이 프롬프트의 내용(레깅스·스포츠브라·바이커숏·애슬레저)은 원래부터
+        // 스포티 캐주얼이었다. 예전 분류가 "모델 사복 + 애슬레저"를 한 장르로
+        // 묶고 있어서 off_duty 에 붙어 있었을 뿐이라, 문구만 장르에 맞춘다.
+        StyleGenre::SportyCasual => format!(
+            r#"Sporty casual fashion photo of a wellness-chic young woman in her early 20s. She must be female.
 
-Face: {base_face} Fresh dewy no-makeup look with healthy inner glow, calm confident expression, effortless model-off-duty radiance.
+Face: {base_face} Fresh dewy no-makeup look with healthy inner glow, calm confident expression, effortless athletic radiance.
 
 Body: {base_body}
 
@@ -915,11 +926,28 @@ Outfit: The female model is wearing {items} — styled with elevated athleisure 
 
 Pose: relaxed post-workout moment, calm confident stance, one hand holding iced coffee or yoga mat, natural walking, serene grounded body language. Full body visible from head to shoes.
 
-Aesthetic: shallow depth of field, soft warm natural light, clean bright tones, Hangang riverside park or cafe terrace after workout or Seoul urban hiking trail, fresh green surroundings, wellness lifestyle atmosphere. Alo Yoga / adidas by Stella McCartney / model-off-duty Pinterest mood.
+Aesthetic: shallow depth of field, soft warm natural light, clean bright tones, Hangang riverside park or cafe terrace after workout or Seoul urban hiking trail, fresh green surroundings, wellness lifestyle atmosphere. Alo Yoga / adidas by Stella McCartney / athleisure Pinterest mood.
 
 Avoid: {base_avoid}, formal styling, vintage distressing, dark moody tones, heavy makeup, aggressive gym energy, harsh lighting."#
         ),
-        "street" => format!(
+        // 신규 장르. 애슬레저를 스포티 캐주얼로 분리하면서 비게 된 자리를 채운다.
+        // 데님·가죽재킷·티셔츠 같은 기본 아이템에 힘을 뺀 구성이 이 장르의 정의다.
+        StyleGenre::ModelOffDuty => format!(
+            r#"Model off-duty street fashion photo of a young woman in her early 20s on a normal day out. She must be female.
+
+Face: {base_face} Almost no makeup with healthy skin, relaxed unposed expression, sunglasses pushed up or held in hand.
+
+Body: {base_body}
+
+Outfit: The female model is wearing {items} — styled as effortless basics: well-worn denim, a plain tee or crisp shirt, an easy leather or denim jacket. Nothing looks styled for a shoot. One piece may be current-season, the rest are wardrobe staples. Relaxed fit, comfortable, slightly undone.
+
+Pose: walking naturally mid-stride, carrying a coffee or a tote, looking away from the camera, candid off-guard moment. Full body visible from head to shoes.
+
+Aesthetic: shallow depth of field, natural daylight, neutral city street or outside a cafe, muted everyday palette, paparazzi-style candid framing without flash. Off-duty model street photography mood.
+
+Avoid: {base_avoid}, runway styling, evening wear, heavy layering, athletic leggings, sports bra, gym clothing, romantic frills."#
+        ),
+        StyleGenre::Street => format!(
             r#"Urban street-style fashion photo of an energetic young woman in her late teens. She must be female.
 
 Face: {base_face} Bold minimal makeup with strong brows, confident energetic expression.
@@ -934,7 +962,7 @@ Aesthetic: shallow depth of field, high contrast muted tones, bright daylight, g
 
 Avoid: {base_avoid}, feminine soft styling, luxury campaign mood, romantic atmosphere, pastel tones."#
         ),
-        "boyish" => format!(
+        StyleGenre::Mannish => format!(
             r#"Street-style fashion photo of a young boyish-cool woman in her early 20s. She must be female.
 
 Face: {base_face} Minimal fresh makeup, cool confident expression with relaxed eyes.
@@ -949,8 +977,8 @@ Aesthetic: shallow depth of field, muted warm tones, bright afternoon sunlight, 
 
 Avoid: {base_avoid}, feminine delicate styling, formal look, luxury campaign mood."#
         ),
-        _ => format!(
-            // amekaji / default — 기존 힙스터 스타일
+        StyleGenre::Amekaji | StyleGenre::MinimalCasual => format!(
+            // 남성/공용 기본 — 기존 힙스터 스타일
             r#"Street-style fashion photo of a young hipster female fashion model in her early 20s with cool urban energy. She must be female.
 
 Face: {base_face} Minimal fresh makeup, laid-back confident expression.

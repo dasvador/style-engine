@@ -44,6 +44,9 @@ export function HomePage({
   const [recError, setRecError] = useState<string | null>(null);
   const recSectionRef = useRef<HTMLDivElement>(null);
 
+  const selectedMoodDescription =
+    moods.find((m) => m.mood_key === selectedMood)?.description ?? null;
+
   const summary = useMemo(() => {
     const roles: Record<string, number> = {};
     for (const c of clothes) {
@@ -126,6 +129,20 @@ export function HomePage({
             </button>
           ))}
         </div>
+        {/* 이름만으로는 장르 간 차이를 알기 어렵다. 고른 장르의 설명을 한 줄 보여준다.
+            문구는 DB(style_mood.description)에 있어 배포 없이 고칠 수 있다. */}
+        {selectedMoodDescription && (
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: '0.78rem',
+              lineHeight: 1.5,
+              color: 'var(--gray-500)',
+            }}
+          >
+            {selectedMoodDescription}
+          </div>
+        )}
       </div>
 
       <div className="cta-group">

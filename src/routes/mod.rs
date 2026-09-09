@@ -34,6 +34,31 @@ pub fn api_router() -> Router<AppState> {
         .fallback(api_not_found)
 }
 
+/// 요청에 담겨 온 장르 문자열을 표준 식별자로 바꾼다.
+///
+/// 예전 클라이언트가 `quiet_luxury` 같은 옛 이름을 보낼 수 있으므로 별칭을 받아준다.
+/// 다만 모르는 값은 400 으로 돌려준다 — 조용히 `None` 으로 떨어뜨리면 필터가 걸리지
+/// 않은 채 옷장 전체가 후보로 들어가고, 사용자는 자기가 고른 장르가 무시된 줄 모른다.
+pub fn parse_genre(
+    raw: Option<&str>,
+) -> Result<Option<crate::models::style_vocab::StyleGenre>, crate::errors::AppError> {
+    use crate::models::style_vocab::StyleGenre;
+
+    match raw.map(str::trim).filter(|s| !s.is_empty()) {
+        None => Ok(None),
+        Some(s) => StyleGenre::from_alias(s).map(Some).ok_or_else(|| {
+            crate::errors::AppError::BadRequest(format!(
+                "알 수 없는 스타일 장르입니다: '{s}'. 허용: {}",
+                StyleGenre::ALL
+                    .iter()
+                    .map(|g| g.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))
+        }),
+    }
+}
+
 async fn api_not_found(uri: axum::http::Uri) -> impl axum::response::IntoResponse {
     (
         axum::http::StatusCode::NOT_FOUND,
