@@ -20,7 +20,7 @@
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                    웹 UI (home.rs)                        │
+│              웹 UI — React SPA (frontend/)                │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐   │
 │  │ 홈/추천   │ │ 옷장관리  │ │ 코디평가  │ │ 설정     │   │
 │  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘   │
@@ -333,7 +333,7 @@ src/
 │   ├── recommendation.rs                # 추천 핸들러 (/multi 포함)
 │   ├── outfit.rs                        # 코디 평가
 │   ├── clothes.rs                       # 의류 CRUD + 이미지 업로드
-│   ├── home.rs                          # 웹 UI (3-모드 카드, 평가 화면)
+│   ├── spa.rs                           # React 빌드 결과 서빙 + SPA fallback
 │   ├── reference.rs                     # 레퍼런스 CRUD
 │   ├── weather.rs / region.rs / health.rs
 │   └── mod.rs

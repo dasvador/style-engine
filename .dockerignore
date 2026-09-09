@@ -1,0 +1,25 @@
+# 빌드 산출물 — 이미지 안에서 다시 만든다.
+target/
+frontend/dist/
+frontend/node_modules/
+node_modules/
+
+# 로컬 환경 파일. 비밀값이 build context 에 들어가면 이미지 레이어에 남는다.
+.env
+.env.*
+!.env.example
+
+# 개발 도구 설정
+.git/
+.github/
+.claude/
+.DS_Store
+*.log
+
+# 런타임에 생성되는 이미지 (볼륨으로 붙인다)
+static/images/
+
+# 문서 — 실행에 필요 없다
+README.md
+SYSTEM_ARCHITECTURE.md
+LICENSE

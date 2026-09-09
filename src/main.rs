@@ -85,10 +85,12 @@ async fn main() {
     };
 
     // Build router
+    // 라우팅 순서가 중요하다. /api 와 /static 이 먼저 매칭되고, 나머지 모든 경로는
+    // SPA 라우터의 fallback 으로 내려가 index.html 을 받는다.
     let app = Router::new()
-        .merge(routes::home_router())
         .nest("/api", routes::api_router())
         .nest_service("/static", tower_http::services::ServeDir::new("static"))
+        .merge(routes::spa_router())
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
         .with_state(state);
