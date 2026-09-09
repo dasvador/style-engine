@@ -24,7 +24,9 @@ export function App() {
   const weather = useAsync<WeatherResponse>(() => api.weather(), []);
   const region = useAsync<Region>(() => api.region.get(), []);
 
-  const [gender, setGender] = useState<Gender>('male');
+  // 여성 기준으로 먼저 보여준다. 이미지 생성도 여성 모델을 전제로 하고 있어
+  // 첫 화면과 생성 결과가 어긋나지 않는다.
+  const [gender, setGender] = useState<Gender>('female');
   const [moods, setMoods] = useState<StyleMood[]>([]);
   const [selectedMood, setSelectedMood] = useState<string | null>(null);
   const [regionOpen, setRegionOpen] = useState(false);
