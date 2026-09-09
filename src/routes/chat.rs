@@ -11,8 +11,8 @@ use crate::models::feedback::FeedbackRequest;
 use crate::AppState;
 use crate::models::style_vocab::{Tone, Weight};
 use crate::services::llm::{
-    ChatRequest as LlmChatRequest, ImageRequest as LlmImageRequest, LlmClient, LlmTask, Message,
-    ToolDef,
+    ChatRequest as LlmChatRequest, ImageDetail, ImageRequest as LlmImageRequest, LlmClient,
+    LlmTask, Message, ToolDef,
 };
 use crate::services::outfit_scorer;
 use crate::services::weather as weather_service;
@@ -768,9 +768,11 @@ Avoid: {base_avoid}, tight-fitting clothes, formal styling, luxury campaign mood
 
 // ─── 성별 검증 (GPT-4o-mini vision) ───
 async fn verify_female_model(llm: &LlmClient, b64_image: &str) -> bool {
-    let req = LlmChatRequest::new(vec![Message::user_image(
+    // 옷의 소재나 색이 아니라 사람의 성별만 보면 되므로 저해상도로 충분하다.
+    let req = LlmChatRequest::new(vec![Message::user_image_with_detail(
         "Is the person in this photo female? Reply with only 'yes' or 'no'.",
         format!("data:image/png;base64,{}", b64_image),
+        ImageDetail::Low,
     )]);
 
     match llm.chat(LlmTask::GenderVerify, req).await {

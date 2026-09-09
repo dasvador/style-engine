@@ -72,9 +72,9 @@ fn content_parts_to_openai(parts: &[ContentPart]) -> Value {
         .iter()
         .map(|p| match p {
             ContentPart::Text(t) => json!({ "type": "text", "text": t }),
-            ContentPart::ImageDataUrl(url) => json!({
+            ContentPart::ImageDataUrl { url, detail } => json!({
                 "type": "image_url",
-                "image_url": { "url": url, "detail": "high" }
+                "image_url": { "url": url, "detail": detail.as_str() }
             }),
         })
         .collect();
@@ -318,6 +318,7 @@ fn truncate(s: &str, max: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::types::ImageDetail;
     use super::*;
 
     #[test]
@@ -330,11 +331,45 @@ mod tests {
     fn image_part_becomes_block_array() {
         let v = content_parts_to_openai(&[
             ContentPart::Text("look".into()),
-            ContentPart::ImageDataUrl("data:image/png;base64,AAA".into()),
+            ContentPart::ImageDataUrl {
+                url: "data:image/png;base64,AAA".into(),
+                detail: ImageDetail::High,
+            },
         ]);
         assert_eq!(v[0]["type"], "text");
         assert_eq!(v[1]["type"], "image_url");
         assert_eq!(v[1]["image_url"]["url"], "data:image/png;base64,AAA");
+    }
+
+    /// detail 은 호출부가 정한 값이 그대로 나가야 한다. 여기가 틀리면 저해상도
+    /// 요청이 조용히 고해상도로 청구된다 — 응답은 멀쩡해서 눈치채기 어렵다.
+    #[test]
+    fn image_detail_is_sent_as_requested() {
+        for (detail, expected) in [
+            (ImageDetail::Low, "low"),
+            (ImageDetail::High, "high"),
+            (ImageDetail::Auto, "auto"),
+        ] {
+            let v = content_parts_to_openai(&[
+                ContentPart::Text("q".into()),
+                ContentPart::ImageDataUrl {
+                    url: "data:image/png;base64,AAA".into(),
+                    detail,
+                },
+            ]);
+            assert_eq!(v[1]["image_url"]["detail"], expected, "{detail:?}");
+        }
+    }
+
+    /// `user_image` 는 High 를 유지한다. 기본값이 바뀌면 옷 분석 3개 호출부의
+    /// 정확도가 코드 변경 없이 떨어진다.
+    #[test]
+    fn user_image_defaults_to_high_detail() {
+        let Message::User(parts) = Message::user_image("q", "data:image/png;base64,AAA") else {
+            panic!("user_image 는 User 메시지를 만든다");
+        };
+        let v = content_parts_to_openai(&parts);
+        assert_eq!(v[1]["image_url"]["detail"], "high");
     }
 
     #[test]

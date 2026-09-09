@@ -40,8 +40,8 @@ pub use provider::ProviderId;
 // 모듈의 공개 표면. bin 타깃(main.rs)은 이 중 일부만 쓰지만, 나머지도 의도적으로 공개한다.
 #[allow(unused_imports)]
 pub use types::{
-    ChatRequest, ChatResponse, ContentPart, EmbeddingResult, ImageRequest, ImageResult, Message,
-    ResponseFormat, StopReason, ToolCall, ToolDef,
+    ChatRequest, ChatResponse, ContentPart, EmbeddingResult, ImageDetail, ImageRequest,
+    ImageResult, Message, ResponseFormat, StopReason, ToolCall, ToolDef,
 };
 pub use usage::Usage;
 

@@ -10,6 +10,29 @@ use super::usage::Usage;
 
 // ─── 입력 ───
 
+/// 이미지 입력을 얼마나 자세히 읽을지.
+///
+/// 같은 사진이라도 필요한 해상도는 용도에 따라 다르다. 옷의 소재·색상·형태를
+/// 읽어내는 분석에는 높은 해상도가 필요하지만, "이 사람이 여성인가" 같은 판정은
+/// 그렇지 않다. 이 값이 전역으로 고정되어 있으면 후자가 전자의 비용을 함께 낸다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImageDetail {
+    Low,
+    High,
+    /// provider 판단에 맡긴다.
+    Auto,
+}
+
+impl ImageDetail {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ImageDetail::Low => "low",
+            ImageDetail::High => "high",
+            ImageDetail::Auto => "auto",
+        }
+    }
+}
+
 /// user 메시지를 구성하는 조각. 텍스트와 이미지를 섞을 수 있다.
 #[derive(Debug, Clone)]
 pub enum ContentPart {
@@ -17,7 +40,10 @@ pub enum ContentPart {
     /// `data:image/png;base64,...` 형태의 data URL.
     /// provider 마다 요구 형식이 달라서 (OpenAI는 data URL 그대로, Anthropic은
     /// media_type/data 분해) 여기서는 원본 그대로 들고 있다가 각자 변환한다.
-    ImageDataUrl(String),
+    ImageDataUrl {
+        url: String,
+        detail: ImageDetail,
+    },
 }
 
 /// 모델이 요청한 도구 호출 1건.
@@ -48,10 +74,23 @@ impl Message {
         Message::User(vec![ContentPart::Text(text.into())])
     }
 
+    /// 이미지 첨부 메시지. 해상도는 `High` — 이 프로젝트의 이미지 입력은
+    /// 대부분 옷 분석이고, 기본값을 바꾸면 그쪽 동작이 조용히 달라진다.
     pub fn user_image(text: impl Into<String>, image_data_url: impl Into<String>) -> Self {
+        Message::user_image_with_detail(text, image_data_url, ImageDetail::High)
+    }
+
+    pub fn user_image_with_detail(
+        text: impl Into<String>,
+        image_data_url: impl Into<String>,
+        detail: ImageDetail,
+    ) -> Self {
         Message::User(vec![
             ContentPart::Text(text.into()),
-            ContentPart::ImageDataUrl(image_data_url.into()),
+            ContentPart::ImageDataUrl {
+                url: image_data_url.into(),
+                detail,
+            },
         ])
     }
 }
