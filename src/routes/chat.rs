@@ -2,6 +2,7 @@ use axum::{Json, Router, extract::State, routing::post};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use crate::db::recommendation_history_repo::RecommendationHistoryRepo;
 use crate::db::{clothing_repo, feedback_repo};
 use crate::errors::AppError;
 use crate::middleware::auth::AuthUser;
@@ -122,6 +123,17 @@ async fn chat(
         }
     };
 
+    // 최근 추천 이력 — 같은 조합을 계속 내놓지 않게 감점한다.
+    //
+    // 홈 추천은 이력을 읽어 반복을 눌러 왔는데 채팅은 점수 1등을 그대로 돌려줬다.
+    // 옷장과 날씨가 그대로면 점수도 그대로이므로, 같은 앵커로 다시 물으면 매번
+    // 같은 착장이 나왔다.
+    let recent = outfit_scorer::RecentHistory::from_history(
+        &RecommendationHistoryRepo::find_recent_by_user(&state.db, user_id, 10)
+            .await
+            .unwrap_or_default(),
+    );
+
     // ─── Tool definitions ───
     // provider 중립 형태. OpenAI의 `function.parameters`든 Anthropic의 `input_schema`든
     // 직렬화는 provider 구현체가 한다.
@@ -213,6 +225,7 @@ async fn chat(
     // ─── Tool calling loop (최대 8회 반복) ───
     let mut messages: Vec<Message> = vec![Message::user_text(body.message)];
     let mut final_items: Vec<ChatItem> = Vec::new();
+    let mut final_item_ids: Vec<String> = Vec::new();
     let mut final_reply = String::new();
     let mut first_search_query: Option<String> = None; // 유저 최초 검색어 (덮어쓰기 불가)
     let mut anchor_category: Option<String> = None;
@@ -267,13 +280,16 @@ async fn chat(
                             .as_str()
                             .unwrap_or(fn_args["anchor_name"].as_str().unwrap_or(""));
                         let anchor_name = fn_args["anchor_name"].as_str().unwrap_or(user_query);
-                        let (outfit_json, mut items) = tool_get_outfit(
+                        let (outfit_json, mut items, chosen_ids) = tool_get_outfit(
                             user_query,
                             anchor_name,
                             &clothes,
-                            user_profile.as_ref(),
-                            temperature,
-                            &feedback_ctx,
+                            &OutfitContext {
+                                user: user_profile.as_ref(),
+                                temperature,
+                                feedback: &feedback_ctx,
+                                recent: &recent,
+                            },
                             &state.embedding,
                         )
                         .await;
@@ -296,6 +312,7 @@ async fn chat(
                             }
                         }
                         final_items = items;
+                        final_item_ids = chosen_ids;
                         outfit_json
                     }
                     "evaluate_outfit" => {
@@ -443,6 +460,37 @@ async fn chat(
         if final_reply.is_empty() {
             final_reply = generate_fallback_note(&final_items);
         }
+    }
+
+    // 돌려준 착장을 이력에 남긴다.
+    //
+    // 남기지 않으면 위의 감점이 홈 추천 이력만 보게 되고, 채팅은 자기가 방금
+    // 내놓은 착장을 다음 질문에서 또 내놓는다. 표가 하나이므로 홈 추천도 이걸
+    // 같이 보게 된다 — 옷장은 하나이고, "어제 입은 옷"이 어느 화면에서 나왔는지는
+    // 사용자에게 중요하지 않다.
+    if !final_item_ids.is_empty() {
+        // 사용자 원문으로 바꿔 보여 준 슬롯(미보유)은 뺀다. 그 자리의 아이템은
+        // 점수 계산에만 쓴 대역이고 추천한 적이 없으므로, 남기면 보여 주지도 않은
+        // 옷에 반복 감점이 붙는다.
+        let slot_id = |cat: &str, slot: &str| -> Option<String> {
+            if !final_items.iter().any(|i| i.slot == slot && i.owned) {
+                return None;
+            }
+            final_item_ids
+                .iter()
+                .find(|id| clothes.iter().any(|c| c.id == **id && c.category == cat))
+                .cloned()
+        };
+        let _ = RecommendationHistoryRepo::insert(
+            &state.db,
+            user_id,
+            slot_id("상의", "inner").as_deref(),
+            slot_id("하의", "bottom").as_deref(),
+            slot_id("아우터", "outer").as_deref(),
+            slot_id("신발", "shoes").as_deref(),
+            slot_id("가방", "bag").as_deref(),
+        )
+        .await;
     }
 
     Ok(Json(ChatResponse {
@@ -1691,11 +1739,9 @@ async fn tool_get_outfit(
     user_query: &str,
     anchor_name: &str,
     clothes: &[Clothing],
-    user: Option<&crate::models::user_profile::UserStyleProfile>,
-    temperature: Option<f64>,
-    feedback: &outfit_scorer::FeedbackContext,
+    ctx: &OutfitContext<'_>,
     embedding: &std::sync::Arc<crate::services::embedding::EmbeddingService>,
-) -> (String, Vec<ChatItem>) {
+) -> (String, Vec<ChatItem>, Vec<String>) {
     let cat_hint_str = extract_category_from_wardrobe(anchor_name, clothes);
     let cat_hint = cat_hint_str.as_deref();
 
@@ -1756,14 +1802,20 @@ async fn tool_get_outfit(
             // DB에 유사 아이템도 없으면 첫 번째 아이템 기준으로 폴백
             match clothes.first() {
                 Some(c) => c,
-                None => return (json!({"error": "wardrobe empty"}).to_string(), Vec::new()),
+                None => {
+                    return (
+                        json!({"error": "wardrobe empty"}).to_string(),
+                        Vec::new(),
+                        Vec::new(),
+                    );
+                }
             }
         }
     };
 
-    let result = build_final_outfit(scoring_anchor, clothes, user, temperature, feedback);
+    let result = build_final_outfit(scoring_anchor, clothes, ctx);
     match result {
-        Some((_desc, mut items)) => {
+        Some((_desc, mut items, chosen_ids)) => {
             // anchor 슬롯을 유저 원문으로 교체 (DB에 없어도 원문 유지)
             let anchor_slot = display_anchor_cat;
             let slot_key = match anchor_slot {
@@ -1801,10 +1853,11 @@ async fn tool_get_outfit(
                 json!({"slot": i.slot, "name": i.name, "category": i.category, "owned": i.owned})
             }).collect();
             let response = json!({ "outfit": desc, "items": items_json });
-            (response.to_string(), items)
+            (response.to_string(), items, chosen_ids)
         }
         None => (
             json!({"error": "no suitable outfit found"}).to_string(),
+            Vec::new(),
             Vec::new(),
         ),
     }
@@ -1902,15 +1955,24 @@ fn tool_evaluate_outfit(
 
 // ─── 서버 확정 조합 생성 (기존 로직 유지) ───
 
+/// 조합을 고를 때 쓰는 주변 정보.
+///
+/// 체형·날씨·피드백·최근 이력을 인자로 하나씩 넘기면 호출부가 길어지고 순서를
+/// 틀리기 쉬워서 묶어 둔다.
+struct OutfitContext<'a> {
+    user: Option<&'a crate::models::user_profile::UserStyleProfile>,
+    temperature: Option<f64>,
+    feedback: &'a outfit_scorer::FeedbackContext,
+    recent: &'a outfit_scorer::RecentHistory,
+}
+
 fn build_final_outfit(
     anchor: &Clothing,
     clothes: &[Clothing],
-    user: Option<&crate::models::user_profile::UserStyleProfile>,
-    temperature: Option<f64>,
-    feedback: &outfit_scorer::FeedbackContext,
-) -> Option<(String, Vec<ChatItem>)> {
+    ctx: &OutfitContext<'_>,
+) -> Option<(String, Vec<ChatItem>, Vec<String>)> {
     let anchor_cat = &anchor.category;
-    let temp = temperature.unwrap_or(20.0);
+    let temp = ctx.temperature.unwrap_or(20.0);
 
     // sub_category 다양성 보장: 같은 sub_category에서 최대 2개만
     let slot_candidates = |cat: &str, k: usize| -> Vec<&Clothing> {
@@ -1973,8 +2035,12 @@ fn build_final_outfit(
             for shoe in &shoes {
                 for bag in &bags {
                     let outfit = vec![*top, *bottom, *shoe, *bag];
-                    let score = outfit_scorer::total_outfit_score_with_feedback(
-                        anchor, &outfit, user, feedback,
+                    let score = outfit_scorer::total_outfit_score_full(
+                        anchor,
+                        &outfit,
+                        ctx.user,
+                        ctx.feedback,
+                        ctx.recent,
                     );
                     combos.push((outfit, score));
                 }
@@ -1987,8 +2053,12 @@ fn build_final_outfit(
                 for shoe in &shoes {
                     for bag in &bags {
                         let outfit = vec![*top, *outer, *bottom, *shoe, *bag];
-                        let score = outfit_scorer::total_outfit_score_with_feedback(
-                            anchor, &outfit, user, feedback,
+                        let score = outfit_scorer::total_outfit_score_full(
+                            anchor,
+                            &outfit,
+                            ctx.user,
+                            ctx.feedback,
+                            ctx.recent,
                         );
                         combos.push((outfit, score));
                     }
@@ -2009,6 +2079,9 @@ fn build_final_outfit(
             .collect::<Vec<_>>()
             .join(" / ")
     );
+
+    // 고른 아이템의 id — 호출자가 이력에 남겨 다음 추천에서 감점할 수 있게 넘긴다.
+    let chosen_ids: Vec<String> = best_outfit.iter().map(|c| c.id.clone()).collect();
 
     let mut desc_parts = Vec::new();
     let mut items = Vec::new();
@@ -2056,7 +2129,7 @@ fn build_final_outfit(
             material: mat,
         });
     }
-    Some((desc_parts.join("\n"), items))
+    Some((desc_parts.join("\n"), items, chosen_ids))
 }
 
 /// DB 아이템의 이름/sub_category와 매칭해서 카테고리를 동적으로 추출

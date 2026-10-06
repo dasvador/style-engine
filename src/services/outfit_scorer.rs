@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 
 use crate::models::clothing::Clothing;
+use crate::models::recommendation_history::OutfitRecommendationHistory;
 use crate::models::style_vocab::{Role, Saturation, Style, Tone};
 use crate::models::user_profile::UserStyleProfile;
 
@@ -1183,25 +1184,40 @@ fn visual_gravity_score(outfit: &[&Clothing]) -> i32 {
 // Diversity Penalty — 아이템 반복 사용 감점
 // ═══════════════════════════════════════════════════════════════
 
-#[allow(dead_code)] // v1 경로 잔재 — v2 다양성 처리는 recommendation_diversity 가 담당
+/// 최근 추천에 쓰인 아이템의 등장 횟수. 키는 `clothing.id` 다.
+///
+/// 이름이 아니라 id 로 세는 이유: 이력 표에 남는 것이 id 이고, 옷장에는 이름이
+/// 같은 아이템이 둘 있을 수 있다.
 pub struct RecentHistory {
     pub item_freq: HashMap<String, usize>,
 }
 
 impl RecentHistory {
-    #[allow(dead_code)] // v1 경로 잔재
-    pub fn empty() -> Self {
-        Self {
-            item_freq: HashMap::new(),
+    /// 추천 이력 행들에서 아이템별 등장 횟수를 센다.
+    pub fn from_history(rows: &[OutfitRecommendationHistory]) -> Self {
+        let mut item_freq: HashMap<String, usize> = HashMap::new();
+        for row in rows {
+            for id in [
+                &row.top_id,
+                &row.bottom_id,
+                &row.outer_id,
+                &row.shoes_id,
+                &row.bag_id,
+            ]
+            .into_iter()
+            .flatten()
+            {
+                *item_freq.entry(id.clone()).or_insert(0) += 1;
+            }
         }
+        Self { item_freq }
     }
 }
 
-#[allow(dead_code)] // v1 경로 잔재
 fn diversity_penalty(outfit: &[&Clothing], recent: &RecentHistory) -> i32 {
     let mut p = 0;
     for item in outfit {
-        if let Some(&freq) = recent.item_freq.get(&item.name) {
+        if let Some(&freq) = recent.item_freq.get(&item.id) {
             if freq >= 3 {
                 p -= 10;
             } else if freq >= 2 {
@@ -1292,7 +1308,6 @@ pub fn total_outfit_score_with_feedback(
 }
 
 /// 피드백 + diversity 적용 (recent history 포함)
-#[allow(dead_code)] // v1 경로 잔재
 pub fn total_outfit_score_full(
     anchor: &Clothing,
     outfit: &[&Clothing],
