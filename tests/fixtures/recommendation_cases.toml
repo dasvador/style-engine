@@ -1233,6 +1233,85 @@ expected_preference = "Borderline"
 notes = "같은 룩이라도 두께/weight가 가벼움이면 경계."
 tags = ["temperature", "metadata_sensitive"]
 
+# ───────────────────────────────────────────────────────────────
+# 레이어링 — 보온을 상의 한 장이 아니라 조합 전체로 보는 케이스.
+# 하의/신발/가방을 TG 케이스와 동일하게 고정해, 달라지는 축이 레이어링뿐이게 둔다.
+# 라벨은 이 케이스를 추가한 작업자가 붙인 것이고 사용자 검수를 받지 않았다.
+# ───────────────────────────────────────────────────────────────
+
+[[cases]]
+case_id = "LY001"
+situation = "캐주얼"
+temperature_c = 7.0
+top = "white_tee"
+bottom = "stone_beige_pants"
+outer = "light_jacket"
+shoes = "beige_gat"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Borderline"
+notes = "7도에 반팔 + 가벼운 자켓. 아우터가 있다는 사실만으로는 부족하다."
+tags = ["temperature", "layering"]
+
+[[cases]]
+case_id = "LY002"
+situation = "캐주얼"
+temperature_c = 7.0
+top = "white_tee"
+bottom = "stone_beige_pants"
+outer = "navy_wool_coat"
+shoes = "beige_gat"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "LY001과 같은 이너. 겉옷이 두꺼워지면 통과한다."
+tags = ["temperature", "layering"]
+
+[[cases]]
+case_id = "LY003"
+situation = "캐주얼"
+temperature_c = 10.0
+top = "navy_knit"
+bottom = "stone_beige_pants"
+shoes = "beige_gat"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Borderline"
+expected_preference = "Borderline"
+notes = "10도에 미디엄 니트 단독. 반팔만큼 나쁘지는 않지만 통과도 아니다."
+tags = ["temperature", "layering"]
+
+[[cases]]
+case_id = "LY004"
+situation = "캐주얼"
+temperature_c = 3.0
+top = "navy_knit"
+bottom = "stone_beige_pants"
+shoes = "beige_gat"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Fail"
+expected_preference = "Reject"
+notes = "LY003과 같은 니트 단독. 3도까지 내려가면 실패."
+tags = ["temperature", "layering"]
+
+[[cases]]
+case_id = "LY005"
+situation = "캐주얼"
+temperature_c = 13.0
+top = "white_shirt"
+bottom = "stone_beige_pants"
+outer = "navy_blazer"
+shoes = "beige_gat"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "얇은 이너 + 블레이저. 이너가 얇다는 이유로 깎여서는 안 된다."
+tags = ["temperature", "layering"]
+
 # ═══════════════════════════════════════════════════════════════
 # RD — 실데이터 기반 케이스
 # ═══════════════════════════════════════════════════════════════

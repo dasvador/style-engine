@@ -1,7 +1,7 @@
 {
-  "total_cases": 96,
+  "total_cases": 101,
   "hard_filter": {
-    "accuracy_pct": 94.8,
+    "accuracy_pct": 95.0,
     "false_positives": 3,
     "false_negatives": 2,
     "reject_precision_pct": 75.0,
@@ -12,7 +12,7 @@
     }
   },
   "today_fit": {
-    "accuracy_pct": 74.0,
+    "accuracy_pct": 75.2,
     "confusion": {
       "Borderline→Fail": 2,
       "Borderline→Pass": 14,
@@ -22,10 +22,10 @@
     }
   },
   "preference": {
-    "pairwise_ranking_pct": 74.9,
-    "accept_mean_score": 96.7,
-    "reject_mean_score": 91.9,
-    "separation": 4.8
+    "pairwise_ranking_pct": 74.3,
+    "accept_mean_score": 96.8,
+    "reject_mean_score": 92.2,
+    "separation": 4.6
   },
-  "combined_accuracy_pct": 70.8
+  "combined_accuracy_pct": 72.3
 }

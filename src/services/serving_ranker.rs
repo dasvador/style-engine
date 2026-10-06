@@ -7,20 +7,22 @@
 //! style_score 본체는 건드리지 않는다. serving_adjustment는 별도 합산.
 //! baseline에 영향 없음 — shadow experiment 경로에서만 사용.
 
-use crate::models::outfit::{OutfitContext, SlotKind};
+use crate::models::clothing::Clothing;
+use crate::models::outfit::{OutfitContext, OutfitSlot, SlotKind};
 use crate::models::style_vocab::{Style, Thickness, Weight};
 use crate::services::style_engine_v2::TodayFitLevel;
 
 // ─── 온도 게이트 임계값 ───
 // 케이스 카탈로그의 라벨에 맞춰 정한 값이고, 바꾸면 eval 스코어카드가 즉시 반응한다.
 
-/// 이 온도 미만에서 아우터 없이 가벼운/얇은 상의 단독이면 실패.
-const COLD_FAIL_C: f64 = 13.0;
-/// 아우터 없는 가벼운/얇은 상의의 경계 상한.
-/// 원단이 얇으면 이 온도 자체도 경계로 보고, 시각적으로만 가벼우면 관대하게 넘긴다.
-const MILD_BORDERLINE_C: f64 = 18.0;
+/// 요구 보온 점수에 이만큼 이상 모자라면 실패.
+const COLD_FAIL_DEFICIT: i32 = 3;
+/// 이만큼 모자라면 경계. 1점 차이는 통과로 둔다 — 20도에 반팔 한 장은 정상이다.
+const COLD_BORDERLINE_DEFICIT: i32 = 2;
 /// 이 온도 이상에서 상하의가 모두 두꺼우면 실패.
 const HEAT_FAIL_C: f64 = 26.0;
+/// 아우터 가산점 — 같은 두께라도 겉옷이 체감에 더 기여한다.
+const OUTER_BONUS: i32 = 2;
 
 /// accessory 격식 gap 패널티가 이 값 이하이면 Pass 를 Borderline 으로 내린다.
 ///
@@ -35,11 +37,10 @@ const ACCESSORY_PENALTY_BORDERLINE: i32 = -4;
 ///
 /// 순서:
 ///   1. situation-aware gate (출근/비즈니스/데이트)
-///   2. temperature gate (온도 + 아우터 유무)
+///   2. temperature gate (기온이 요구하는 보온 점수 vs 토르소 레이어 합)
 ///   3. 위 어디에도 걸리지 않으면 Pass
 pub fn compute_today_fit(ctx: &OutfitContext, temperature: f64) -> TodayFitLevel {
     let situation = ctx.situation.as_deref();
-    let has_outer = ctx.slots.iter().any(|s| s.slot == SlotKind::Outer);
     let top = ctx.slots.iter().find(|s| s.slot == SlotKind::Top);
 
     let has_sport_shoes = ctx
@@ -89,38 +90,40 @@ pub fn compute_today_fit(ctx: &OutfitContext, temperature: f64) -> TodayFitLevel
 
     // ─── 2. Temperature gate ───
     //
-    // 추위와 더위 양방향을 모두 본다. 이전에는 추위만 있었고, 그래서 28도에 두꺼운
-    // 상하의를 입은 코디가 그대로 Pass 로 나갔다.
-    let thin_fabric = top.is_some_and(|t| t.clothing.thickness == Thickness::Thin);
-    let light_weight = top.is_some_and(|t| t.clothing.weight == Some(Weight::Light));
-
-    if !has_outer && (thin_fabric || light_weight) {
-        // 경계 온도 자체는 더 나쁜 쪽으로 넘기지 않는다 — 13도에 가벼운 셔츠 단독은
-        // "실패"가 아니라 "경계"라는 것이 라벨의 판단이다.
-        if temperature < COLD_FAIL_C {
-            return TodayFitLevel::Fail;
-        }
-        // 원단이 얇은 쪽이 시각적으로만 가벼운 것보다 체감이 낮다 —
-        // 같은 18도라도 얇은 셔츠는 경계, 가볍기만 한 셔츠는 무난하다는 것이 라벨의 판단이다.
-        let borderline = if thin_fabric {
-            temperature <= MILD_BORDERLINE_C
-        } else {
-            temperature < MILD_BORDERLINE_C
-        };
-        if borderline {
-            return TodayFitLevel::Borderline;
-        }
-    }
-
-    // 더위 — 추위 게이트의 대칭.
+    // 상의 한 장만 보고 판정하지 않고 토르소 레이어(상의 + 아우터)의 보온 점수를
+    // 합쳐 기온이 요구하는 값과 비교한다. 이전에는 "얇거나 가벼운 상의 + 아우터 없음"
+    // 이라는 한 가지 모양만 봤고, 그래서 두 방향이 모두 틀렸다:
+    //   - 얇은 블라우스 + 얇은 윈드브레이커는 아우터가 있다는 이유만으로 통과했고,
+    //   - 미디엄 니트 단독은 아우터가 없어도 영하까지 통과했다.
+    // 보온은 한 장의 속성이 아니라 겹쳐 입은 결과이므로 합으로 본다.
     let heavy_layer = |slot: SlotKind| {
         ctx.slots.iter().filter(|s| s.slot == slot).any(|s| {
             s.clothing.weight == Some(Weight::Heavy) || s.clothing.thickness == Thickness::Thick
         })
     };
 
+    // 더위 쪽은 추위보다 먼저 본다 — 28도에 두꺼운 상하의는 보온 과잉이 아니라 실패다.
     if temperature >= HEAT_FAIL_C && heavy_layer(SlotKind::Top) && heavy_layer(SlotKind::Bottom) {
         return TodayFitLevel::Fail;
+    }
+
+    // 상의가 없는 후보(슬롯 해석 실패 등)는 보온을 따질 대상이 아니다.
+    if let Some(top) = top {
+        let warmth = torso_warmth(top, ctx);
+        let required = required_torso_warmth(temperature);
+        let deficit = required - warmth;
+
+        if deficit >= COLD_FAIL_DEFICIT {
+            return TodayFitLevel::Fail;
+        }
+        if deficit >= COLD_BORDERLINE_DEFICIT {
+            return TodayFitLevel::Borderline;
+        }
+        // 보온 과잉은 여기서 판정하지 않는다. 케이스 카탈로그의 라벨이 이 축에서
+        // 갈리지 않는다 — 20도에 무거운 울자켓(TG008)은 경계인데 같은 20도에 파카를
+        // 걸친 조합(SG014)은 통과로 달려 있고, 두 조합의 보온 점수는 같다. 과잉 분기를
+        // 넣으면 한쪽을 맞히는 대가로 다른 쪽을 틀린다. 진짜 더위는 위의 HEAT_FAIL_C
+        // 규칙이 잡는다.
     }
     // ─── 3. Accessory 격식 gap ───
     // 온도·상황 게이트를 다 통과했어도, 신발/가방의 격식이 착장과 크게 어긋나면
@@ -131,6 +134,59 @@ pub fn compute_today_fit(ctx: &OutfitContext, temperature: f64) -> TodayFitLevel
     }
 
     TodayFitLevel::Pass
+}
+
+/// 토르소 레이어 하나의 보온 점수.
+///
+/// 원단 두께를 뼈대로 하고 시각적 무게로 보정한다. 두께가 비어 있으면 DB 기본값인
+/// `medium` 이 들어오므로 별도 분기는 두지 않는다.
+fn layer_warmth(c: &Clothing) -> i32 {
+    let base = match c.thickness {
+        Thickness::Thin => 2,
+        Thickness::Medium => 4,
+        Thickness::Thick => 7,
+    };
+    let adj = match c.weight {
+        Some(Weight::Light) => -1,
+        Some(Weight::Heavy) => 2,
+        _ => 0,
+    };
+    base + adj
+}
+
+/// 상의 + 아우터를 합친 보온 점수.
+///
+/// 하의는 더하지 않는다. 케이스 카탈로그의 온도 라벨이 전부 토르소를 기준으로 달려
+/// 있고(10도에 반팔 단독은 실패, 같은 반팔에 파카를 더하면 통과), 하의를 섞으면
+/// 치마와 울 슬랙스의 차이가 상의 한 장만큼 커져 라벨과 어긋난다.
+///
+/// 아우터에 가산점을 주는 이유: 같은 두께라도 바람을 막는 겉옷이 체감에 더 크게
+/// 기여한다. 이 값이 없으면 얇은 셔츠 + 얇은 자켓(13도, 라벨 Pass)이 경계로 떨어진다.
+fn torso_warmth(top: &OutfitSlot, ctx: &OutfitContext) -> i32 {
+    let outer: i32 = ctx
+        .slots
+        .iter()
+        .filter(|s| s.slot == SlotKind::Outer)
+        .map(|s| layer_warmth(&s.clothing) + OUTER_BONUS)
+        .sum();
+    layer_warmth(&top.clothing) + outer
+}
+
+/// 기온이 요구하는 토르소 보온 점수.
+///
+/// 구간 값은 케이스 카탈로그의 온도 라벨에서 역산했다 — 얇은 반팔(2점)이 20도에는
+/// 통과하고 18도에는 경계, 10도에는 실패가 되도록 맞춘 격자다.
+fn required_torso_warmth(temperature: f64) -> i32 {
+    match temperature {
+        t if t >= 22.0 => 1,
+        t if t >= 20.0 => 2,
+        t if t >= 18.0 => 3,
+        t if t >= 15.0 => 4,
+        t if t >= 13.0 => 5,
+        t if t >= 10.0 => 6,
+        t if t >= 5.0 => 8,
+        _ => 10,
+    }
 }
 
 /// Serving adjustment — situation-aware 보정. style_score에 합산하지 않고 별도.
@@ -307,6 +363,16 @@ mod tests {
         }
     }
 
+    /// 같은 속성의 아우터 슬롯.
+    fn outer(weight: Weight, thickness: Thickness) -> OutfitSlot {
+        let mut s = top(weight, thickness);
+        s.slot = SlotKind::Outer;
+        s.clothing.id = "o".into();
+        s.clothing.name = "테스트 아우터".into();
+        s.clothing.category = "아우터".into();
+        s
+    }
+
     fn ctx(slot: OutfitSlot) -> OutfitContext {
         OutfitContext {
             slots: vec![slot],
@@ -314,46 +380,78 @@ mod tests {
         }
     }
 
-    /// 온도 게이트는 `weight == 가벼움` 또는 `thickness == thin` 중 하나만 참이어도 걸린다.
-    /// 이 테스트가 필요한 이유: 케이스 카탈로그에는 시각적 무게가 '중간'이면서 원단만 얇은
-    /// 상의를 저온에 세우는 케이스가 없어서, eval 로는 thickness 분기가 한 번도 실행되지 않는다.
-    /// 실제로 프로덕션에서는 이 분기가 어휘 불일치로 39건에 대해 죽어 있었다.
+    /// 상의 한 장만으로는 보온을 판정할 수 없다는 것이 이 게이트의 전제다.
+    /// 같은 상의가 기온에 따라 통과/경계/실패로 갈리는지 고정한다.
     #[test]
-    fn thin_fabric_alone_triggers_the_cold_gate() {
-        // 시각적 무게는 중간 — weight 조건으로는 걸리지 않는다.
-        let mid_thin = ctx(top(Weight::Mid, Thickness::Thin));
-        assert_eq!(compute_today_fit(&mid_thin, 10.0), TodayFitLevel::Fail);
+    fn a_thin_top_alone_degrades_as_it_gets_colder() {
+        // 얇은 원단 + 중간 무게 = 보온 2점.
+        let thin = ctx(top(Weight::Mid, Thickness::Thin));
+        assert_eq!(compute_today_fit(&thin, 22.0), TodayFitLevel::Pass);
+        assert_eq!(compute_today_fit(&thin, 16.0), TodayFitLevel::Borderline);
+        assert_eq!(compute_today_fit(&thin, 10.0), TodayFitLevel::Fail);
+    }
+
+    /// 두께가 중간이면 같은 기온에서 한 단계 더 버틴다 — 상의가 얇은지 여부를
+    /// 깃발로 보지 않고 점수로 보기 때문이다.
+    #[test]
+    fn a_thicker_top_alone_holds_out_longer() {
+        let thin = ctx(top(Weight::Light, Thickness::Thin)); // 1점
+        let medium = ctx(top(Weight::Light, Thickness::Medium)); // 3점
+
+        // 18도: 얇은 쪽은 경계, 중간 두께는 통과.
+        assert_eq!(compute_today_fit(&thin, 18.0), TodayFitLevel::Borderline);
+        assert_eq!(compute_today_fit(&medium, 18.0), TodayFitLevel::Pass);
+
+        // 13도: 얇은 쪽은 실패, 중간 두께는 아직 경계.
+        assert_eq!(compute_today_fit(&thin, 13.0), TodayFitLevel::Fail);
+        assert_eq!(compute_today_fit(&medium, 13.0), TodayFitLevel::Borderline);
+    }
+
+    /// 아우터 없이 미디엄 니트 한 장으로 10도를 넘기는 것은 통과가 아니다.
+    ///
+    /// 이전 게이트는 "얇거나 가벼운 상의 + 아우터 없음" 이라는 모양만 봤기 때문에,
+    /// 두께가 중간이면 기온이 얼마든 통과였다. 라벨로 뒷받침된 판정이 아니라
+    /// 규칙의 모양이 그랬을 뿐이다.
+    #[test]
+    fn a_mid_weight_knit_alone_is_not_enough_at_ten_degrees() {
+        let mid_medium = ctx(top(Weight::Mid, Thickness::Medium)); // 4점
         assert_eq!(
-            compute_today_fit(&mid_thin, 16.0),
+            compute_today_fit(&mid_medium, 10.0),
             TodayFitLevel::Borderline
         );
-        assert_eq!(compute_today_fit(&mid_thin, 22.0), TodayFitLevel::Pass);
+        assert_eq!(compute_today_fit(&mid_medium, 4.0), TodayFitLevel::Fail);
+        assert_eq!(compute_today_fit(&mid_medium, 18.0), TodayFitLevel::Pass);
     }
 
+    /// 사용자가 요청한 핵심 케이스: 얇은 이너 + 자켓은 조합 전체로 보온을 맞춘 것이므로
+    /// 이너가 얇다는 이유로 깎이지 않아야 한다.
     #[test]
-    fn light_weight_alone_triggers_the_cold_gate() {
-        let light_medium = ctx(top(Weight::Light, Thickness::Medium));
-        assert_eq!(compute_today_fit(&light_medium, 10.0), TodayFitLevel::Fail);
-        assert_eq!(
-            compute_today_fit(&light_medium, 16.0),
-            TodayFitLevel::Borderline
-        );
+    fn a_thin_inner_under_a_jacket_is_judged_as_a_whole() {
+        let thin_inner = top(Weight::Light, Thickness::Thin); // 1점
+        let alone = ctx(thin_inner.clone());
+        assert_eq!(compute_today_fit(&alone, 12.0), TodayFitLevel::Fail);
+
+        let mut layered = ctx(thin_inner);
+        layered.slots.push(outer(Weight::Mid, Thickness::Medium)); // 4+2점
+        assert_eq!(compute_today_fit(&layered, 12.0), TodayFitLevel::Pass);
     }
 
-    /// 두 조건 모두 거짓이면 저온이어도 통과해야 한다.
+    /// 반대 방향: 아우터가 있다는 사실만으로 통과시키지 않는다.
+    /// 얇은 이너에 얇은 윈드브레이커를 더해도 한겨울을 넘길 수는 없다.
     #[test]
-    fn mid_weight_medium_fabric_passes_in_the_cold() {
-        let mid_medium = ctx(top(Weight::Mid, Thickness::Medium));
-        assert_eq!(compute_today_fit(&mid_medium, 10.0), TodayFitLevel::Pass);
+    fn a_flimsy_outer_does_not_rescue_a_thin_inner() {
+        let mut c = ctx(top(Weight::Light, Thickness::Thin)); // 1점
+        c.slots.push(outer(Weight::Light, Thickness::Thin)); // 1+2점
+        assert_eq!(compute_today_fit(&c, 12.0), TodayFitLevel::Borderline);
+        assert_eq!(compute_today_fit(&c, 2.0), TodayFitLevel::Fail);
     }
 
-    /// 아우터가 있으면 얇은 상의여도 게이트가 걸리지 않는다.
+    /// 두꺼운 겉옷은 추위에서 게이트를 완전히 들어올린다.
     #[test]
-    fn an_outer_layer_lifts_the_gate() {
+    fn a_heavy_outer_lifts_the_gate() {
         let mut c = ctx(top(Weight::Light, Thickness::Thin));
-        let mut outer = top(Weight::Heavy, Thickness::Thick);
-        outer.slot = SlotKind::Outer;
-        c.slots.push(outer);
+        c.slots.push(outer(Weight::Heavy, Thickness::Thick));
         assert_eq!(compute_today_fit(&c, 10.0), TodayFitLevel::Pass);
+        assert_eq!(compute_today_fit(&c, -5.0), TodayFitLevel::Pass);
     }
 }
