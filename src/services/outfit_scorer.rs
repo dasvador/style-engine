@@ -29,6 +29,10 @@ impl FeedbackContext {
 }
 
 /// 조합에서 피드백 태그를 자동 감지
+pub fn detect_outfit_tags_pub(outfit: &[&Clothing]) -> Vec<String> {
+    detect_outfit_tags(outfit)
+}
+
 fn detect_outfit_tags(outfit: &[&Clothing]) -> Vec<String> {
     let mut tags = Vec::new();
 

@@ -241,7 +241,12 @@ export interface OutfitImageResponse {
 
 // ─── 피드백 (src/models/feedback.rs :: FeedbackRequest) ───
 
-export type FeedbackType = 'like' | 'dislike';
+/**
+ * 'worn' 과 'saved' 는 서버가 이미 받는 값이다
+ * (`db::feedback_repo::insert_feedback` 의 polarity/item_delta 분기).
+ * 눌러 본 것과 실제로 입겠다는 것은 다른 신호라 따로 둔다.
+ */
+export type FeedbackType = 'like' | 'dislike' | 'worn' | 'saved';
 
 export interface FeedbackBody {
   feedback_type: FeedbackType;
@@ -253,6 +258,61 @@ export interface FeedbackBody {
   bag_name?: string;
   anchor_name?: string;
   comment?: string;
+}
+
+
+// ─── 룩북 (프런트 전용 — 생성한 코디를 쌓아 둔다) ───
+
+/**
+ * 만들어진 코디 한 장.
+ *
+ * 추천 응답은 모드 셋을 한꺼번에 주지만, 사용자에게는 "코디 한 장" 단위로 쌓인다.
+ * 서버에 저장하는 값이 아니라 이번 세션 동안의 화면 상태다.
+ */
+export interface Look {
+  /** 리스트 키. 착장이 같아도 절대 겹치지 않아야 한다 — 겹치면 React 가 노드를
+   *  제대로 지우지 못해 썸네일이 하나 더 남는다. */
+  key: string;
+  /** 중복 판별용 착장 서명. 같은 구성이면 다시 쌓지 않는다. */
+  sig: string;
+  title: string;
+  /** 생성 시각·무드·날씨를 한 줄로. 이전 코디와 오늘 것을 구분한다. */
+  meta: string;
+  moodKey: string | null;
+  outfit: OutfitItem[];
+  reason: string;
+  recommendation: string;
+  liked: boolean;
+  worn: boolean;
+  /** 서버에 저장된 행의 id. 저장 응답을 받으면 채워진다. */
+  savedId?: string;
+}
+
+// ─── 룩북 저장 (src/routes/lookbook.rs) ───
+
+export interface SavedLook {
+  id: string;
+  mood_key: string | null;
+  title: string;
+  weather_summary: string | null;
+  reason: string | null;
+  recommendation: string | null;
+  /** 이미지 캐시 키. 이 문자열로 다시 요청하면 같은 그림이 캐시에서 나온다. */
+  image_prompt: string;
+  outfit_json: OutfitItem[];
+  liked: boolean;
+  worn: boolean;
+  created_at: string;
+}
+
+export interface SaveLookBody {
+  mood_key: string | null;
+  title: string;
+  weather_summary: string | null;
+  reason: string | null;
+  recommendation: string | null;
+  image_prompt: string;
+  outfit_json: OutfitItem[];
 }
 
 // ─── 헬스체크 (src/routes/health.rs) ───

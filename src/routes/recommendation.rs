@@ -69,6 +69,7 @@ async fn get_recommendation(
 
     // 4. Build recency hint from recent history
     let recent_hint = build_recent_hint(&state.db, &clothes, user_id).await;
+    let feedback = load_feedback(&state.db, user_id).await;
 
     // 5. Call OpenAI for 3 candidates
     let multi_result = prompts::get_outfit_candidates(
@@ -96,6 +97,7 @@ async fn get_recommendation(
                     body.occasion.as_deref(),
                     current_season.as_deref(),
                     i,
+                    &feedback,
                 )
                 .await
                 {
@@ -273,6 +275,7 @@ async fn get_multi_recommendation(
 
     let recent_hint = build_recent_hint(&state.db, &clothes, user_id).await;
     let current_season = current_season_label();
+    let feedback = load_feedback(&state.db, user_id).await;
 
     // 최근 추천 아이템 ID 수집 (shortlist recency penalty용)
     let recent_ids: std::collections::HashSet<String> = {
@@ -337,6 +340,7 @@ async fn get_multi_recommendation(
             body.occasion.as_deref(),
             current_season.as_deref(),
             i,
+            &feedback,
         )
         .await
         {
@@ -579,6 +583,52 @@ fn build_outfit_items(
 
 // ─── Helper: AI 후보 → OutfitCandidate (style_engine 점수 포함) ───
 
+/// 피드백이 이 착장에 더하는 점수.
+///
+/// `outfit_scorer::total_outfit_score_with_feedback` 이 base 점수에 얹는 것과 같은
+/// 두 층이다 — 아이템별 누적 보정과 reason tag 선호도. 여기서는 style_engine 이
+/// 낸 점수에 얹어야 하므로 보정분만 따로 계산한다.
+fn feedback_bonus(
+    items: &[&Clothing],
+    feedback: &crate::services::outfit_scorer::FeedbackContext,
+) -> i32 {
+    let mut bonus = 0;
+    for item in items {
+        if let Some(&adj) = feedback.item_adj.get(&item.name) {
+            bonus += adj;
+        }
+    }
+    for tag in crate::services::outfit_scorer::detect_outfit_tags_pub(items) {
+        if let Some(&pref) = feedback.preference.get(tag.as_str()) {
+            bonus += pref;
+        }
+    }
+    bonus
+}
+
+/// 요청 하나에 쓸 피드백 맥락을 읽어 온다.
+async fn load_feedback(
+    db: &sqlx::MySqlPool,
+    user_id: &str,
+) -> crate::services::outfit_scorer::FeedbackContext {
+    let item_scores = crate::db::feedback_repo::get_item_adjustments(db, user_id)
+        .await
+        .unwrap_or_default();
+    let pref_scores = crate::db::feedback_repo::get_preference_scores(db, user_id)
+        .await
+        .unwrap_or_default();
+    crate::services::outfit_scorer::FeedbackContext {
+        item_adj: item_scores
+            .into_iter()
+            .map(|s| (s.item_name, s.score_adjustment))
+            .collect(),
+        preference: pref_scores
+            .into_iter()
+            .map(|s| (s.reason_tag, s.score))
+            .collect(),
+    }
+}
+
 async fn build_outfit_candidate(
     ai_outfit: &[crate::models::recommendation::AiOutfitItem],
     clothes: &[Clothing],
@@ -586,6 +636,7 @@ async fn build_outfit_candidate(
     occasion: Option<&str>,
     current_season: Option<&str>,
     ai_index: usize,
+    feedback: &crate::services::outfit_scorer::FeedbackContext,
 ) -> Option<OutfitCandidate> {
     let mut top_id = None;
     let mut bottom_id = None;
@@ -682,7 +733,14 @@ async fn build_outfit_candidate(
 
     let mut candidate =
         OutfitCandidate::new(top_id, bottom_id, outer_id, shoes_id, bag_id, ai_index);
-    candidate.style_score = eval.score;
+
+    // 사용자가 '마음에 들어요' 로 남긴 신호를 점수에 얹는다.
+    //
+    // 이 보정은 원래 채팅 경로에만 걸려 있었다(`routes::chat`). 홈의 추천은 같은
+    // 피드백을 쌓아 두고도 쓰지 않아서, 좋아요를 눌러도 다음 추천이 달라지지
+    // 않았다. 같은 `FeedbackContext` 를 여기서도 적용한다.
+    let items: Vec<&Clothing> = ctx.slots.iter().map(|s| &s.clothing).collect();
+    candidate.style_score = eval.score + feedback_bonus(&items, feedback);
 
     Some(candidate)
 }

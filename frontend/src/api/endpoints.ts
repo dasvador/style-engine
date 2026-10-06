@@ -5,7 +5,7 @@
  * 경로는 기존 UI 가 쓰던 것과 동일하다 — 이번 전환으로 API 를 바꾸지 않았다.
  */
 
-import { apiDelete, apiGet, apiPost, apiPut } from './client';
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from './client';
 import type {
   ChatBody,
   ChatResponse,
@@ -22,6 +22,8 @@ import type {
   OutfitImageResponse,
   RecommendationBody,
   Region,
+  SaveLookBody,
+  SavedLook,
   StyleMood,
   UpsertRegionBody,
   WeatherResponse,
@@ -62,4 +64,11 @@ export const api = {
   },
 
   feedback: (body: FeedbackBody) => apiPost<unknown>('/feedback', body),
+
+  lookbook: {
+    list: () => apiGet<SavedLook[]>('/lookbook'),
+    save: (body: SaveLookBody) => apiPost<{ id: string }>('/lookbook', body),
+    mark: (id: string, body: { liked?: boolean; worn?: boolean }) =>
+      apiPatch<{ id: string }>(`/lookbook/${id}`, body),
+  },
 };

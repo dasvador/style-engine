@@ -661,6 +661,18 @@ button, input, select, textarea { font-family: inherit; }
   color: var(--ink-soft); text-align: center;
 }
 .lookbook-img-wrap { padding: 12px 18px 0; text-align: center; }
+/* 생성 이미지는 1024x1536 세로 비율이다. 자리를 미리 잡아 두지 않으면 로딩 중에는
+   카드가 짧았다가 이미지가 뜨는 순간 키가 확 늘어나면서 화면이 튄다. */
+.lookbook-img-wrap .lookbook-img-slot {
+  aspect-ratio: 2 / 3;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface-muted);
+  border-radius: var(--r-media);
+}
+.lookbook-img-wrap .lookbook-img-slot img {
+  width: 100%; height: 100%; object-fit: cover;
+  border-radius: var(--r-media);
+}
 /* 남성복을 여성 모델로 재해석한다는 안내 — 작은 에디토리얼 캡션으로. */
 .lookbook-img-note {
   margin: 10px 4px 0; font-size: 0.72rem; line-height: 1.6;
@@ -944,4 +956,132 @@ button, input, select, textarea { font-family: inherit; }
   .gender-tabs { gap: 16px; }
   .wardrobe-count { font-size: 1.35rem; }
   .verdict-score { font-size: 2.6rem; }
+}
+
+/* ─────────────────────────────────────────────
+   룩북 — 만들어진 코디가 쌓인다
+   추천을 다시 받아도 이전 결과를 덮어쓰지 않고 카드로 쌓아, 둘을 나란히 두고
+   고를 수 있게 한다. 뒤에 비치는 두 장이 "쌓여 있다" 는 것을 보여준다.
+   ───────────────────────────────────────────── */
+.lookbook-stack { margin-top: 4px; }
+.lookbook-stack-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; margin-bottom: 14px;
+}
+.lookbook-count {
+  font-family: var(--serif);
+  font-size: 0.74rem; letter-spacing: 0.14em; color: var(--ink-faint);
+}
+
+.lookbook-deck { position: relative; padding-bottom: 6px; }
+
+/* 뒤에 쌓인 카드. 내용 없이 깊이만 만든다. */
+.lookbook-behind {
+  position: absolute; left: 0; right: 0; top: 0; bottom: 0;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sheet);
+  pointer-events: none;
+}
+.lookbook-behind[data-depth="1"] { transform: translateY(7px) scale(0.975); opacity: 0.75; }
+.lookbook-behind[data-depth="2"] { transform: translateY(14px) scale(0.95); opacity: 0.45; }
+
+.lookbook-face {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sheet);
+  padding: 14px 14px 16px;
+  box-shadow: var(--shadow-media);
+}
+/* 넘길 때 다음 카드가 살짝 기울며 들어온다. */
+@keyframes lookbookInRight {
+  from { opacity: 0; transform: translateX(16px) rotate(1.2deg); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes lookbookInLeft {
+  from { opacity: 0; transform: translateX(-16px) rotate(-1.2deg); }
+  to   { opacity: 1; transform: none; }
+}
+.lookbook-face.slide-right { animation: lookbookInRight 0.22s ease-out; }
+.lookbook-face.slide-left { animation: lookbookInLeft 0.22s ease-out; }
+
+.lookbook-face-title {
+  font-size: 0.95rem; font-weight: 600; margin-top: 12px; letter-spacing: -0.01em;
+}
+.lookbook-face-meta {
+  font-size: 0.74rem; color: var(--ink-faint); margin-top: 4px; line-height: 1.5;
+}
+
+/* 마음에 들어요를 누르면 책갈피가 꽂힌다. */
+.lookbook-bookmark {
+  position: absolute; top: -1px; right: 18px; z-index: 2;
+  width: 20px; color: var(--accent);
+  filter: drop-shadow(0 1px 2px rgba(36, 34, 31, 0.15));
+}
+.lookbook-bookmark svg { width: 100%; display: block; }
+
+.lookbook-arrow {
+  position: absolute; top: 38%;
+  width: 34px; height: 34px; border-radius: 50%;
+  background: rgba(244, 241, 235, 0.92); border: 1px solid var(--line);
+  color: var(--ink); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow-media);
+}
+.lookbook-arrow svg { width: 17px; height: 17px; }
+/* 카드 바깥으로 걸치면 화면 가장자리에서 잘려 보인다. 안쪽에 둔다. */
+.lookbook-arrow.prev { left: 10px; }
+.lookbook-arrow.next { right: 10px; }
+.lookbook-arrow:disabled { opacity: 0; pointer-events: none; }
+
+.lookbook-pager {
+  text-align: center; margin-top: 16px;
+  font-family: var(--serif);
+  font-size: 0.78rem; letter-spacing: 0.1em; color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.lookbook-thumbs {
+  display: flex; gap: 8px; overflow-x: auto;
+  padding: 12px 0 2px; -webkit-overflow-scrolling: touch;
+}
+.lookbook-thumbs::-webkit-scrollbar { display: none; }
+.lookbook-thumb {
+  position: relative; flex-shrink: 0;
+  width: 44px; height: 58px; padding: 0;
+  border: 1px solid var(--line); border-radius: var(--r-media);
+  background: var(--surface-muted); cursor: pointer; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.68rem; color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  transition: border-color 0.15s, opacity 0.15s;
+  opacity: 0.7;
+}
+.lookbook-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lookbook-thumb.active { border-color: var(--accent); border-width: 2px; opacity: 1; }
+.lookbook-thumb-mark {
+  position: absolute; top: 3px; right: 3px;
+  width: 5px; height: 5px; border-radius: 50%; background: var(--accent);
+}
+
+.lookbook-actions { display: flex; gap: 8px; margin: 16px 0 6px; flex-wrap: wrap; }
+.chip-action {
+  flex: 1; min-width: 130px; min-height: 44px;
+  padding: 10px 14px; border-radius: var(--r-btn);
+  border: 1px solid var(--line); background: transparent;
+  color: var(--ink); font-size: 0.85rem; font-weight: 500; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.chip-action:hover:not(:disabled) { border-color: var(--ink-faint); }
+.chip-action.on {
+  background: var(--accent-soft); border-color: var(--accent);
+  color: var(--accent); font-weight: 600;
+}
+.chip-action:disabled { cursor: default; }
+
+@media (max-width: 380px) {
+  .lookbook-arrow.prev { left: 6px; }
+  .lookbook-arrow.next { right: 6px; }
+  .chip-action { min-width: 110px; font-size: 0.8rem; }
 }
