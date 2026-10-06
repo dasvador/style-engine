@@ -330,6 +330,19 @@ async fn get_multi_recommendation(
         return Err(AppError::Internal(anyhow::anyhow!("No candidates from AI")));
     }
 
+    // 후보가 어떤 슬롯을 채웠는지 남긴다. 아우터가 다섯 후보에서 통째로 빠져도
+    // 응답만 보고는 알 수 없었던 적이 있어, 초안 단계를 그대로 기록해 둔다.
+    for (i, c) in ai_candidates.candidates.iter().enumerate() {
+        tracing::debug!(
+            "후보 {i}: {}",
+            c.outfit
+                .iter()
+                .map(|o| format!("{}={}", o.category, o.name))
+                .collect::<Vec<_>>()
+                .join(" | ")
+        );
+    }
+
     // style_engine 점수 + 이력 penalty/bonus 계산
     let mut scored_candidates = Vec::new();
     for (i, ai_c) in ai_candidates.candidates.iter().enumerate() {
@@ -648,7 +661,16 @@ async fn build_outfit_candidate(
     for ai_item in ai_outfit {
         let clothing = match find_matching_clothing(clothes, &ai_item.name) {
             Some(c) => c,
-            None => continue,
+            None => {
+                // 후보 목록에 없는 이름 — 조용히 버리면 슬롯이 통째로 비는데 그 사실이
+                // 어디에도 남지 않는다. 아우터가 사라져도 알 수 없었던 이유다.
+                tracing::warn!(
+                    "LLM 이 후보에 없는 이름을 반환했습니다: {} / {}",
+                    ai_item.category,
+                    ai_item.name
+                );
+                continue;
+            }
         };
         let slot_kind = match category_to_slot(&ai_item.category) {
             Some(sk) => sk,
@@ -1019,15 +1041,23 @@ fn current_season_label() -> Option<String> {
     )
 }
 
-/// Find a matching clothing record by name.
-/// Tries exact match first, then substring contains.
+/// LLM 이 돌려준 이름을 옷장 아이템에 맞춘다. 정확히 일치하는 것이 없으면 부분 일치.
+///
+/// 빈 이름을 먼저 걸러내는 이유: 프롬프트가 "확신이 없으면 빈 문자열" 을 허용하는데,
+/// `c.name.contains("")` 는 모든 아이템에 참이라 빈 이름이 목록 맨 앞 아이템으로
+/// 매칭됐다. 슬롯 카테고리가 달라 대부분 뒤에서 걸러졌을 뿐, 맨 앞이 같은 슬롯이면
+/// 요청하지도 않은 아이템이 조용히 들어간다.
 fn find_matching_clothing<'a>(clothes: &'a [Clothing], name: &str) -> Option<&'a Clothing> {
+    let name = name.trim();
+    if name.is_empty() {
+        return None;
+    }
     if let Some(c) = clothes.iter().find(|c| c.name == name) {
         return Some(c);
     }
     clothes
         .iter()
-        .find(|c| name.contains(&c.name) || c.name.contains(name))
+        .find(|c| name.contains(c.name.as_str()) || c.name.contains(name))
 }
 
 /// 카테고리별 그룹화된 옷장 데이터를 생성. LLM이 슬롯별 후보만 보게 해서 혼동 방지.
@@ -1085,4 +1115,91 @@ fn build_flat_descriptions(clothes: &[Clothing]) -> Vec<String> {
             )
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::style_vocab::Thickness;
+    use chrono::NaiveDateTime;
+
+    fn ts() -> NaiveDateTime {
+        NaiveDateTime::parse_from_str("2026-10-07 09:00:00", "%Y-%m-%d %H:%M:%S").unwrap()
+    }
+
+    /// 이름 매칭만 보는 테스트라 나머지 속성은 전부 비워 둔다.
+    fn item(name: &str, category: &str) -> Clothing {
+        Clothing {
+            id: name.to_string(),
+            name: name.to_string(),
+            category: category.to_string(),
+            gender: None,
+            style_mood: None,
+            color: None,
+            thickness: Thickness::Medium,
+            image_url: None,
+            tone: None,
+            saturation: None,
+            style: None,
+            weight: None,
+            role: None,
+            color_temperature: None,
+            versatility: None,
+            statement_level: None,
+            formality_level: None,
+            visual_weight: None,
+            texture_depth: None,
+            visual_weight_v2: None,
+            texture_depth_v2: None,
+            grounding_score: None,
+            shadow_tone: None,
+            silhouette_volume: None,
+            material_primary: None,
+            sub_category: None,
+            floating_score: None,
+            strong_style_score: None,
+            texture_keywords: None,
+            created_at: ts(),
+            updated_at: ts(),
+        }
+    }
+
+    fn wardrobe() -> Vec<Clothing> {
+        vec![
+            item("아이보리 새틴 셔츠 블라우스", "상의"),
+            item("차콜 울 오버사이즈 블레이저", "아우터"),
+            item("베이지 와이드 치노팬츠", "하의"),
+        ]
+    }
+
+    /// 프롬프트는 "확신이 없으면 빈 문자열" 을 허용한다. 그 빈 문자열이 아이템으로
+    /// 해석되면 사용자가 요청하지도 않은 옷이 착장에 들어간다.
+    #[test]
+    fn a_blank_name_matches_nothing() {
+        let w = wardrobe();
+        for name in ["", " ", "\t", "\n"] {
+            assert!(
+                find_matching_clothing(&w, name).is_none(),
+                "빈 이름 {name:?} 이 아이템으로 매칭됐다"
+            );
+        }
+    }
+
+    #[test]
+    fn an_exact_name_wins() {
+        let w = wardrobe();
+        let found = find_matching_clothing(&w, "차콜 울 오버사이즈 블레이저").unwrap();
+        assert_eq!(found.category, "아우터");
+    }
+
+    /// LLM 이 이름에 수식을 덧붙이거나 잘라 보내는 경우.
+    #[test]
+    fn a_partial_name_still_matches() {
+        let w = wardrobe();
+        let longer = find_matching_clothing(&w, "차콜 울 오버사이즈 블레이저 (울)").unwrap();
+        assert_eq!(longer.name, "차콜 울 오버사이즈 블레이저");
+
+        let shorter = find_matching_clothing(&w, "오버사이즈 블레이저").unwrap();
+        assert_eq!(shorter.name, "차콜 울 오버사이즈 블레이저");
+    }
 }
