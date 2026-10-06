@@ -1187,7 +1187,9 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
          waxy leather, fake metallic reflections, excessive gloss, \
          melted or deformed shoe shapes, incorrect shoelaces, warped accessories, \
          floating straps, impossible garment seams, overly perfect fabric surfaces, \
-         luxury-campaign stiffness, ceremonial posing, clothes that look unworn";
+         luxury-campaign stiffness, ceremonial posing, clothes that look unworn, \
+         real brand logos, band names or album artwork, recognisable trademarks, \
+         readable text on garments";
 
     match genre {
         StyleGenre::Minimal => format!(
