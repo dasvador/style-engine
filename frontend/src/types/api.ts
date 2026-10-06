@@ -303,6 +303,8 @@ export interface SavedLook {
   liked: boolean;
   worn: boolean;
   created_at: string;
+  /** 이미 만들어 둔 그림. 없으면 아직 생성되지 않은 코디다. */
+  image_path: string | null;
 }
 
 export interface SaveLookBody {

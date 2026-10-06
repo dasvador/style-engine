@@ -1085,3 +1085,46 @@ button, input, select, textarea { font-family: inherit; }
   .lookbook-arrow.next { right: 6px; }
   .chip-action { min-width: 110px; font-size: 0.8rem; }
 }
+
+/* ─────────────────────────────────────────────
+   내 룩북 — 모아 둔 코디
+   홈의 룩북이 "지금 고르는" 화면이라면 여기는 "지난 것을 돌아보는" 화면이라
+   넘기지 않고 한눈에 보이는 격자로 둔다.
+   ───────────────────────────────────────────── */
+.saved-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px 14px; }
+.saved-card {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  text-align: left; display: flex; flex-direction: column; position: relative;
+}
+.saved-thumb {
+  width: 100%; aspect-ratio: 2 / 3; object-fit: cover;
+  border-radius: var(--r-media); background: var(--surface-muted);
+  box-shadow: var(--shadow-media); margin-bottom: 9px;
+}
+.saved-thumb-empty {
+  width: 100%; aspect-ratio: 2 / 3; margin-bottom: 9px;
+  border-radius: var(--r-media); background: var(--surface-muted);
+  border: 1px solid var(--line-soft);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.72rem; color: var(--ink-faint);
+}
+.saved-card-title { font-size: 0.85rem; font-weight: 500; color: var(--ink); }
+.saved-card-meta {
+  font-size: 0.72rem; color: var(--ink-faint); margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.saved-card-items {
+  font-size: 0.72rem; color: var(--ink-soft); margin-top: 5px; line-height: 1.5;
+}
+/* 좋아요와 입을래요를 색으로만 구분하지 않도록 모양도 다르게 둔다. */
+.saved-card-marks { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
+.saved-card-marks i {
+  width: 9px; height: 9px; display: block;
+  box-shadow: 0 1px 3px rgba(36, 34, 31, 0.3);
+}
+.mark-liked { background: var(--accent); border-radius: 50%; }
+.mark-worn { background: var(--olive); border-radius: 1px; }
+
+@media (max-width: 380px) {
+  .saved-grid { gap: 16px 10px; }
+}

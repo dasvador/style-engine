@@ -506,27 +506,40 @@ struct ImageResponse {
     image_url: Option<String>,
 }
 
+/// 이미지 캐시 키.
+///
+/// `outfit_image` 는 (outfit_hash, prompt_hash) 로 걸린다. 저장해 둔 룩의 그림을
+/// 찾을 때도 같은 값이 필요해서, 계산을 한 곳에 둔다 — 두 곳에서 따로 계산하면
+/// 규칙이 어긋나는 순간 캐시가 조용히 빗나가고 같은 그림을 다시 만든다.
+pub fn image_cache_keys(items: &str, genre: StyleGenre) -> (String, String, u64, String) {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut outfit_hasher = DefaultHasher::new();
+    items.hash(&mut outfit_hasher);
+    let outfit_hash_val = outfit_hasher.finish();
+
+    let prompt = build_image_prompt(genre, items, outfit_hash_val);
+    let mut prompt_hasher = DefaultHasher::new();
+    prompt.hash(&mut prompt_hasher);
+
+    (
+        format!("{outfit_hash_val:016x}"),
+        format!("{:016x}", prompt_hasher.finish()),
+        outfit_hash_val,
+        prompt,
+    )
+}
+
 async fn generate_image(
     State(state): State<AppState>,
     Json(body): Json<ImageRequest>,
 ) -> Result<Json<ImageResponse>, AppError> {
     // 캐시 체크: outfit_hash + prompt_hash
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    let mut outfit_hasher = DefaultHasher::new();
-    body.items.hash(&mut outfit_hasher);
-    let outfit_hash_val = outfit_hasher.finish();
-    let outfit_hash = format!("{:016x}", outfit_hash_val);
-
     // 이미지 프롬프트는 장르마다 다르다. 모르는 값이면 400 으로 돌려준다 —
     // 엉뚱한 장르의 이미지를 만들어 캐시에 넣는 것보다 낫다.
     let genre = crate::routes::parse_genre(body.mood.as_deref())?.unwrap_or(StyleGenre::Amekaji);
-    let prompt = build_image_prompt(genre, &body.items, outfit_hash_val);
-
-    let mut prompt_hasher = DefaultHasher::new();
-    prompt.hash(&mut prompt_hasher);
-    let prompt_hash = format!("{:016x}", prompt_hasher.finish());
+    let (outfit_hash, prompt_hash, _, prompt) = image_cache_keys(&body.items, genre);
 
     // DB 캐시 확인.
     //

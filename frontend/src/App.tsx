@@ -9,6 +9,7 @@ import { RegionModal } from './components/RegionModal';
 import { HomePage } from './pages/HomePage';
 import { ChatPage } from './pages/ChatPage';
 import { EvaluatePage } from './pages/EvaluatePage';
+import { LookbookPage } from './pages/LookbookPage';
 import { WardrobePage } from './pages/WardrobePage';
 import { ItemDetailPage } from './pages/ItemDetailPage';
 
@@ -88,6 +89,7 @@ export function App() {
             }
           />
           <Route path="evaluate" element={<EvaluatePage clothes={clothes.items} />} />
+          <Route path="lookbook" element={<LookbookPage />} />
           <Route
             path="wardrobe"
             element={

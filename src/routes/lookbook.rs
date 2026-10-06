@@ -28,6 +28,13 @@ pub struct LookRow {
     pub liked: bool,
     pub worn: bool,
     pub created_at: chrono::NaiveDateTime,
+    /// 이미 만들어 둔 그림의 경로. 없으면 아직 생성되지 않은 것이다.
+    ///
+    /// 화면이 저장된 룩마다 이미지를 요청하면, 캐시에 없는 것은 그 자리에서
+    /// 생성되기 시작한다 — 모아 보는 화면을 여는 것만으로 돈이 나간다.
+    /// 그래서 서버가 캐시를 조회해 있는 것만 내려 준다.
+    #[sqlx(default)]
+    pub image_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -58,7 +65,7 @@ async fn list_looks(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> Result<Json<Vec<LookRow>>, AppError> {
-    let rows = sqlx::query_as::<_, LookRow>(
+    let mut rows = sqlx::query_as::<_, LookRow>(
         "SELECT id, mood_key, title, weather_summary, reason, recommendation, \
          image_prompt, outfit_json, liked, worn, created_at \
          FROM lookbook_look WHERE user_id = ? ORDER BY created_at DESC LIMIT 60",
@@ -67,6 +74,31 @@ async fn list_looks(
     .fetch_all(&state.db)
     .await
     .map_err(|e| AppError::Internal(e.into()))?;
+
+    // 이미 만들어 둔 그림을 붙여 준다. 생성은 하지 않는다 — 모아 보는 화면을 여는
+    // 것만으로 이미지가 만들어지면 비용이 조용히 새어 나간다.
+    for row in &mut rows {
+        let Some(genre) = row
+            .mood_key
+            .as_deref()
+            .and_then(crate::models::style_vocab::StyleGenre::from_alias)
+        else {
+            continue;
+        };
+        let (outfit_hash, prompt_hash, _, _) =
+            crate::routes::chat::image_cache_keys(&row.image_prompt, genre);
+        row.image_path = sqlx::query_as::<_, (Option<String>,)>(
+            "SELECT image_path FROM outfit_image \
+             WHERE outfit_hash = ? AND prompt_hash = ? LIMIT 1",
+        )
+        .bind(&outfit_hash)
+        .bind(&prompt_hash)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|r| r.0);
+    }
 
     Ok(Json(rows))
 }

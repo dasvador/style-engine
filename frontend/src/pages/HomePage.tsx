@@ -68,7 +68,8 @@ export function HomePage({
   useEffect(() => {
     void (async () => {
       try {
-        const saved = await api.lookbook.list();
+        // 서버는 최신순으로 준다. 화면은 만든 순서대로 쌓이므로 뒤집는다.
+        const saved = (await api.lookbook.list()).slice().reverse();
         if (saved.length === 0) return;
         setLooks(
           saved.map((v) => ({
@@ -158,9 +159,14 @@ export function HomePage({
         added.push(l);
       }
       if (added.length > 0) {
-        // 새로 만든 코디가 맨 앞에 온다 — 늘어났다는 것이 눈에 보이게.
-        setLooks((prev) => [...added, ...prev]);
-        setActiveLook(0);
+        // 새 코디는 뒤에 붙인다.
+        //
+        // 앞에 넣으면 먼저 만든 코디가 뒤로 밀려, 보고 있던 카드가 매번 다른 번호로
+        // 옮겨 간다. 룩북은 앞에서부터 채워지는 편이 읽기 쉽다 — 01번은 계속 01번이다.
+        // 대신 새로 만든 첫 장으로 바로 넘겨 늘어난 것이 눈에 보이게 한다.
+        const firstNew = looksRef.current.length;
+        setLooks((prev) => [...prev, ...added]);
+        setActiveLook(firstNew);
       }
 
       // 새로 쌓인 카드의 이미지를 미리 받아 둔다. 썸네일이 비어 있으면 비교할 수가
@@ -368,6 +374,15 @@ export function HomePage({
               드려요. 만든 코디는 여기에 쌓여서, 나중에 다시 넘겨 보며 고를 수 있어요.
             </p>
           </>
+        )}
+
+        {looks.length > 0 && (
+          <div className="section-head" style={{ marginBottom: 0 }}>
+            <span />
+            <button className="link-action" onClick={() => navigate('/lookbook')}>
+              내 룩북 →
+            </button>
+          </div>
         )}
 
         {looks.length > 0 && (
