@@ -109,11 +109,16 @@ async fn list_clothing(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<ClothingResponse>>, AppError> {
     let items = clothing_repo::list_clothing(&state.db).await?;
+    // 장르는 조인 표에 있어 응답이 늘 비어 있었다. 목록 전체를 한 번에 읽어 채운다.
+    let mut genres = clothing_repo::get_all_style_genres(&state.db).await?;
     let mut result = Vec::with_capacity(items.len());
     for item in items {
         let seasons = clothing_repo::get_seasons(&state.db, &item.id).await?;
         let tw = clothing_repo::get_texture_worlds(&state.db, &item.id).await?;
-        result.push(to_response(item, seasons, tw));
+        let item_genres = genres.remove(&item.id).unwrap_or_default();
+        let mut res = to_response(item, seasons, tw);
+        res.style_genres = item_genres;
+        result.push(res);
     }
     Ok(Json(result))
 }
@@ -128,7 +133,11 @@ async fn get_clothing(
 
     let seasons = clothing_repo::get_seasons(&state.db, &clothing.id).await?;
     let tw = clothing_repo::get_texture_worlds(&state.db, &clothing.id).await?;
-    Ok(Json(to_response(clothing, seasons, tw)))
+    let genres = clothing_repo::get_style_genres(&state.db, &clothing.id).await?;
+
+    let mut res = to_response(clothing, seasons, tw);
+    res.style_genres = genres;
+    Ok(Json(res))
 }
 
 async fn update_clothing(
@@ -173,7 +182,11 @@ async fn update_clothing(
 
     let all_seasons = clothing_repo::get_seasons(&state.db, &clothing.id).await?;
     let all_tw = clothing_repo::get_texture_worlds(&state.db, &clothing.id).await?;
-    Ok(Json(to_response(clothing, all_seasons, all_tw)))
+    let genres = clothing_repo::get_style_genres(&state.db, &clothing.id).await?;
+
+    let mut res = to_response(clothing, all_seasons, all_tw);
+    res.style_genres = genres;
+    Ok(Json(res))
 }
 
 async fn delete_clothing(

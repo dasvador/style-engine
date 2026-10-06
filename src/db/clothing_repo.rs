@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use sqlx::MySqlPool;
 use uuid::Uuid;
 
@@ -181,6 +183,26 @@ pub async fn get_style_genres(
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().map(|r| r.0).collect())
+}
+
+/// 옷장 전체의 장르를 한 번에 읽는다.
+///
+/// 목록 화면은 아이템이 수백 개라, 아이템마다 질의하면 계절·질감에 장르까지
+/// 세 번씩 왕복한다. 조인 표는 아이템당 몇 줄뿐이므로 통째로 읽어 묶는 쪽이 싸다.
+pub async fn get_all_style_genres(
+    pool: &MySqlPool,
+) -> Result<HashMap<String, Vec<String>>, sqlx::Error> {
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT clothing_id, style_genre FROM clothing_style_genre ORDER BY style_genre",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut map: HashMap<String, Vec<String>> = HashMap::new();
+    for (clothing_id, genre) in rows {
+        map.entry(clothing_id).or_default().push(genre);
+    }
+    Ok(map)
 }
 
 /// 업로드된 옷의 성별. 표준 밖의 값은 무시한다 — 컬럼이 ENUM 이라 넣으면 실패한다.
