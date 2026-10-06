@@ -13,7 +13,7 @@
 use serde::Serialize;
 
 use crate::models::outfit::{OutfitContext, OutfitSlot, SlotKind};
-use crate::models::style_vocab::{Role, Saturation, Style, Tone, Weight};
+use crate::models::style_vocab::{Role, Saturation, Silhouette, Style, Tone, Weight};
 
 /// 하드필터 탈락 사유 코드. 각 사유는 서로 독립적이며 중복 적재 가능.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -388,6 +388,32 @@ fn score_balance(ctx: &OutfitContext) -> i32 {
         }
     }
 
+    // 실루엣 볼륨 — 상하의 부피 관계.
+    //
+    // 비율이 한 번 꺾이는 조합(위가 크고 아래가 좁거나 그 반대)이 가장 또렷하고,
+    // 위아래가 같이 커지면 실루엣이 뭉개지고 같이 좁으면 경직된다.
+    //
+    // 위쪽 부피는 아우터가 있으면 아우터로 본다 — 슬림한 니트 위에 오버사이즈
+    // 블레이저를 걸치면 보이는 실루엣은 블레이저 쪽이다.
+    //
+    // 가점은 이 축이 이미 최대값에서 시작하므로 다른 규칙이 깎아 둔 만큼만 드러난다
+    // (아래 밝기 대비 보너스도 같다). 중립 착장과 비율이 또렷한 착장의 점수가 같게
+    // 보이는 것은 clamp 때문이고, 버그가 아니다.
+    let upper_volume =
+        slot_silhouette(ctx, SlotKind::Outer).or(slot_silhouette(ctx, SlotKind::Top));
+    let lower_volume = slot_silhouette(ctx, SlotKind::Bottom);
+    if let (Some(upper), Some(lower)) = (upper_volume, lower_volume) {
+        use Silhouette::{Oversized, Regular, Slim};
+        s += match (upper, lower) {
+            (Oversized, Oversized) => -6,
+            (Slim, Slim) => -3,
+            (Oversized, Slim | Regular) | (Slim | Regular, Oversized) => 2,
+            // Regular/Relaxed 조합은 중립이다. 여기를 감점하면 실루엣이 아직 일괄
+            // regular 인 남성 옷장 전체가 이유 없이 깎인다.
+            _ => 0,
+        };
+    }
+
     // 자연톤 과다 soft — warm 3+ 이지만 구조 또는 어두움 anchor로 hard를 피한 경우만
     let temps: Vec<&str> = ctx
         .slots
@@ -400,6 +426,14 @@ fn score_balance(ctx: &OutfitContext) -> i32 {
     }
 
     s.clamp(0, AXIS_MAX)
+}
+
+/// 해당 슬롯의 실루엣 볼륨. 슬롯이 없거나 값이 없으면 `None`.
+fn slot_silhouette(ctx: &OutfitContext, slot: SlotKind) -> Option<Silhouette> {
+    ctx.slots
+        .iter()
+        .find(|s| s.slot == slot)
+        .and_then(|s| s.clothing.silhouette_volume)
 }
 
 // ─── Axis 2: coherence — texture/world 충돌, 세계관 과잉, 단조로움 ───
@@ -635,4 +669,147 @@ fn score_accessory(ctx: &OutfitContext) -> i32 {
     }
 
     s.clamp(0, AXIS_MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::clothing::Clothing;
+    use crate::models::style_vocab::Thickness;
+    use chrono::NaiveDateTime;
+
+    fn ts() -> NaiveDateTime {
+        NaiveDateTime::parse_from_str("2026-10-07 09:00:00", "%Y-%m-%d %H:%M:%S").unwrap()
+    }
+
+    /// 실루엣만 보는 테스트라 톤·역할을 비워 둔다 — 밝기 대비나 포인트 과다 규칙이
+    /// 끼어들면 실루엣 항의 기여를 분리할 수 없다.
+    fn garment(slot: SlotKind, silhouette: Option<Silhouette>) -> OutfitSlot {
+        OutfitSlot {
+            slot,
+            clothing: Clothing {
+                id: format!("{slot:?}"),
+                name: "테스트 아이템".into(),
+                category: slot.label().into(),
+                gender: None,
+                style_mood: None,
+                color: None,
+                thickness: Thickness::Medium,
+                image_url: None,
+                tone: None,
+                saturation: None,
+                style: None,
+                weight: None,
+                role: None,
+                color_temperature: None,
+                versatility: None,
+                statement_level: None,
+                formality_level: None,
+                visual_weight: None,
+                texture_depth: None,
+                visual_weight_v2: None,
+                texture_depth_v2: None,
+                grounding_score: None,
+                shadow_tone: None,
+                silhouette_volume: silhouette,
+                material_primary: None,
+                sub_category: None,
+                floating_score: None,
+                strong_style_score: None,
+                texture_keywords: None,
+                created_at: ts(),
+                updated_at: ts(),
+            },
+            seasons: Vec::new(),
+            texture_worlds: Vec::new(),
+        }
+    }
+
+    fn balance(upper: Option<Silhouette>, lower: Option<Silhouette>) -> i32 {
+        score_balance(&OutfitContext {
+            slots: vec![
+                garment(SlotKind::Top, upper),
+                garment(SlotKind::Bottom, lower),
+            ],
+            situation: None,
+        })
+    }
+
+    /// 위아래가 같이 커지면 실루엣이 뭉개지고, 같이 좁으면 경직된다.
+    /// 비율이 한 번 꺾인 조합이 가장 높아야 한다.
+    #[test]
+    fn volume_on_both_halves_scores_below_a_broken_proportion() {
+        use Silhouette::{Oversized, Slim};
+        let broken = balance(Some(Oversized), Some(Slim));
+        let both_big = balance(Some(Oversized), Some(Oversized));
+        let both_small = balance(Some(Slim), Some(Slim));
+
+        assert!(both_big < both_small, "{both_big} < {both_small}");
+        assert!(both_small < broken, "{both_small} < {broken}");
+    }
+
+    /// 값이 없는 것과 regular 는 같은 취급이어야 한다. 남성 옷장 154벌이 아직
+    /// 일괄 regular 여서, 여기가 중립이 아니면 남성 추천 전체가 이유 없이 움직인다.
+    #[test]
+    fn a_regular_or_missing_silhouette_is_neutral() {
+        use Silhouette::{Regular, Relaxed};
+        let neutral = balance(None, None);
+        assert_eq!(balance(Some(Regular), Some(Regular)), neutral);
+        assert_eq!(balance(None, Some(Regular)), neutral);
+        assert_eq!(balance(Some(Relaxed), Some(Relaxed)), neutral);
+        assert_eq!(balance(Some(Regular), Some(Relaxed)), neutral);
+    }
+
+    /// 아우터가 있으면 보이는 위쪽 부피는 아우터가 결정한다.
+    #[test]
+    fn an_outer_decides_the_upper_volume() {
+        use Silhouette::{Oversized, Slim};
+        // 슬림한 상의 + 슬림한 하의 = 같이 좁은 조합(감점).
+        let slim_pair = OutfitContext {
+            slots: vec![
+                garment(SlotKind::Top, Some(Slim)),
+                garment(SlotKind::Bottom, Some(Slim)),
+            ],
+            situation: None,
+        };
+        let without = score_balance(&slim_pair);
+
+        // 같은 조합에 오버사이즈 블레이저만 올리면 비율이 꺾인다.
+        let mut layered = slim_pair;
+        layered
+            .slots
+            .push(garment(SlotKind::Outer, Some(Oversized)));
+        assert!(
+            score_balance(&layered) > without,
+            "아우터가 위쪽 부피를 덮어써야 한다"
+        );
+    }
+
+    /// 가점은 다른 규칙이 깎아 둔 만큼만 드러난다. 중립 착장은 이미 축 상한이라
+    /// 비율이 또렷해도 점수가 같게 보인다 — clamp 때문이고 버그가 아니다.
+    #[test]
+    fn the_bonus_only_shows_once_something_else_has_deducted() {
+        use Silhouette::{Oversized, Regular, Slim};
+
+        // 상한에서는 가점이 보이지 않는다.
+        assert_eq!(
+            balance(Some(Oversized), Some(Slim)),
+            balance(Some(Regular), Some(Regular))
+        );
+
+        // 포인트를 2개 넣어 축을 먼저 깎으면 차이가 드러난다.
+        let with_accents = |upper, lower| {
+            let mut top = garment(SlotKind::Top, upper);
+            top.clothing.role = Some(Role::Accent);
+            let mut bottom = garment(SlotKind::Bottom, lower);
+            bottom.clothing.role = Some(Role::Accent);
+            score_balance(&OutfitContext {
+                slots: vec![top, bottom],
+                situation: None,
+            })
+        };
+        assert!(
+            with_accents(Some(Oversized), Some(Slim)) > with_accents(Some(Regular), Some(Regular))
+        );
+    }
 }

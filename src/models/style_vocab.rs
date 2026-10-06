@@ -191,6 +191,27 @@ style_vocab! {
 }
 
 style_vocab! {
+    /// 실루엣 볼륨. 핏이 몸에 붙는지 떨어지는지를 말한다.
+    ///
+    /// 값이 영어인 이유는 [`Thickness`] 와 같다 — 이 필드의 계약은
+    /// `20260507000002_add_item_physics_and_user_profile.sql` 에서
+    /// `slim/regular/relaxed/oversized` 로 선언됐다.
+    ///
+    /// 문자열이 아니라 타입인 이유: 같은 축인 `clothing_texture_world` 는 어휘를
+    /// 타입으로 묶지 않아 `나일론` · `매끄러운` 같은 값이 섞여 들어갔고, 그 행들은
+    /// 어느 규칙에도 걸리지 않으면서 조용히 살아 있다. 실루엣은 그 전에 못박는다.
+    Silhouette {
+        /// 몸선을 따라가는 좁은 핏. 스키니·테이퍼드·H라인.
+        Slim => "slim",
+        /// 과하지도 넉넉하지도 않은 기본 핏.
+        Regular => "regular",
+        /// 한 치수 여유. 스트레이트·릴랙스·루즈.
+        Relaxed => "relaxed",
+        /// 의도적으로 크게 입는 핏. 오버사이즈·오버핏·와이드.
+        Oversized => "oversized",
+    }
+}
+style_vocab! {
     /// 원단 두께. 온도 게이트가 이 값을 본다.
     ///
     /// 다른 어휘와 달리 값이 영어인 이유: 이 필드의 계약은 처음부터 `thin/medium/thick`

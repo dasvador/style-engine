@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use crate::models::clothing::Clothing;
 use crate::models::recommendation_history::OutfitRecommendationHistory;
-use crate::models::style_vocab::{Role, Saturation, Style, Tone};
+use crate::models::style_vocab::{Role, Saturation, Silhouette, Style, Tone};
 use crate::models::user_profile::UserStyleProfile;
 
 /// 3층 피드백 보정
@@ -835,7 +835,7 @@ fn body_balance_score(items: &[&Clothing], user: &UserStyleProfile) -> i32 {
     // 종아리 굵은 유저 → 슬림핏 패널티
     if user.calves.as_deref() == Some("thick")
         && let Some(b) = bottom
-        && b.silhouette_volume.as_deref() == Some("slim")
+        && b.silhouette_volume == Some(Silhouette::Slim)
     {
         s -= 3;
     }

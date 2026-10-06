@@ -1465,3 +1465,85 @@ expected_today_fit = "Pass"
 expected_preference = "Accept"
 notes = "울 오버셔츠(워크 구조템) + 데님 + 워크부츠. neutral top으로 밸런스."
 tags = ["real_data", "work_neutral_bridge"]
+
+# ═══════════════════════════════════════════════════════════════
+# 실루엣 볼륨 — 상하의 부피 관계.
+#
+# 다섯 케이스 모두 AC001(기준 출근룩)과 같은 신발·가방·상황·기온을 쓰고, 상의와
+# 하의는 속성이 전부 같은 실루엣 변형만 바꾼다. 그래서 점수 차이는 실루엣에서만 온다.
+#
+# 라벨은 이 케이스를 추가한 작업자가 붙인 것이고 사용자 검수를 받지 않았다.
+# 근거는 비율이 한 번 꺾이는 조합이 가장 또렷하고, 위아래가 같이 커지면 실루엣이
+# 뭉개지고 같이 좁으면 경직된다는 일반적인 스타일링 판단이다.
+# ═══════════════════════════════════════════════════════════════
+
+[[cases]]
+case_id = "SV001"
+situation = "출근"
+temperature_c = 20.0
+top = "oversized_white_shirt"
+bottom = "tapered_charcoal_slacks"
+shoes = "black_derby"
+bag = "black_brief"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "위가 크고 아래가 좁다. 비율이 한 번 꺾이는 가장 또렷한 조합."
+tags = ["silhouette", "office"]
+
+[[cases]]
+case_id = "SV002"
+situation = "출근"
+temperature_c = 20.0
+top = "oversized_white_shirt"
+bottom = "wide_charcoal_slacks"
+shoes = "black_derby"
+bag = "black_brief"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Reject"
+notes = "SV001과 상의가 같고 하의만 와이드. 위아래가 같이 커져 실루엣이 뭉개진다."
+tags = ["silhouette", "office"]
+
+[[cases]]
+case_id = "SV003"
+situation = "출근"
+temperature_c = 20.0
+top = "slim_white_shirt"
+bottom = "tapered_charcoal_slacks"
+shoes = "black_derby"
+bag = "black_brief"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Borderline"
+notes = "위아래가 같이 좁다. 나쁘지는 않지만 경직돼 보인다."
+tags = ["silhouette", "office"]
+
+[[cases]]
+case_id = "SV004"
+situation = "출근"
+temperature_c = 20.0
+top = "slim_white_shirt"
+bottom = "tapered_charcoal_slacks"
+outer = "oversized_navy_blazer"
+shoes = "black_derby"
+bag = "black_brief"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "SV003에 오버사이즈 블레이저만 추가. 보이는 위쪽 부피는 아우터가 결정하므로 비율이 꺾인다."
+tags = ["silhouette", "office"]
+
+[[cases]]
+case_id = "SV005"
+situation = "출근"
+temperature_c = 20.0
+top = "white_shirt"
+bottom = "regular_charcoal_slacks"
+shoes = "black_derby"
+bag = "black_brief"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "상의는 실루엣 값이 없고 하의는 regular. 가점도 감점도 없어야 한다 — 남성 옷장이 아직 일괄 regular 라서 이 중립성이 중요하다."
+tags = ["silhouette", "office", "anchor"]

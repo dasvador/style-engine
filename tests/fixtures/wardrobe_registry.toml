@@ -1611,3 +1611,89 @@ color_temperature = "neutral"
 weight = "무거움"
 formality_level = 2
 texture_worlds = ["workwear"]
+
+# ───────────────────────────────────────────────────────────────
+# 실루엣 전용 변형.
+#
+# 아래 아이템은 각각 white_shirt / charcoal_slacks / navy_blazer 와 속성이 모두
+# 같고 `silhouette` 하나만 다르다. 실루엣 항이 점수에 미치는 영향만 분리해서
+# 재려면 다른 축이 전부 고정돼야 한다.
+# ───────────────────────────────────────────────────────────────
+
+[items.oversized_white_shirt]
+name = "화이트 오버사이즈 셔츠"
+category = "상의"
+thickness = "thin"
+style = "포멀"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 3
+silhouette = "oversized"
+
+[items.slim_white_shirt]
+name = "화이트 슬림 셔츠"
+category = "상의"
+thickness = "thin"
+style = "포멀"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 3
+silhouette = "slim"
+
+[items.wide_charcoal_slacks]
+name = "차콜 와이드 슬랙스"
+category = "하의"
+style = "포멀"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 4
+silhouette = "oversized"
+texture_worlds = ["tailoring"]
+
+[items.tapered_charcoal_slacks]
+name = "차콜 테이퍼드 슬랙스"
+category = "하의"
+style = "포멀"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 4
+silhouette = "slim"
+texture_worlds = ["tailoring"]
+
+[items.regular_charcoal_slacks]
+name = "차콜 레귤러 슬랙스"
+category = "하의"
+style = "포멀"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 4
+silhouette = "regular"
+texture_worlds = ["tailoring"]
+
+[items.oversized_navy_blazer]
+name = "네이비 오버사이즈 블레이저"
+category = "아우터"
+style = "포멀"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 4
+silhouette = "oversized"
+texture_worlds = ["tailoring"]

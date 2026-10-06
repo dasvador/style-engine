@@ -2,7 +2,9 @@ use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
-use crate::models::style_vocab::{Role, Saturation, Style, StyleGenre, Thickness, Tone, Weight};
+use crate::models::style_vocab::{
+    Role, Saturation, Silhouette, Style, StyleGenre, Thickness, Tone, Weight,
+};
 
 /// DB row for clothing table
 #[derive(Debug, Clone, sqlx::FromRow, Serialize)]
@@ -31,7 +33,7 @@ pub struct Clothing {
     pub texture_depth_v2: Option<i8>,
     pub grounding_score: Option<i8>,
     pub shadow_tone: Option<String>,
-    pub silhouette_volume: Option<String>,
+    pub silhouette_volume: Option<Silhouette>,
     pub material_primary: Option<String>,
     pub sub_category: Option<String>,
     pub floating_score: Option<i8>,
