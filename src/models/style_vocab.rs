@@ -220,23 +220,23 @@ style_vocab! {
     /// variant 는 하나이고, `style_mood` 에만 성별별로 행이 있다.
     StyleGenre {
         // ─── 남녀 공용 ───
-        /// 남녀 모두에게 노출된다. 예전 남성 `minimal`("미니멀 캐주얼")이 여기로 합쳐졌다.
-        MinimalClassic => "minimal_classic",
+        /// 장식 최소화, 단순한 실루엣, 적은 색상.
+        Minimal => "minimal",
+        /// 셔츠·재킷·트렌치, 단정한 핏. 예전 남성 `smart_casual` 이 여기로 합쳐졌다.
+        Classic => "classic",
         Street => "street",
         SportyCasual => "sporty_casual",
 
         // ─── 남성 노출 ───
-        SmartCasual => "smart_casual",
         Amekaji => "amekaji",
         Preppy => "preppy",
         Workwear => "workwear",
         OutdoorCasual => "outdoor_casual",
 
         // ─── 여성 노출 ───
-        RomanticFeminine => "romantic_feminine",
+        Romantic => "romantic",
         ModernChic => "modern_chic",
         Bohemian => "bohemian",
-        ModelOffDuty => "model_off_duty",
         Mannish => "mannish",
     }
 }
@@ -275,20 +275,32 @@ impl StyleGenre {
         }
 
         Some(match key.as_str() {
-            // 미니멀 클래식 — 예전 남성 "미니멀 캐주얼"(`minimal`)이 이 장르로 합쳐졌다.
+            // 미니멀 — "미니멀 클래식" 을 미니멀과 클래식으로 나누기 전의 값들.
             // `minimal` 을 계속 받아주지 않으면 이전 전 저장된 옷과 예전 클라이언트가
             // 보내는 값이 400 으로 떨어진다.
             "quiet_luxury"
             | "quietluxury"
             | "퀴엣_럭셔리"
             | "콰이엇_럭셔리"
-            | "minimal"
             | "minimal_casual"
+            | "minimal_classic"
             | "미니멀"
             | "미니멀_캐주얼"
-            | "미니멀_클래식" => StyleGenre::MinimalClassic,
-            // 스마트 캐주얼
-            "business_casual" | "스마트_캐주얼" => StyleGenre::SmartCasual,
+            | "미니멀_클래식" => StyleGenre::Minimal,
+            // 모델 오프듀티는 없앴다. 미니멀·클래식·스트리트 어디로도 나올 수 있어
+            // 다른 무드와 겹쳤기 때문이다. 아이템은 마이그레이션이 셋으로 나눠 옮겼고,
+            // 예전 값이 들어오면 가장 가까운 미니멀로 읽는다.
+            "model_off_duty"
+            | "off_duty"
+            | "offduty"
+            | "modeloffduty"
+            | "오프듀티_모델"
+            | "모델_오프듀티" => StyleGenre::Minimal,
+            // 클래식 — 남성 "스마트 캐주얼" 이 여기로 합쳐졌다. 정의가 사실상 같아
+            // 둘을 함께 두면 다시 겹친다.
+            "smart_casual" | "business_casual" | "스마트_캐주얼" | "클래식" => {
+                StyleGenre::Classic
+            }
             // 아메카지
             "american_casual" | "americancasual" | "아메카지" => StyleGenre::Amekaji,
             // 프레피
@@ -302,7 +314,13 @@ impl StyleGenre {
                 StyleGenre::OutdoorCasual
             }
             // 로맨틱 페미닌 — 코켓은 하위 표현으로 흡수한다.
-            "coquette" | "코켓" | "feminine_casual" | "feminine" => StyleGenre::RomanticFeminine,
+            "coquette"
+            | "코켓"
+            | "feminine_casual"
+            | "feminine"
+            | "romantic_feminine"
+            | "로맨틱"
+            | "로맨틱_페미닌" => StyleGenre::Romantic,
             // 모던 시크
             "office_siren" | "officesiren" | "오피스_사이렌" | "office" => {
                 StyleGenre::ModernChic
@@ -318,13 +336,6 @@ impl StyleGenre {
             | "보헤미안"
             | "vintage"
             | "빈티지" => StyleGenre::Bohemian,
-            // 모델 오프듀티
-            "off_duty"
-            | "offduty"
-            | "model_off_duty"
-            | "modeloffduty"
-            | "오프듀티_모델"
-            | "모델_오프듀티" => StyleGenre::ModelOffDuty,
             // 스트리트
             "streetwear" | "street_style" | "스트릿" | "스트리트" => StyleGenre::Street,
             // 매니시
@@ -389,16 +400,16 @@ mod tests {
     #[test]
     fn old_genre_names_map_to_current_ones() {
         let cases = [
-            ("quiet_luxury", StyleGenre::MinimalClassic),
-            ("Quiet Luxury", StyleGenre::MinimalClassic),
-            ("coquette", StyleGenre::RomanticFeminine),
-            ("feminine_casual", StyleGenre::RomanticFeminine),
+            ("quiet_luxury", StyleGenre::Minimal),
+            ("Quiet Luxury", StyleGenre::Minimal),
+            ("coquette", StyleGenre::Romantic),
+            ("feminine_casual", StyleGenre::Romantic),
             ("office siren", StyleGenre::ModernChic),
             ("boho", StyleGenre::Bohemian),
             ("Boho-Revival", StyleGenre::Bohemian),
             ("vintage", StyleGenre::Bohemian),
-            ("off_duty", StyleGenre::ModelOffDuty),
-            ("model off duty", StyleGenre::ModelOffDuty),
+            ("off_duty", StyleGenre::Minimal),
+            ("model off duty", StyleGenre::Minimal),
             ("streetwear", StyleGenre::Street),
             ("boyish", StyleGenre::Mannish),
             ("athleisure", StyleGenre::SportyCasual),
@@ -415,10 +426,10 @@ mod tests {
     fn old_male_genre_names_map_to_current_ones() {
         let cases = [
             // "미니멀 캐주얼"은 이름이 바뀐 것이 아니라 미니멀 클래식으로 합쳐졌다.
-            ("minimal", StyleGenre::MinimalClassic),
-            ("minimal_casual", StyleGenre::MinimalClassic),
-            ("Minimal Casual", StyleGenre::MinimalClassic),
-            ("미니멀 캐주얼", StyleGenre::MinimalClassic),
+            ("minimal", StyleGenre::Minimal),
+            ("minimal_casual", StyleGenre::Minimal),
+            ("Minimal Casual", StyleGenre::Minimal),
+            ("미니멀 캐주얼", StyleGenre::Minimal),
             ("아메카지", StyleGenre::Amekaji),
             ("amekaji", StyleGenre::Amekaji),
             ("스트릿", StyleGenre::Street),
@@ -434,9 +445,9 @@ mod tests {
     #[test]
     fn new_male_genre_aliases_normalize() {
         let cases = [
-            ("smart casual", StyleGenre::SmartCasual),
-            ("Business-Casual", StyleGenre::SmartCasual),
-            ("스마트 캐주얼", StyleGenre::SmartCasual),
+            ("smart casual", StyleGenre::Classic),
+            ("Business-Casual", StyleGenre::Classic),
+            ("스마트 캐주얼", StyleGenre::Classic),
             ("american casual", StyleGenre::Amekaji),
             ("preppy", StyleGenre::Preppy),
             ("Ivy League", StyleGenre::Preppy),
@@ -462,14 +473,19 @@ mod tests {
     /// 쪽 데이터를 통째로 놓친다. 노출 성별은 `style_mood` 테이블이 정한다.
     #[test]
     fn shared_genres_have_a_single_identifier() {
-        for shared in ["minimal_classic", "street", "sporty_casual"] {
+        for shared in ["minimal", "classic", "street", "sporty_casual"] {
             let genre = StyleGenre::from_alias(shared).expect(shared);
             assert_eq!(genre.as_str(), shared);
         }
-        // 남성 "미니멀 캐주얼"과 여성 "미니멀 클래식"은 이제 같은 장르다.
+        // 예전 "미니멀 클래식" 은 미니멀로 읽힌다.
         assert_eq!(
             StyleGenre::from_alias("minimal"),
             StyleGenre::from_alias("minimal_classic")
+        );
+        // 남성 "스마트 캐주얼" 은 클래식으로 합쳐졌다.
+        assert_eq!(
+            StyleGenre::from_alias("smart_casual"),
+            Some(StyleGenre::Classic)
         );
     }
 
@@ -478,8 +494,8 @@ mod tests {
     #[test]
     fn every_exposed_genre_is_a_canonical_value() {
         let male = [
-            "minimal_classic",
-            "smart_casual",
+            "minimal",
+            "classic",
             "amekaji",
             "preppy",
             "workwear",
@@ -488,11 +504,11 @@ mod tests {
             "sporty_casual",
         ];
         let female = [
-            "minimal_classic",
-            "romantic_feminine",
+            "minimal",
+            "classic",
+            "romantic",
             "modern_chic",
             "bohemian",
-            "model_off_duty",
             "street",
             "mannish",
             "sporty_casual",
@@ -529,13 +545,13 @@ mod tests {
             // 데님·치노는 둘 다 쓰지만 워크웨어는 작업복 디테일이 기준이다.
             (StyleGenre::Amekaji, StyleGenre::Workwear),
             // 둘 다 단정하지만 프레피는 아이비리그 아이템이 기준이다.
-            (StyleGenre::SmartCasual, StyleGenre::Preppy),
+            (StyleGenre::Classic, StyleGenre::Preppy),
             // 둘 다 기능성 소재를 쓰지만 스포티는 운동복 쪽이다.
             (StyleGenre::OutdoorCasual, StyleGenre::SportyCasual),
             // 둘 다 편한 실루엣이지만 스트리트는 그래픽·서브컬처 쪽이다.
             (StyleGenre::Street, StyleGenre::SportyCasual),
             // 둘 다 절제돼 있지만 스마트 캐주얼은 활용 상황이 기준이다.
-            (StyleGenre::MinimalClassic, StyleGenre::SmartCasual),
+            (StyleGenre::Minimal, StyleGenre::Classic),
         ];
         for (a, b) in pairs {
             assert_ne!(a, b);
@@ -600,8 +616,8 @@ mod tests {
             "\"outdoor_casual\""
         );
         assert_eq!(
-            serde_json::to_string(&StyleGenre::SmartCasual).unwrap(),
-            "\"smart_casual\""
+            serde_json::to_string(&StyleGenre::Classic).unwrap(),
+            "\"classic\""
         );
 
         // serde 는 별칭을 받지 않는다 — 별칭은 요청 경계의 `from_alias` 담당이다.

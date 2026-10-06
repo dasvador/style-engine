@@ -861,7 +861,7 @@ impl ImageGenMetrics {
 fn genre_setting(genre: StyleGenre) -> (&'static [&'static str], &'static str) {
     use StyleGenre as G;
     match genre {
-        G::MinimalClassic => (
+        G::Minimal => (
             &[
                 "a pale limestone wall with one dark window frame",
                 "the smooth concrete side of a modern building, one shadow line across it",
@@ -869,7 +869,7 @@ fn genre_setting(genre: StyleGenre) -> (&'static [&'static str], &'static str) {
             ],
             "soft overcast light from one side",
         ),
-        G::RomanticFeminine => (
+        G::Romantic => (
             &[
                 "the ivory-painted exterior of a small cafe, green foliage at one edge",
                 "a garden entrance with an old iron gate and planting behind it",
@@ -901,15 +901,6 @@ fn genre_setting(genre: StyleGenre) -> (&'static [&'static str], &'static str) {
             ],
             "bright open daylight",
         ),
-        G::ModelOffDuty => (
-            &[
-                "a crossing with worn white markings and a stone kerb",
-                "a shopfront with a plain awning and a metal handrail",
-                "the brick side of an apartment block with one recessed doorway",
-                "a bus stop shelter with glass and painted steel",
-            ],
-            "neutral daylight from the side",
-        ),
         G::Street => (
             &[
                 "rough concrete and a metal roller shutter in a back alley, a few small weathered posters",
@@ -926,11 +917,12 @@ fn genre_setting(genre: StyleGenre) -> (&'static [&'static str], &'static str) {
             ],
             "warm afternoon light from the side",
         ),
-        G::SmartCasual => (
+        G::Classic => (
             &[
                 "a tree-lined pavement outside an office, a glass door catching a soft reflection",
                 "a stone building entrance with a shallow flight of steps",
                 "a covered arcade with plain columns",
+                "a crossing with worn white markings and a stone kerb",
             ],
             "soft morning light from the side",
         ),
@@ -948,7 +940,7 @@ fn genre_setting(genre: StyleGenre) -> (&'static [&'static str], &'static str) {
                 "a timber yard fence with stacked boards behind it",
                 "a workshop wall of painted breeze block with one steel door",
             ],
-            "flat overcast light with enough direction to show the weave of the fabric",
+            "soft overcast light with a clear direction, enough to show the weave of the fabric",
         ),
         G::OutdoorCasual => (
             &[
@@ -996,16 +988,31 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
     // 그래서 비율을 지정하는 대신 "실제 사람"이라고만 말하고, 판단은 모델에 맡긴다.
     // 다만 주름·모공을 강하게 요구하면 반대로 얼굴을 일부러 거칠게 만들기 때문에
     // subtle / natural / unretouched 수준에서 멈춘다.
+    // 얼굴은 수치가 아니라 캐스팅과 빛으로 올린다.
+    //
+    // 예전에 "very small head", "V-line face" 같은 치수를 적었더니 게임 캐릭터가
+    // 나왔다. 그걸 걷어낸 뒤에는 질감만 요구하고 건강함을 요구하지 않아서, 이번엔
+    // 피부가 칙칙하게 나왔다. 두 실패가 반대 방향이므로 양쪽을 다 적는다 —
+    // 모공과 비대칭은 남기되, 윤기 없고 얼룩진 피부는 명시적으로 막는다.
     let base_face = format!(
-        "a real adult woman with natural facial proportions and subtle asymmetry. \
-         Realistic skin with visible pores, fine texture, slight tonal variation, \
-         natural under-eye detail, individual flyaway hairs, and minimal everyday makeup. \
-         Her expression should feel spontaneous rather than posed. Hairstyle: {}.",
+        "a real adult woman with distinctive individual facial features and natural facial \
+         asymmetry — a particular person rather than a generic type. \
+         Realistic skin texture: visible pores, fine facial hair and baby hairs at the \
+         hairline, small variations in skin tone, subtle imperfections. The skin is healthy \
+         and well-rested — even in tone and warm in colour, never sallow, grey, blotchy or \
+         tired — but it is never smoothed. Groomed natural brows, minimal everyday makeup, \
+         natural lips, realistic eyes with subtle reflections and a clear catchlight. \
+         Her expression is relaxed and spontaneous, not posed for anyone. \
+         Hairstyle: {}, individual strands and a few loose hairs visible.",
         hair
     );
+
+    // 비율은 해부학을 조작하지 않고 자세로 만든다. 어깨가 열리고 목이 길면 같은
+    // 체형이라도 머리가 커 보이지 않는다.
     let base_body = "realistic adult body proportions, natural head-to-body ratio, \
-         believable shoulder width and waist, ordinary anatomical variation, \
-         natural posture and weight distribution while standing or walking.";
+         believable shoulder width and waist, ordinary anatomical variation. \
+         She carries herself with an easy upright posture — shoulders relaxed and open, \
+         neck long, chin level — with natural weight distribution while standing or walking.";
 
     // 자세는 장소에 맞춰 장르별로 다르게 둔다.
     //
@@ -1016,17 +1023,41 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
          or face, and she is not posing for the photographer. \
          Full body visible from head to shoes.";
 
-    // 촬영 방식은 장르와 무관하게 같다. 여기서 한 번 정의해 모든 arm 이 같은 문장을
-    // 쓴다 — 장르별로 흩어 두면 한쪽만 고쳐지고 나머지가 남는다.
-    //
-    // 목표는 "평범한 일상 스냅"이 아니라 "실제로 있을 법한, 감각적으로 촬영한 화보"다.
-    // 인물은 편하게 두되 화면 전체에는 의도된 구도와 색의 조화가 있어야 한다.
-    let base_photo = "Natural fashion editorial photography. Choose a real location \
-         whose colours and materials suit the clothes, and let the texture and light of \
-         the background carry the mood of the style quietly. The subject looks relaxed and \
-         natural, while the frame as a whole feels deliberately composed, with colours in \
-         harmony. Shot on a full-frame camera with a 50mm lens, natural available light, \
-         realistic skin texture, subtle sensor grain, imperfect fabric folds. \
+    // 촬영 조건은 장르와 무관하게 같다. 인물을 묘사하기 전에 "어떤 카메라로 어떤
+    // 상황에서 찍은 사진인지" 를 먼저 정해야 사진처럼 나온다. 그래서 카메라·구도·
+    // 색·스타일을 각각 따로 적는다 — 한 문단에 뭉쳐 두면 한쪽만 고쳐지고 나머지가 남는다.
+
+    // 렌즈와 카메라 높이. 두상이 커 보이는 건 대개 광각과 하이앵글 탓이다.
+    let base_camera = "Shot on a full-frame mirrorless camera with an 85mm f/2 lens, \
+         from roughly chest height. Full-length framing with natural lens compression and \
+         a shallow depth of field — the background recognisable but softly out of focus. \
+         Never shot from above: a high camera enlarges the head and shortens the legs. \
+         Natural perspective and realistic optical characteristics, no wide-angle distortion.";
+
+    // 사진을 찍고 있다는 상황 자체를 적어 준다. 이게 빠지면 카메라를 의식한
+    // 스톡 사진 자세가 나온다.
+    let base_composition = "Candid editorial photography: she is going about her own \
+         business and is not aware of the camera, photographed from across the pavement. \
+         Slightly imperfect framing, off-centre composition with some negative space, \
+         relaxed natural posture, and a believable spatial relationship between her and \
+         the background. Full-length framing: her whole body is inside the frame with \
+         visible ground beneath her feet and a clear margin of space below the shoes — \
+         the bottom edge never cuts across her legs, ankles or feet.";
+
+    // 색은 과하게 올리지 않는다. 채도를 눌러야 옷의 실제 색이 읽힌다.
+    let base_color = "Natural cinematic colour grading with realistic skin tones, \
+         subtle contrast, restrained saturation and a fine film-like grain. \
+         Balanced exposure with no blown highlights.";
+
+    // 지향점. "평범한 일상 스냅" 이 아니라 "실제로 있을 법한, 감각적으로 촬영한 화보".
+    let base_style = "Contemporary fashion lookbook photography — the kind of premium \
+         online editorial that shows how real clothes are actually worn. The styling reads \
+         current, wearable and effortless rather than expensive or ceremonial. \
+         An authentic candid moment, photorealistic, understated. \
+         Choose a real location whose colours and materials suit the clothes, and let the \
+         texture and light of the background carry the mood quietly. The frame as a whole \
+         feels deliberately composed, with a muted neutral palette and slightly desaturated \
+         tones. \
          A real person photographed on location, not a digitally created fashion avatar.";
 
     // 사진에 나오는 옷은 추천된 옷이어야 한다.
@@ -1041,10 +1072,31 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
          Keep the fit and the material of each listed garment exactly as described — the \
          styling notes below say how the pieces sit together, not how they are cut.";
 
+    // 옷·가방·신발도 얼굴만큼 중요한 피사체라고 선언한다.
+    //
+    // 아이템 이름만 넘기면 이미지 모델은 가방을 "가방" 수준으로 뭉갠다 — 가죽 결이
+    // 플라스틱처럼 되고 신발 앞코가 흐려진다. 무엇을 입었는지는 {items} 가 정하므로
+    // 여기서는 그것들을 "얼마나 또렷하게, 어떤 질감으로" 그릴지만 말한다.
+    // 아이템 자체를 바꾸라는 지시가 아니므로 base_fidelity 와 충돌하지 않는다.
+    let base_garments = "The clothing and the accessories deserve the same visual attention \
+         as the face — they are subjects of this photograph, not background detail. \
+         Fabric: realistic garment weight, visible textile weave, natural draping under \
+         gravity, compression folds where the body bends, subtle wrinkles rather than a \
+         perfectly smooth surface. \
+         Bag: believable construction with correct straps and hardware, realistic leather \
+         thickness, natural grain, precise stitching and clean edge finishing; metal that \
+         reads as solid metal with restrained reflections, never mirror-bright. \
+         Shoes: correct proportions and a clearly defined sole, visible stitching and \
+         correct laces or closures, realistic creasing at the flex point. \
+         Each piece holds its own shape and looks well-constructed rather than generic.";
+
     // 인물과 배경이 따로 놀지 않게 하는 조건. 빛의 방향·색온도·그림자가 어긋나면
     // 인물만 따로 렌더링해 합성한 것처럼 보인다.
-    let base_light = "The subject and the background share one light: the same direction, \
-         the same colour temperature, and shadows that agree with each other. \
+    let base_light = "Soft directional light on her face with a gentle shadow falloff across \
+         the cheek, realistic highlights on the skin, and a clear catchlight in the eyes — \
+         never flat, shadowless light that leaves the face dull. \
+         The subject and the background share one light: the same direction, the same \
+         colour temperature, and shadows that agree with each other. \
          She was photographed standing in this place, not cut out and placed into it.";
 
     // 회피 목록에서 "ugly face", "big head", "ordinary pedestrian look" 을 뺐다.
@@ -1058,44 +1110,76 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
          impossibly small head, elongated limbs, artificial body proportions, \
          perfect facial symmetry, wax figure, mannequin, \
          distorted face, distorted mouth, awkward lip shape, \
+         sallow or grey skin, blotchy or muddy complexion, tired dull face, \
+         heavy under-eye shadows, flat shadowless light on the face, \
+         high camera angle looking down at the subject, wide-angle facial distortion, \
+         waxy face, unnatural HDR, oversharpening, excessive makeup, \
+         generic stock-photo smile, fashion-model posing, perfectly posed stock photo, \
          catalog pose, ecommerce posture, stiff standing, symmetrical front pose, \
          cropped body, cropped legs, tight framing, oversaturated colors, harsh lighting, \
          hair clips, jewellery, props or accessories that are not part of the listed outfit, \
          heavy colour grading, a single colour washed over the whole frame, \
-         studio backdrop, obvious set dressing, subject lit differently from the background";
+         studio backdrop, obvious set dressing, subject lit differently from the background, \
+         cheap-looking materials, plastic-looking leather, low-detail fabrics, \
+         blurry or poorly defined bag, mushy undefined shoes, cropped or hidden footwear, \
+         generic fashion details, flat untextured garments, \
+         waxy leather, fake metallic reflections, excessive gloss, \
+         melted or deformed shoe shapes, incorrect shoelaces, warped accessories, \
+         floating straps, impossible garment seams, overly perfect fabric surfaces, \
+         luxury-campaign stiffness, ceremonial posing, clothes that look unworn";
 
     match genre {
-        StyleGenre::MinimalClassic => format!(
+        StyleGenre::Minimal => format!(
             r#"Fashion editorial photograph of a woman in her late 20s, dressed in a quiet, understated way. She must be female.
 
 Face: {base_face}
 
 Body: {base_body}
 
-Outfit: The female model is wearing {items} — worn with restraint: clean lines, nothing fussy, no visible branding. Quality reads through texture and drape rather than through logos. {base_fidelity}
+Outfit: The female model is wearing {items} — worn with the decoration stripped out: simple, unbroken silhouettes, a narrow range of colours across the whole look, no visible pattern or branding. Interest comes from the cut and the surface of the cloth, nothing added. {base_fidelity}
+
+Garments: {base_garments}
 
 Pose: standing still, adjusting a coat cuff, looking away from the camera. {base_pose_rule}
 
-Setting: {setting}; {light}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. {base_light}
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
 
-Aesthetic: {base_photo}
+Lighting: {light}. {base_light}
+
+Camera: {base_camera}
+
+Composition: {base_composition}
+
+Colour: {base_color}
+
+Style: {base_style}
 
 Avoid: {base_avoid}, logos, bold patterns, streetwear elements, sporty pieces, romantic frills, oversaturated colors."#
         ),
-        StyleGenre::RomanticFeminine => format!(
+        StyleGenre::Romantic => format!(
             r#"Fashion editorial photograph of a woman in her early 20s, dressed in a soft, romantic way. She must be female.
 
 Face: {base_face}
 
 Body: {base_body}
 
-Outfit: The female model is wearing {items} — worn with intentional softness — the lighter, more fluid pieces allowed to move, the proportions considered rather than sweet. Romantic and grown-up, never childish. {base_fidelity}
+Outfit: The female model is wearing {items} — worn to let the soft things move: fluid fabrics that fall and gather, curved lines rather than straight ones, and any ruffle, lace or gathering in the pieces allowed to show. Light in colour and light in weight. {base_fidelity}
+
+Garments: {base_garments}
 
 Pose: standing near a doorway, one hand resting on her bag strap, weight on one leg. {base_pose_rule}
 
-Setting: {setting}; {light}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. {base_light}
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
 
-Aesthetic: {base_photo}
+Lighting: {light}. {base_light}
+
+Camera: {base_camera}
+
+Composition: {base_composition}
+
+Colour: {base_color}
+
+Style: {base_style}
 
 Avoid: {base_avoid}, masculine styling, dark heavy tones, oversized baggy fit, street edge, sporty elements."#
         ),
@@ -1106,13 +1190,23 @@ Face: {base_face}
 
 Body: {base_body}
 
-Outfit: The female model is wearing {items} — worn sharply: a controlled silhouette, precise lines, everything sitting exactly where it should. Pressed and intentional, closer to soft office than to costume. {base_fidelity}
+Outfit: The female model is wearing {items} — worn with a sharp, deliberate line: a crisp silhouette with a clear edge, an asymmetric balance rather than a symmetrical one, and a strong contrast between light and dark across the look. {base_fidelity}
+
+Garments: {base_garments}
 
 Pose: mid-stride, walking a few steps, looking ahead. {base_pose_rule}
 
-Setting: {setting}; {light}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. {base_light}
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
 
-Aesthetic: {base_photo}
+Lighting: {light}. {base_light}
+
+Camera: {base_camera}
+
+Composition: {base_composition}
+
+Colour: {base_color}
+
+Style: {base_style}
 
 Avoid: {base_avoid}, casual sneakers, oversized baggy fit, vintage distressing, romantic frills, sporty elements."#
         ),
@@ -1123,13 +1217,23 @@ Face: {base_face}
 
 Body: {base_body}
 
-Outfit: The female model is wearing {items} — worn loosely: layers that move, texture carrying the look, warm and lived-in. Polished rather than hippie. {base_fidelity}
+Outfit: The female model is wearing {items} — worn loose and layered: natural fibres with visible texture, layers that overlap without being tucked or fastened, and any pattern in the pieces left to read. Warm, earthy colour rather than clean brights. {base_fidelity}
+
+Garments: {base_garments}
 
 Pose: standing with one hand in a pocket, hair moving slightly in the air. {base_pose_rule}
 
-Setting: {setting}; {light}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. {base_light}
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
 
-Aesthetic: {base_photo}
+Lighting: {light}. {base_light}
+
+Camera: {base_camera}
+
+Composition: {base_composition}
+
+Colour: {base_color}
+
+Style: {base_style}
 
 Avoid: {base_avoid}, minimal clean styling, corporate look, sporty elements, neon colors, tech fabrics."#
         ),
@@ -1143,35 +1247,28 @@ Face: {base_face}
 
 Body: {base_body}
 
-Outfit: The female model is wearing {items} — worn for movement: what is fitted stays close to the body, what is relaxed is allowed to hang. Comfortable but deliberate — someone running errands after a workout, not on the way to the gym. {base_fidelity}
+Outfit: The female model is wearing {items} — worn for movement: technical and knitted performance fabrics, elasticated or drawcord waists and cuffs, a silhouette built for activity. Function visible in the construction rather than decoration. {base_fidelity}
+
+Garments: {base_garments}
 
 Pose: mid-stride on a path, bag on one shoulder, relaxed and unhurried. {base_pose_rule}
 
-Setting: {setting}; {light}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. {base_light}
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
 
-Aesthetic: {base_photo}
+Lighting: {light}. {base_light}
+
+Camera: {base_camera}
+
+Composition: {base_composition}
+
+Colour: {base_color}
+
+Style: {base_style}
 
 Avoid: {base_avoid}, formal styling, vintage distressing, dark moody tones, heavy makeup, aggressive gym energy, harsh lighting."#
         ),
         // 신규 장르. 애슬레저를 스포티 캐주얼로 분리하면서 비게 된 자리를 채운다.
         // 데님·가죽재킷·티셔츠 같은 기본 아이템에 힘을 뺀 구성이 이 장르의 정의다.
-        StyleGenre::ModelOffDuty => format!(
-            r#"Fashion editorial photograph of a woman in her 20s on a normal day out. She must be female.
-
-Face: {base_face}
-
-Body: {base_body}
-
-Outfit: The female model is wearing {items} — worn with deliberate proportion: one volume played against another — something close to the body against something relaxed — and the materials left to contrast, a soft knit or jersey against rigid denim or smooth leather. The pieces are simple, but the fit and the balance are chosen rather than accidental. {base_fidelity}
-
-Pose: walking at an easy pace, looking off to the side. {base_pose_rule}
-
-Setting: {setting}; {light}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. {base_light}
-
-Aesthetic: {base_photo}
-
-Avoid: {base_avoid}, runway styling, evening wear, heavy layering, athletic leggings, sports bra, gym clothing, romantic frills."#
-        ),
         StyleGenre::Street => format!(
             r#"Fashion editorial photograph of a woman in her late teens or early 20s, dressed in streetwear. She must be female.
 
@@ -1179,13 +1276,23 @@ Face: {base_face}
 
 Body: {base_body}
 
-Outfit: The female model is wearing {items} — worn with intentional imbalance: volume set against fit, layers that clash on purpose. Confident rather than tidy, never accidental. {base_fidelity}
+Outfit: The female model is wearing {items} — worn oversized and off-balance: volume through the shoulders and legs, one piece clearly larger than the body, any graphic or print left prominent. Sturdy fabrics like denim and cotton twill, nothing delicate. {base_fidelity}
+
+Garments: {base_garments}
 
 Pose: leaning one shoulder against the wall, hands in pockets, chin slightly down. {base_pose_rule}
 
-Setting: {setting}; {light}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. {base_light}
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
 
-Aesthetic: {base_photo}
+Lighting: {light}. {base_light}
+
+Camera: {base_camera}
+
+Composition: {base_composition}
+
+Colour: {base_color}
+
+Style: {base_style}
 
 Avoid: {base_avoid}, feminine soft styling, luxury campaign mood, romantic atmosphere, pastel tones."#
         ),
@@ -1196,30 +1303,50 @@ Face: {base_face}
 
 Body: {base_body}
 
-Outfit: The female model is wearing {items} — worn loosely and squarely, as if borrowed rather than fitted. Fabrics show soft fading and wear. {base_fidelity}
+Outfit: The female model is wearing {items} — worn like borrowed tailoring: structured shoulders that sit wide, straight or wide legs breaking low, fabrics with a dry matte finish. Cut for a man's proportions and worn by her without adjustment. {base_fidelity}
+
+Garments: {base_garments}
 
 Pose: standing squarely, hands in trouser pockets, looking straight down the street. {base_pose_rule}
 
-Setting: {setting}; {light}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. {base_light}
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
 
-Aesthetic: {base_photo}
+Lighting: {light}. {base_light}
+
+Camera: {base_camera}
+
+Composition: {base_composition}
+
+Colour: {base_color}
+
+Style: {base_style}
 
 Avoid: {base_avoid}, feminine delicate styling, formal look, luxury campaign mood."#
         ),
-        StyleGenre::SmartCasual => format!(
+        StyleGenre::Classic => format!(
             r#"Fashion editorial photograph of a woman in her mid 20s on her way to work. She must be female.
 
 Face: {base_face}
 
 Body: {base_body}
 
-Outfit: The female model is wearing {items} — worn neatly but not stiffly — pressed, considered proportions, one step down from a suit and one step up from casual. No visible branding. {base_fidelity}
+Outfit: The female model is wearing {items} — worn with a tidy, correct fit: collars sitting flat, sleeves and hems at the right length, outer layers worn open and hanging straight. Nothing oversized and nothing clinging — the proportions are the conventional ones. {base_fidelity}
+
+Garments: {base_garments}
 
 Pose: walking with a bag in one hand, caught mid-step. {base_pose_rule}
 
-Setting: {setting}; {light}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. {base_light}
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
 
-Aesthetic: {base_photo}
+Lighting: {light}. {base_light}
+
+Camera: {base_camera}
+
+Composition: {base_composition}
+
+Colour: {base_color}
+
+Style: {base_style}
 
 Avoid: {base_avoid}, gym clothing, distressed vintage, heavy streetwear, evening glamour, romantic frills."#
         ),
@@ -1230,13 +1357,23 @@ Face: {base_face}
 
 Body: {base_body}
 
-Outfit: The female model is wearing {items} — worn tidily: neat collars, layers sitting flat, classic proportions. Collegiate and upbeat rather than formal. {base_fidelity}
+Outfit: The female model is wearing {items} — worn tidily and brightly: neat collars, layers sitting flat, classic proportions, and any stripe or check left to read clearly. Collegiate and upbeat rather than formal. {base_fidelity}
+
+Garments: {base_garments}
 
 Pose: standing on stone steps, one hand resting on the railing. {base_pose_rule}
 
-Setting: {setting}; {light}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. {base_light}
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
 
-Aesthetic: {base_photo}
+Lighting: {light}. {base_light}
+
+Camera: {base_camera}
+
+Composition: {base_composition}
+
+Colour: {base_color}
+
+Style: {base_style}
 
 Avoid: {base_avoid}, streetwear, athletic gear, distressed denim, evening wear, bohemian layering."#
         ),
@@ -1247,13 +1384,23 @@ Face: {base_face}
 
 Body: {base_body}
 
-Outfit: The female model is wearing {items} — worn like clothes that get used: sleeves pushed back, honest fading at the seams and cuffs, hardware that has seen work. Never decorative distressing. {base_fidelity}
+Outfit: The female model is wearing {items} — worn like clothes that get used: heavy, substantial cloth, sleeves pushed back, honest fading at the seams and cuffs, hardware that has seen work. Never decorative distressing. {base_fidelity}
+
+Garments: {base_garments}
 
 Pose: standing with sleeves pushed to the forearm, hands in jacket pockets. {base_pose_rule}
 
-Setting: {setting}; {light}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. {base_light}
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
 
-Aesthetic: {base_photo}
+Lighting: {light}. {base_light}
+
+Camera: {base_camera}
+
+Composition: {base_composition}
+
+Colour: {base_color}
+
+Style: {base_style}
 
 Avoid: {base_avoid}, delicate fabrics, tailored formalwear, athletic gear, romantic frills, glossy luxury styling."#
         ),
@@ -1264,13 +1411,23 @@ Face: {base_face}
 
 Body: {base_body}
 
-Outfit: The female model is wearing {items} — worn as real equipment rather than as a look: functional details visible, drawcords and straps adjusted, layered for weather. Gear that has been outdoors, not a gym outfit. {base_fidelity}
+Outfit: The female model is wearing {items} — worn as real equipment: technical shells and insulating layers, functional details visible, drawcords and straps actually adjusted, layered for weather rather than for looks. {base_fidelity}
+
+Garments: {base_garments}
 
 Pose: adjusting a pack strap on one shoulder, caught mid-step. {base_pose_rule}
 
-Setting: {setting}; {light}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. {base_light}
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
 
-Aesthetic: {base_photo}
+Lighting: {light}. {base_light}
+
+Camera: {base_camera}
+
+Composition: {base_composition}
+
+Colour: {base_color}
+
+Style: {base_style}
 
 Avoid: {base_avoid}, leggings, sports bra, gym styling, tailored formalwear, romantic frills, luxury campaign gloss."#
         ),
@@ -1282,13 +1439,23 @@ Face: {base_face}
 
 Body: {base_body}
 
-Outfit: The female model is wearing {items} — worn in rather than new: soft washes, natural fading, a relaxed silhouette. Nothing pristine. {base_fidelity}
+Outfit: The female model is wearing {items} — worn in rather than new: soft washes, natural fading at the seams and edges, a relaxed silhouette. Honest cotton and denim, nothing pristine. {base_fidelity}
+
+Garments: {base_garments}
 
 Pose: standing relaxed, one hand in a pocket, looking down the alley. {base_pose_rule}
 
-Setting: {setting}; {light}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. {base_light}
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
 
-Aesthetic: {base_photo}
+Lighting: {light}. {base_light}
+
+Camera: {base_camera}
+
+Composition: {base_composition}
+
+Colour: {base_color}
+
+Style: {base_style}
 
 Avoid: {base_avoid}, tight-fitting clothes, formal styling, luxury campaign mood."#
         ),
@@ -2094,8 +2261,8 @@ mod image_prompt_tests {
     /// 달라지고 캐시가 매번 빗나간다 — 이미지를 다시 생성하니 비용이 그대로 늘어난다.
     #[test]
     fn same_outfit_gives_the_same_prompt() {
-        let a = build_image_prompt(StyleGenre::ModelOffDuty, "회색 티, 데님", 12345);
-        let b = build_image_prompt(StyleGenre::ModelOffDuty, "회색 티, 데님", 12345);
+        let a = build_image_prompt(StyleGenre::Minimal, "회색 티, 데님", 12345);
+        let b = build_image_prompt(StyleGenre::Minimal, "회색 티, 데님", 12345);
         assert_eq!(a, b);
     }
 
@@ -2106,7 +2273,7 @@ mod image_prompt_tests {
     /// 정말 갈리는지 여기서 확인한다.
     #[test]
     fn different_outfits_reach_different_settings() {
-        let (settings, _) = genre_setting(StyleGenre::ModelOffDuty);
+        let (settings, _) = genre_setting(StyleGenre::Minimal);
         assert!(settings.len() >= 2, "장소 후보가 하나뿐이면 다양성이 없다");
 
         let seen: std::collections::HashSet<&str> = (0..200u64)

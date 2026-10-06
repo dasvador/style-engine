@@ -11,22 +11,29 @@
 
 use style_engine::models::style_vocab::StyleGenre;
 
-const MALE_MIGRATION: &str =
-    include_str!("../migrations/20260910000005_restructure_male_style_genres.sql");
-const FEMALE_MIGRATION: &str =
-    include_str!("../migrations/20260910000004_restructure_style_genres.sql");
+/// 현재 장르 목록을 정의하는 마이그레이션.
+///
+/// 예전 재편 마이그레이션(`20260910000004`, `20260910000005`)이 아니라 가장 최근
+/// 것을 본다. 지난 마이그레이션들은 그 시점의 키를 넣었고 그 뒤 이름이 바뀌었으므로,
+/// 지금의 어휘와 대조하면 당연히 어긋난다. 목록의 현재 주인은 이 파일 하나다.
+const GENRE_MIGRATION: &str =
+    include_str!("../migrations/20261006000001_split_minimal_and_classic.sql");
 
 /// `('male', 'preppy', ...` 같은 INSERT 행에서 두 번째 따옴표 값(장르 키)을 뽑는다.
 fn inserted_genre_keys(sql: &str) -> Vec<(String, String)> {
     let mut found = Vec::new();
     for gender in ["male", "female", "unisex"] {
-        let marker = format!("('{gender}', '");
+        // 정렬용 공백이 들어가도 읽히게 한다 — VALUES 행은 보기 좋게 칸을 맞춰 적는다.
+        let marker = format!("('{gender}',");
         let mut rest = sql;
         while let Some(at) = rest.find(&marker) {
             rest = &rest[at + marker.len()..];
-            // 주석 줄에 든 예시가 아니라 실제 VALUES 행만 본다.
-            if let Some(end) = rest.find('\'') {
-                found.push((gender.to_string(), rest[..end].to_string()));
+            let tail = rest.trim_start();
+            let Some(tail) = tail.strip_prefix('\'') else {
+                continue;
+            };
+            if let Some(end) = tail.find('\'') {
+                found.push((gender.to_string(), tail[..end].to_string()));
             }
         }
     }
@@ -36,13 +43,18 @@ fn inserted_genre_keys(sql: &str) -> Vec<(String, String)> {
 /// 마이그레이션이 `style_mood` 에 넣는 키는 모두 표준 식별자여야 한다.
 #[test]
 fn every_inserted_mood_key_is_a_canonical_genre() {
-    let keys = inserted_genre_keys(MALE_MIGRATION);
-    assert_eq!(keys.len(), 8, "남성 장르는 8개여야 한다: {keys:?}");
-
-    for (gender, key) in inserted_genre_keys(MALE_MIGRATION)
+    let male: Vec<_> = inserted_genre_keys(GENRE_MIGRATION)
         .into_iter()
-        .chain(inserted_genre_keys(FEMALE_MIGRATION))
-    {
+        .filter(|(g, _)| g == "male")
+        .collect();
+    let female: Vec<_> = inserted_genre_keys(GENRE_MIGRATION)
+        .into_iter()
+        .filter(|(g, _)| g == "female")
+        .collect();
+    assert_eq!(male.len(), 8, "남성 장르는 8개여야 한다: {male:?}");
+    assert_eq!(female.len(), 8, "여성 장르는 8개여야 한다: {female:?}");
+
+    for (gender, key) in inserted_genre_keys(GENRE_MIGRATION).into_iter() {
         assert!(
             key.parse::<StyleGenre>().is_ok(),
             "{gender} 목록의 '{key}' 가 StyleGenre 에 없다. \
@@ -55,7 +67,7 @@ fn every_inserted_mood_key_is_a_canonical_genre() {
 /// 고를 수 없는 장르로 사라진다 — DELETE 가 아니라 UPDATE 라 조용히 남는다.
 #[test]
 fn migration_targets_are_canonical_genres() {
-    for sql in [MALE_MIGRATION, FEMALE_MIGRATION] {
+    for sql in [GENRE_MIGRATION] {
         for line in sql.lines() {
             let line = line.trim();
             if line.starts_with("--") {
@@ -117,9 +129,8 @@ fn legacy_values_the_migration_moves_are_still_accepted_by_the_server() {
 /// 장르가 남으면 그 장르로 태깅된 아이템은 영영 후보에 들어가지 못한다.
 #[test]
 fn exposed_genres_cover_the_whole_vocabulary() {
-    let mut exposed: Vec<String> = inserted_genre_keys(MALE_MIGRATION)
+    let mut exposed: Vec<String> = inserted_genre_keys(GENRE_MIGRATION)
         .into_iter()
-        .chain(inserted_genre_keys(FEMALE_MIGRATION))
         .map(|(_, key)| key)
         .collect();
     exposed.sort();
@@ -135,16 +146,18 @@ fn exposed_genres_cover_the_whole_vocabulary() {
 /// 사용자는 그 장르를 고를 수 없다.
 #[test]
 fn shared_genres_appear_in_both_gender_lists() {
-    let male: Vec<String> = inserted_genre_keys(MALE_MIGRATION)
+    let male: Vec<String> = inserted_genre_keys(GENRE_MIGRATION)
         .into_iter()
+        .filter(|(g, _)| g == "male")
         .map(|(_, k)| k)
         .collect();
-    let female: Vec<String> = inserted_genre_keys(FEMALE_MIGRATION)
+    let female: Vec<String> = inserted_genre_keys(GENRE_MIGRATION)
         .into_iter()
+        .filter(|(g, _)| g == "female")
         .map(|(_, k)| k)
         .collect();
 
-    for shared in ["minimal_classic", "street", "sporty_casual"] {
+    for shared in ["minimal", "classic", "street", "sporty_casual"] {
         assert!(
             male.contains(&shared.to_string()),
             "남성 목록에 {shared} 없음"

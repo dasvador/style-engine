@@ -156,11 +156,7 @@ async fn get_recommendation(
         .map(|ai_item| {
             let matched = find_matching_clothing(&clothes, &ai_item.name);
             let image_url = matched.and_then(|c| c.image_url.clone());
-            let material = matched.and_then(|c| {
-                c.material_primary
-                    .clone()
-                    .or_else(|| c.texture_keywords.clone())
-            });
+            let material = matched.and_then(describe_material);
             OutfitItem {
                 category: ai_item.category,
                 name: ai_item.name,
@@ -204,6 +200,36 @@ async fn get_recommendation(
         weather_summary: ai_result.weather_summary,
         tips: ai_result.tips,
     }))
+}
+
+/// 이미지 프롬프트에 넘길 소재·구조 설명.
+///
+/// `material_primary` 는 "cotton" 처럼 소재만, `texture_keywords` 는
+/// "cotton jersey, relaxed crewneck" 처럼 짜임과 구조까지 담는다. 둘 중 하나만
+/// 고르면 아깝다 — 워크 셔츠처럼 texture 가 "faded" 뿐인 경우도 있고, 백팩처럼
+/// texture 가 소재를 이미 포함하는 경우도 있다. 그래서 합치되, 소재 이름이 이미
+/// texture 안에 있으면 중복해서 넣지 않는다.
+///
+/// 이미지 모델에게 아이템 이름만 주면 "가방" 수준으로 뭉개진다. 소재와 구조를
+/// 같이 줘야 가죽 결과 재봉선이 살아난다.
+fn describe_material(c: &Clothing) -> Option<String> {
+    let tex = c
+        .texture_keywords
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let mat = c
+        .material_primary
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    match (mat, tex) {
+        (Some(m), Some(t)) if t.to_lowercase().contains(&m.to_lowercase()) => Some(t.to_string()),
+        (Some(m), Some(t)) => Some(format!("{m}, {t}")),
+        (Some(m), None) => Some(m.to_string()),
+        (None, Some(t)) => Some(t.to_string()),
+        (None, None) => None,
+    }
 }
 
 // ─── 3-모드 추천 (/multi) ───
@@ -539,11 +565,7 @@ fn build_outfit_items(
         .map(|ai_item| {
             let matched = find_matching_clothing(clothes, &ai_item.name);
             let image_url = matched.and_then(|c| c.image_url.clone());
-            let material = matched.and_then(|c| {
-                c.material_primary
-                    .clone()
-                    .or_else(|| c.texture_keywords.clone())
-            });
+            let material = matched.and_then(describe_material);
             OutfitItem {
                 category: ai_item.category.clone(),
                 name: ai_item.name.clone(),

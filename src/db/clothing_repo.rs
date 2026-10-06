@@ -148,12 +148,12 @@ pub async fn list_clothing(pool: &MySqlPool) -> Result<Vec<Clothing>, sqlx::Erro
 fn genre_predicate(genre: StyleGenre) -> Option<&'static str> {
     Some(match genre {
         // 절제된 색상, 로고·장식 없는 기본 아이템. 채도가 판단 기준이다.
-        StyleGenre::MinimalClassic => {
+        StyleGenre::Minimal => {
             "style IN ('베이직','포멀') AND saturation = '낮음' \
              AND sub_category NOT IN ('cargo','bdu')"
         }
-        // 출근·데이트에 쓰는 단정함. 셔츠·니트·슬랙스·재킷과 formality 로 가른다.
-        StyleGenre::SmartCasual => {
+        // 셔츠·재킷·트렌치의 단정한 핏. formality 와 아이템 종류로 가른다.
+        StyleGenre::Classic => {
             "style IN ('베이직','포멀') AND formality_level >= 2 \
              AND sub_category IN ('shirt','knit','longsleeve','slacks','chino','linen',\
              'coat','blazer','harrington','blouson','loafer','derby','sneaker','trainer',\
@@ -196,10 +196,9 @@ fn genre_predicate(genre: StyleGenre) -> Option<&'static str> {
         // 빠진다 — 둘 다 아메카지가 아니다.
         StyleGenre::Amekaji => "style IN ('베이직','워크','밀리터리')",
         // 여성 전용 장르 — 근거가 스키마에 없다. 태그로만 고른다.
-        StyleGenre::RomanticFeminine
+        StyleGenre::Romantic
         | StyleGenre::ModernChic
         | StyleGenre::Bohemian
-        | StyleGenre::ModelOffDuty
         | StyleGenre::Mannish => return None,
     })
 }
