@@ -117,6 +117,89 @@ pub async fn delete_texture_worlds(pool: &MySqlPool, clothing_id: &str) -> Resul
     Ok(())
 }
 
+/// 아이템의 장르 태그를 교체한다.
+///
+/// Vision 이 제안한 값이든 사용자가 고른 값이든 표준 식별자로 정규화해서 넣는다.
+/// 모르는 값은 조용히 버린다 — 오타 난 장르가 들어가면 그 행은 어느 조회에도
+/// 걸리지 않으면서 "장르가 붙은 아이템" 으로 취급돼, 속성 조건마저 건너뛴다.
+///
+/// `clothing.style_mood` 에는 첫 번째 장르를 대표로 남겨 목록 표시와 하위 호환을
+/// 유지한다. 후보를 고르는 기준은 이 표다.
+pub async fn set_style_genres(
+    pool: &MySqlPool,
+    clothing_id: &str,
+    genres: &[String],
+    source: &str,
+) -> Result<Vec<StyleGenre>, sqlx::Error> {
+    let parsed: Vec<StyleGenre> = {
+        let mut seen = Vec::new();
+        for raw in genres {
+            if let Some(g) = StyleGenre::from_alias(raw)
+                && !seen.contains(&g)
+            {
+                seen.push(g);
+            }
+        }
+        seen
+    };
+
+    sqlx::query("DELETE FROM clothing_style_genre WHERE clothing_id = ?")
+        .bind(clothing_id)
+        .execute(pool)
+        .await?;
+
+    for g in &parsed {
+        sqlx::query(
+            "INSERT IGNORE INTO clothing_style_genre (clothing_id, style_genre, source) \
+             VALUES (?, ?, ?)",
+        )
+        .bind(clothing_id)
+        .bind(g.as_str())
+        .bind(source)
+        .execute(pool)
+        .await?;
+    }
+
+    sqlx::query("UPDATE clothing SET style_mood = ? WHERE id = ?")
+        .bind(parsed.first().map(|g| g.as_str()))
+        .bind(clothing_id)
+        .execute(pool)
+        .await?;
+
+    Ok(parsed)
+}
+
+/// 아이템에 붙은 장르를 읽는다.
+pub async fn get_style_genres(
+    pool: &MySqlPool,
+    clothing_id: &str,
+) -> Result<Vec<String>, sqlx::Error> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT style_genre FROM clothing_style_genre WHERE clothing_id = ? ORDER BY style_genre",
+    )
+    .bind(clothing_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|r| r.0).collect())
+}
+
+/// 업로드된 옷의 성별. 표준 밖의 값은 무시한다 — 컬럼이 ENUM 이라 넣으면 실패한다.
+pub async fn set_gender(
+    pool: &MySqlPool,
+    clothing_id: &str,
+    gender: &str,
+) -> Result<(), sqlx::Error> {
+    if !matches!(gender, "male" | "female" | "unisex") {
+        return Ok(());
+    }
+    sqlx::query("UPDATE clothing SET gender = ? WHERE id = ?")
+        .bind(gender)
+        .bind(clothing_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 pub async fn list_clothing(pool: &MySqlPool) -> Result<Vec<Clothing>, sqlx::Error> {
     sqlx::query_as::<_, Clothing>(&format!(
         "SELECT {} FROM clothing ORDER BY created_at DESC",
@@ -213,19 +296,23 @@ pub async fn list_clothing_filtered(
         sql.push_str(" AND gender = ?");
     }
     if let Some(genre) = style_mood {
-        // 장르가 지정된 아이템은 그 태그로, 지정되지 않은 아이템은 속성 조건으로.
+        // 장르가 붙은 아이템은 `clothing_style_genre` 로, 하나도 붙지 않은 아이템은
+        // 속성 조건으로 고른다.
         //
-        // 두 절은 서로 겹치지 않는다 — `style_mood` 가 NULL 이면 첫 절이 절대
-        // 참이 될 수 없고, NULL 이 아니면 둘째 절이 참이 될 수 없다. 그래서 장르가
-        // 제대로 붙어 있는 아이템(여성 시드 전체, 남성 스포티·아웃도어 시드)은
-        // 조건 쪽 영향을 전혀 받지 않는다.
+        // 한 옷이 여러 장르에 들어갈 수 있어 표를 따로 둔다 — 옥스퍼드 셔츠는
+        // 클래식이면서 아메카지다. 두 절은 서로 겹치지 않는다: 행이 하나라도 있으면
+        // 첫 절이, 하나도 없으면 둘째 절이 판단한다. 그래서 장르가 제대로 붙은
+        // 아이템은 조건 쪽 영향을 받지 않는다.
+        let tagged = "EXISTS (SELECT 1 FROM clothing_style_genre g \
+             WHERE g.clothing_id = clothing.id AND g.style_genre = ?)";
         match genre_predicate(genre) {
             Some(pred) => {
                 sql.push_str(&format!(
-                    " AND (style_mood = ? OR (style_mood IS NULL AND ({pred})))"
+                    " AND ({tagged} OR (NOT EXISTS (SELECT 1 FROM clothing_style_genre g2 \
+                       WHERE g2.clothing_id = clothing.id) AND ({pred})))"
                 ));
             }
-            None => sql.push_str(" AND style_mood = ?"),
+            None => sql.push_str(&format!(" AND {tagged}")),
         }
     }
     sql.push_str(" ORDER BY created_at DESC");

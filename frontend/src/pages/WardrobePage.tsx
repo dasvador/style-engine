@@ -225,6 +225,7 @@ function ManualForm({ onClose, onAdded }: { onClose: () => void; onAdded: () => 
 
 function ImageUpload({ onClose, onAdded }: { onClose: () => void; onAdded: () => Promise<void> }) {
   const [imageData, setImageData] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<Clothing | null>(null);
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -247,9 +248,10 @@ function ImageUpload({ onClose, onAdded }: { onClose: () => void; onAdded: () =>
     setStatus(null);
     try {
       const created = await api.clothes.upload({ image_data: imageData });
-      setStatus({ ok: true, text: `${created.name} (${created.category}) 등록 완료!` });
       setImageData(null);
-      onClose();
+      // 바로 닫지 않는다. 분석이 제안한 장르를 사용자가 확인·수정한 뒤에 닫는다 —
+      // 틀린 장르로 들어가면 그 장르의 추천이 통째로 어긋난다.
+      setConfirm(created);
       await onAdded();
     } catch (err) {
       setStatus({ ok: false, text: `분석 실패: ${errorMessage(err)}` });
@@ -257,6 +259,19 @@ function ImageUpload({ onClose, onAdded }: { onClose: () => void; onAdded: () =>
       setUploading(false);
     }
   };
+
+  if (confirm) {
+    return (
+      <GenreConfirm
+        item={confirm}
+        onDone={async () => {
+          setConfirm(null);
+          onClose();
+          await onAdded();
+        }}
+      />
+    );
+  }
 
   return (
     <div>
@@ -311,6 +326,114 @@ function ImageUpload({ onClose, onAdded }: { onClose: () => void; onAdded: () =>
           {status.text}
         </div>
       )}
+    </div>
+  );
+}
+
+
+/** 화면에 보여줄 장르 목록. 값은 서버의 표준 식별자와 같아야 한다. */
+const GENRE_CHOICES: { key: string; label: string }[] = [
+  { key: 'minimal', label: '미니멀' },
+  { key: 'classic', label: '클래식' },
+  { key: 'romantic', label: '로맨틱' },
+  { key: 'modern_chic', label: '모던 시크' },
+  { key: 'bohemian', label: '보헤미안' },
+  { key: 'street', label: '스트리트' },
+  { key: 'mannish', label: '매니시' },
+  { key: 'sporty_casual', label: '스포티 캐주얼' },
+  { key: 'amekaji', label: '아메카지' },
+  { key: 'preppy', label: '프레피' },
+  { key: 'workwear', label: '워크웨어' },
+  { key: 'outdoor_casual', label: '아웃도어 캐주얼' },
+];
+
+const GENDER_CHOICES: { key: string; label: string }[] = [
+  { key: 'female', label: '여성' },
+  { key: 'male', label: '남성' },
+  { key: 'unisex', label: '공용' },
+];
+
+/**
+ * 분석이 제안한 장르를 확인·수정하는 단계.
+ *
+ * 한 벌이 여러 장르에 들어갈 수 있어 복수 선택이다 — 옥스퍼드 셔츠는 클래식이면서
+ * 아메카지이고 프레피다. 하나만 고르게 하면 나머지 장르에서 그 옷이 영영 후보에
+ * 들어가지 않는다.
+ */
+function GenreConfirm({ item, onDone }: { item: Clothing; onDone: () => Promise<void> }) {
+  const [genres, setGenres] = useState<string[]>(item.style_genres ?? []);
+  const [gender, setGender] = useState<string>(item.gender ?? 'unisex');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const toggle = (key: string) =>
+    setGenres((prev) => (prev.includes(key) ? prev.filter((g) => g !== key) : [...prev, key]));
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await api.clothes.setGenres(item.id, { style_genres: genres, gender });
+      await onDone();
+    } catch (err) {
+      setError(`저장 실패: ${errorMessage(err)}`);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div>
+      <p className="prose" style={{ marginBottom: 16 }}>
+        <strong>{item.name}</strong> 을(를) 등록했습니다. 분석이 제안한 분류를 확인해 주세요.
+      </p>
+
+      <div className="pick-group">
+        <span className="eyebrow">누구의 옷</span>
+        <div className="gender-tabs" role="group" aria-label="성별 선택">
+          {GENDER_CHOICES.map((g) => (
+            <button
+              key={g.key}
+              className={`gender-btn${gender === g.key ? ' active' : ''}`}
+              aria-pressed={gender === g.key}
+              onClick={() => setGender(g.key)}
+            >
+              {g.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="pick-group">
+        <span className="eyebrow">어울리는 장르 (여러 개 가능)</span>
+        <div className="mood-chips" role="group" aria-label="장르 선택">
+          {GENRE_CHOICES.map((g) => (
+            <button
+              key={g.key}
+              className={`mood-chip-btn${genres.includes(g.key) ? ' active' : ''}`}
+              aria-pressed={genres.includes(g.key)}
+              onClick={() => toggle(g.key)}
+            >
+              {g.label}
+            </button>
+          ))}
+        </div>
+        <p className="mood-note">
+          {genres.length === 0
+            ? '하나도 고르지 않으면 옷의 속성으로 어울리는 장르를 추정합니다.'
+            : `${genres.length}개 장르의 추천 후보에 들어갑니다.`}
+        </p>
+      </div>
+
+      {error && <ErrorMessage>{error}</ErrorMessage>}
+
+      <button
+        className="btn btn-primary btn-lg"
+        style={{ marginTop: 18 }}
+        onClick={() => void save()}
+        disabled={saving}
+      >
+        {saving ? '저장 중...' : '확인'}
+      </button>
     </div>
   );
 }

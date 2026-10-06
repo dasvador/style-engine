@@ -23,6 +23,7 @@ import type {
   RecommendationBody,
   Region,
   SaveLookBody,
+  SetGenresBody,
   SavedLook,
   StyleMood,
   UpsertRegionBody,
@@ -44,6 +45,8 @@ export const api = {
     create: (body: CreateClothingBody) => apiPost<Clothing>('/clothes', body),
     remove: (id: string) => apiDelete<{ deleted: boolean }>(`/clothes/${encodeURIComponent(id)}`),
     upload: (body: ImageUploadBody) => apiPost<Clothing>('/clothes/upload', body),
+    setGenres: (id: string, body: SetGenresBody) =>
+      apiPut<string[]>(`/clothes/${id}/genres`, body),
   },
 
   moods: (gender: Gender) =>

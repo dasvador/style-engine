@@ -105,6 +105,12 @@ pub struct VisionAnalysisResult {
     pub statement_level: Option<i8>,
     pub formality_level: Option<i8>,
     pub texture_worlds: Option<Vec<String>>,
+    /// 이 옷이 주로 어느 쪽 옷장에 들어가는지. 모르면 `None`.
+    pub gender: Option<String>,
+    /// 어울리는 장르 전부. 한 벌이 여러 장르에 들어갈 수 있다 —
+    /// 옥스퍼드 셔츠는 클래식이면서 아메카지이고 프레피다.
+    #[serde(default)]
+    pub style_genres: Vec<String>,
 }
 
 /// Request body for image-based clothing upload
@@ -139,6 +145,10 @@ pub struct ClothingResponse {
     pub statement_level: Option<i8>,
     pub formality_level: Option<i8>,
     pub texture_worlds: Vec<String>,
+    /// 이 옷에 붙은 장르 전부. 등록 직후 화면이 확인·수정할 수 있게 함께 내려 준다.
+    #[serde(default)]
+    pub style_genres: Vec<String>,
+    pub gender: Option<String>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
 }

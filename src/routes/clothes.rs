@@ -28,6 +28,37 @@ pub fn router() -> Router<AppState> {
             "/upload",
             post(upload_clothing_image).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
         )
+        .route("/{id}/genres", axum::routing::put(set_genres))
+}
+
+#[derive(serde::Deserialize)]
+struct SetGenresRequest {
+    style_genres: Vec<String>,
+    gender: Option<String>,
+}
+
+/// 사용자가 확인·수정한 장르를 저장한다.
+///
+/// Vision 의 제안은 'vision' 으로 들어가 있고, 여기서 저장하는 것은 'user' 다.
+/// 출처를 나눠 두면 나중에 제안이 얼마나 맞았는지 따져 볼 수 있고, 사용자가 고친
+/// 것을 다음 제안이 덮어쓰지 않게 막을 수도 있다.
+async fn set_genres(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<SetGenresRequest>,
+) -> Result<Json<Vec<String>>, AppError> {
+    if clothing_repo::get_clothing_by_id(&state.db, &id)
+        .await?
+        .is_none()
+    {
+        return Err(AppError::NotFound("아이템을 찾을 수 없습니다.".to_string()));
+    }
+
+    if let Some(g) = body.gender.as_deref() {
+        clothing_repo::set_gender(&state.db, &id, g).await?;
+    }
+    let saved = clothing_repo::set_style_genres(&state.db, &id, &body.style_genres, "user").await?;
+    Ok(Json(saved.iter().map(|g| g.as_str().to_string()).collect()))
 }
 
 async fn create_clothing(
@@ -220,10 +251,29 @@ async fn upload_clothing_image(
         clothing_repo::insert_texture_worlds(&state.db, &clothing.id, &texture_worlds).await?;
     }
 
+    // 분석이 제안한 성별과 장르를 함께 남긴다.
+    //
+    // 지금까지 등록 경로는 이 둘을 한 번도 쓰지 않았다. 그래서 올라온 옷은 전부
+    // 컬럼 기본값으로 떨어졌고, 장르는 속성 조건이 뒤에서 추론해 메우고 있었다.
+    // 제안은 'vision' 으로 남겨 사용자가 고친 것과 구분한다.
+    if let Some(g) = analysis.gender.as_deref() {
+        clothing_repo::set_gender(&state.db, &clothing.id, g).await?;
+    }
+    let genres =
+        clothing_repo::set_style_genres(&state.db, &clothing.id, &analysis.style_genres, "vision")
+            .await?;
+
     let all_seasons = clothing_repo::get_seasons(&state.db, &clothing.id).await?;
     let all_tw = clothing_repo::get_texture_worlds(&state.db, &clothing.id).await?;
 
-    Ok(Json(to_response(clothing, all_seasons, all_tw)))
+    // 다시 읽어 저장된 성별까지 담아 돌려준다 — 화면이 바로 확인·수정할 수 있게.
+    let saved = clothing_repo::get_clothing_by_id(&state.db, &clothing.id)
+        .await?
+        .unwrap_or(clothing);
+
+    let mut res = to_response(saved, all_seasons, all_tw);
+    res.style_genres = genres.iter().map(|g| g.as_str().to_string()).collect();
+    Ok(Json(res))
 }
 
 fn to_response(
@@ -249,6 +299,9 @@ fn to_response(
         statement_level: c.statement_level,
         formality_level: c.formality_level,
         texture_worlds,
+        // 장르는 조인 표에 있으므로 여기서는 비워 두고, 필요한 핸들러가 채운다.
+        style_genres: Vec::new(),
+        gender: c.gender.clone(),
         created_at: c.created_at,
         updated_at: c.updated_at,
     }

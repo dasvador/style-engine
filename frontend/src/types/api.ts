@@ -39,6 +39,9 @@ export interface Clothing {
   statement_level: number | null;
   formality_level: number | null;
   texture_worlds: string[];
+  /** 이 옷에 붙은 장르 전부. 한 벌이 여러 장르에 들어갈 수 있다. */
+  style_genres: string[];
+  gender: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -286,6 +289,11 @@ export interface Look {
   worn: boolean;
   /** 서버에 저장된 행의 id. 저장 응답을 받으면 채워진다. */
   savedId?: string;
+}
+
+export interface SetGenresBody {
+  style_genres: string[];
+  gender?: string | null;
 }
 
 // ─── 룩북 저장 (src/routes/lookbook.rs) ───

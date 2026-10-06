@@ -315,11 +315,24 @@ name 작성 원칙:
   "statement_level": 1~5 사이 정수,
   "formality_level": 1~5 사이 정수,
   "texture_worlds": ["해당하는 텍스처 월드 모두 선택"],
+  "gender": "female/male/unisex 중 하나",
+  "style_genres": ["어울리는 장르 모두"],
   "rejection_reason": null
 }
 
 추가 규칙:
 - is_clothing이 true이면 name은 null이면 안 됩니다.
+- gender 는 이 옷이 주로 어느 쪽 옷장에 들어갈지입니다. 어느 쪽이든 입을 수 있으면 unisex.
+- style_genres 는 이 옷이 어울리는 장르를 **모두** 고릅니다. 한 벌이 여러 장르에
+  들어갈 수 있습니다 — 옥스퍼드 셔츠는 classic 이면서 amekaji 이고 preppy 입니다.
+  고를 수 있는 값: minimal(장식 없는 단순한 실루엣, 적은 색상),
+  classic(셔츠·재킷·트렌치의 단정한 핏), romantic(부드러운 소재와 곡선),
+  modern_chic(선명한 실루엣과 강한 대비), bohemian(자연 소재와 느슨한 레이어링),
+  street(오버사이즈와 그래픽, 데님·카고), mannish(테일러링과 넓은 어깨),
+  sporty_casual(기능성 소재와 운동복 요소), amekaji(아메리칸 캐주얼),
+  preppy(아이비리그), workwear(작업복), outdoor_casual(기능성 아웃도어).
+  확신이 서는 것만 고르고, 애매하면 비워 두세요 — 틀린 장르에 들어가면 그 장르의
+  추천이 전부 어긋납니다.
 - is_clothing이 false이면 name/category/color/thickness/seasons는 null, rejection_reason을 작성하세요.
 - texture_worlds는 workwear, military, tailoring, sweat, outdoor, minimal 중 복수 선택 가능.
 - category는 상의, 하의, 아우터, 신발, 액세서리, 가방, 모자, 벨트 중 하나입니다."#;
@@ -474,11 +487,24 @@ name 작성 원칙:
   "statement_level": 1~5,
   "formality_level": 1~5,
   "texture_worlds": ["해당하는 텍스처 월드 모두"],
+  "gender": "female/male/unisex 중 하나",
+  "style_genres": ["어울리는 장르 모두"],
   "rejection_reason": null
 }}
 
 추가 규칙:
 - role과 versatility는 일반적인 활용성 기준의 1차 추정치입니다.
+- gender 는 이 옷이 주로 어느 쪽 옷장에 들어갈지입니다. 어느 쪽이든 입을 수 있으면 unisex.
+- style_genres 는 이 옷이 어울리는 장르를 **모두** 고릅니다. 한 벌이 여러 장르에
+  들어갈 수 있습니다 — 옥스퍼드 셔츠는 classic 이면서 amekaji 이고 preppy 입니다.
+  고를 수 있는 값: minimal(장식 없는 단순한 실루엣, 적은 색상),
+  classic(셔츠·재킷·트렌치의 단정한 핏), romantic(부드러운 소재와 곡선),
+  modern_chic(선명한 실루엣과 강한 대비), bohemian(자연 소재와 느슨한 레이어링),
+  street(오버사이즈와 그래픽, 데님·카고), mannish(테일러링과 넓은 어깨),
+  sporty_casual(기능성 소재와 운동복 요소), amekaji(아메리칸 캐주얼),
+  preppy(아이비리그), workwear(작업복), outdoor_casual(기능성 아웃도어).
+  확신이 서는 것만 고르고, 애매하면 비워 두세요 — 틀린 장르에 들어가면 그 장르의
+  추천이 전부 어긋납니다.
 - is_clothing이 false이면 name/category/color/thickness/seasons는 null, rejection_reason을 작성하세요."#
     );
 
