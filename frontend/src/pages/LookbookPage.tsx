@@ -89,7 +89,16 @@ export function LookbookPage() {
           ) : (
             <div className="saved-grid">
               {shown.map((l) => (
-                <LookCard key={l.id} look={l} onOpen={() => navigate('/')} />
+                <LookCard
+                  key={l.id}
+                  look={l}
+                  onOpen={() => navigate('/', { state: { lookId: l.id } })}
+                  onGenerated={(id, image_path) =>
+                    setLooks((prev) =>
+                      (prev ?? []).map((x) => (x.id === id ? { ...x, image_path } : x)),
+                    )
+                  }
+                />
               ))}
             </div>
           )}
@@ -99,27 +108,72 @@ export function LookbookPage() {
   );
 }
 
-function LookCard({ look, onOpen }: { look: SavedLook; onOpen: () => void }) {
+function LookCard({
+  look,
+  onOpen,
+  onGenerated,
+}: {
+  look: SavedLook;
+  onOpen: () => void;
+  onGenerated: (id: string, url: string) => void;
+}) {
+  const [making, setMaking] = useState(false);
+  const [failed, setFailed] = useState(false);
   const url = look.image_path;
+
+  // 사진이 없는 코디는 생성한 적이 없거나 검증을 통과하지 못한 것이다.
+  // 목록을 여는 것만으로 자동 생성하지는 않는다 — 비용이 조용히 나가면 안 된다.
+  // 누를 때만 만든다.
+  const make = async () => {
+    setMaking(true);
+    setFailed(false);
+    try {
+      const r = await api.chat.image({ items: look.image_prompt, mood: look.mood_key });
+      if (r.image_url) onGenerated(look.id, r.image_url);
+      else setFailed(true);
+    } catch {
+      setFailed(true);
+    } finally {
+      setMaking(false);
+    }
+  };
+
   return (
-    <button className="saved-card" onClick={onOpen}>
+    <div className="saved-card">
       {url ? (
-        <img className="saved-thumb" src={url} alt="" />
+        <button className="saved-open" onClick={onOpen} title="이 코디 열기">
+          <img className="saved-thumb" src={url} alt="" />
+        </button>
       ) : (
-        <span className="saved-thumb-empty">사진 없음</span>
+        <span className="saved-thumb-empty">
+          {making ? (
+            <>
+              <span className="spinner" /> 만드는 중…
+            </>
+          ) : (
+            <button className="saved-make" onClick={() => void make()}>
+              {failed ? '다시 시도' : '사진 만들기'}
+            </button>
+          )}
+        </span>
       )}
-      <span className="saved-card-title">{look.title}</span>
-      <span className="saved-card-meta">{formatDate(look.created_at)}</span>
-      <span className="saved-card-items">
-        {look.outfit_json.map((o) => o.name).slice(0, 2).join(' · ')}
-      </span>
+      <button className="saved-open-text" onClick={onOpen}>
+        <span className="saved-card-title">{look.title}</span>
+        <span className="saved-card-meta">{formatDate(look.created_at)}</span>
+        <span className="saved-card-items">
+          {look.outfit_json
+            .map((o) => o.name)
+            .slice(0, 2)
+            .join(' · ')}
+        </span>
+      </button>
       {(look.liked || look.worn) && (
         <span className="saved-card-marks">
           {look.liked && <i className="mark-liked" title="마음에 들어요" />}
           {look.worn && <i className="mark-worn" title="오늘 입을래요" />}
         </span>
       )}
-    </button>
+    </div>
   );
 }
 

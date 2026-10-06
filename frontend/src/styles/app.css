@@ -1128,3 +1128,18 @@ button, input, select, textarea { font-family: inherit; }
 @media (max-width: 380px) {
   .saved-grid { gap: 16px 10px; }
 }
+
+/* 저장된 코디 카드 — 사진과 글이 각각 누를 수 있는 영역이다. */
+.saved-open { background: none; border: 0; padding: 0; cursor: pointer; display: block; }
+.saved-open-text {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  text-align: left; display: flex; flex-direction: column;
+}
+/* 사진이 없는 코디는 누를 때만 만든다. 목록을 여는 것만으로 비용이 나가면 안 된다. */
+.saved-make {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-btn); padding: 9px 14px; min-height: 40px;
+  font-size: 0.78rem; font-weight: 500; color: var(--ink); cursor: pointer;
+}
+.saved-make:hover { border-color: var(--accent); color: var(--accent); }
+.saved-thumb-empty { gap: 7px; flex-direction: column; }

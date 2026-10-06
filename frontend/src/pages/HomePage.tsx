@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api/endpoints';
 import { errorMessage } from '../api/client';
 import type { Clothing, Gender, Look, Region, StyleMood, WeatherResponse } from '../types/api';
@@ -54,6 +54,8 @@ export function HomePage({
   onOpenAddPanel,
 }: Props) {
   const navigate = useNavigate();
+  // 내 룩북에서 카드를 눌러 들어오면 그 코디를 바로 띄운다.
+  const openLookId = (useLocation().state as { lookId?: string } | null)?.lookId ?? null;
   // 생성한 코디를 덮어쓰지 않고 쌓는다. 이미 비용을 들여 만든 이미지를 매번
   // 버리지 않고, 사용자가 둘을 나란히 두고 고를 수 있게 하기 위해서다.
   const [looks, setLooks] = useState<Look[]>([]);
@@ -71,6 +73,11 @@ export function HomePage({
         // 서버는 최신순으로 준다. 화면은 만든 순서대로 쌓이므로 뒤집는다.
         const saved = (await api.lookbook.list()).slice().reverse();
         if (saved.length === 0) return;
+        // 룩북에서 특정 코디를 눌러 들어왔으면 그 자리로 맞춘다.
+        if (openLookId) {
+          const at = saved.findIndex((v) => v.id === openLookId);
+          if (at >= 0) setActiveLook(at);
+        }
         setLooks(
           saved.map((v) => ({
             key: v.id,
@@ -90,7 +97,7 @@ export function HomePage({
         // 못 불러와도 새로 만들면 된다 — 화면을 막지는 않는다.
       }
     })();
-  }, []);
+  }, [openLookId]);
   const [recLoading, setRecLoading] = useState(false);
   const [recError, setRecError] = useState<string | null>(null);
   const recSectionRef = useRef<HTMLDivElement>(null);
@@ -238,6 +245,12 @@ export function HomePage({
       // 취향 기록 실패로 화면을 되돌리지는 않는다 — 다음 추천에 덜 반영될 뿐이다.
     }
   };
+
+  // 특정 코디를 열러 들어왔으면 그 영역까지 데려다준다.
+  useEffect(() => {
+    if (!openLookId || looks.length === 0) return;
+    recSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [openLookId, looks.length]);
 
   const loadAndScroll = async () => {
     await loadRecommendation();
