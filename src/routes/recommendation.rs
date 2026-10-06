@@ -151,21 +151,19 @@ async fn get_recommendation(
         }
     };
 
-    // 7. Build response with image_url
+    // 7. Build response with image_url — 옷장에 없는 이름은 버린다(build_outfit_items 와 동일).
     let outfit: Vec<OutfitItem> = ai_result
         .outfit
-        .into_iter()
-        .map(|ai_item| {
-            let matched = find_matching_clothing(&clothes, &ai_item.name);
-            let image_url = matched.and_then(|c| c.image_url.clone());
-            let material = matched.and_then(describe_material);
-            OutfitItem {
-                category: ai_item.category,
-                name: ai_item.name,
-                reason: ai_item.reason,
-                image_url,
-                material,
-            }
+        .iter()
+        .filter_map(|ai_item| {
+            let matched = find_matching_clothing(&clothes, &ai_item.name)?;
+            Some(OutfitItem {
+                category: ai_item.category.clone(),
+                name: ai_item.name.clone(),
+                reason: ai_item.reason.clone(),
+                image_url: matched.image_url.clone(),
+                material: describe_material(matched),
+            })
         })
         .collect();
 
@@ -572,6 +570,12 @@ fn build_mode_reason(
     }
 }
 
+/// 응답에 실을 착장 아이템. 옷장에서 찾지 못한 이름은 버린다.
+///
+/// 점수 계산(`build_outfit_candidate`)은 이미 해석 못 한 이름을 건너뛰는데 응답은
+/// 그대로 실어 보냈다. 그래서 LLM 이 아우터를 빈 문자열로 비워 보내면 점수에는
+/// 아우터가 없는데 화면에는 이름도 사진도 없는 빈 칸이 하나 떴다. 옷장에 없는
+/// 이름이라면 사용자가 입을 수 없는 옷이므로 보여 줄 이유도 없다.
 fn build_outfit_items(
     ai_result: &crate::models::recommendation::AiRecommendation,
     clothes: &[Clothing],
@@ -579,17 +583,15 @@ fn build_outfit_items(
     ai_result
         .outfit
         .iter()
-        .map(|ai_item| {
-            let matched = find_matching_clothing(clothes, &ai_item.name);
-            let image_url = matched.and_then(|c| c.image_url.clone());
-            let material = matched.and_then(describe_material);
-            OutfitItem {
+        .filter_map(|ai_item| {
+            let matched = find_matching_clothing(clothes, &ai_item.name)?;
+            Some(OutfitItem {
                 category: ai_item.category.clone(),
                 name: ai_item.name.clone(),
                 reason: ai_item.reason.clone(),
-                image_url,
-                material,
-            }
+                image_url: matched.image_url.clone(),
+                material: describe_material(matched),
+            })
         })
         .collect()
 }
