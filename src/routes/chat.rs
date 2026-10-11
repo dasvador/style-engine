@@ -18,6 +18,14 @@ use crate::services::llm::{
 use crate::services::outfit_scorer;
 use crate::services::weather as weather_service;
 
+/// 사용자가 말한 아이템("올리브 슬립온")을 옷장 아이템과 임베딩으로 맞출 때의 최소 유사도.
+///
+/// 업로드 분석의 `prompts::RAG_MIN_SIMILARITY` 와 값은 같지만 **다른 기준이다.** 저쪽은
+/// Vision 1차 서술 ↔ 레퍼런스 검색 문장이고, 이쪽은 짧은 대화 표현 ↔ 옷장 아이템 이름·
+/// 색·소재를 이어 붙인 문장이다. 비교하는 글의 길이와 형식이 달라 유사도 분포도 다르다.
+/// 한쪽을 보정했다고 다른 쪽에 같은 값을 쓰면 안 된다. 이 값은 아직 측정으로 보정한 적이
+/// 없다.
+const WARDROBE_MATCH_MIN_SIMILARITY: f32 = 0.5;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", post(chat))
@@ -1776,7 +1784,7 @@ async fn tool_get_outfit(
                 .await
                 .ok()
                 .and_then(|m| m.into_iter().next())
-                .filter(|m| m.similarity > 0.5)
+                .filter(|m| m.similarity > WARDROBE_MATCH_MIN_SIMILARITY)
                 .and_then(|m| clothes.iter().find(|c| c.name == m.name))
         }
     };
