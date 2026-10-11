@@ -1732,6 +1732,7 @@ texture_worlds = ["leather", "minimal"]
 [items.fw_03]
 name = "내추럴 라피아 라운드 숄더백"
 category = "가방"
+style = "베이직"
 thickness = "medium"
 role = "포인트"
 tone = "밝음"
@@ -1744,6 +1745,7 @@ texture_worlds = ["canvas"]
 [items.fw_04]
 name = "라벤더 리본 넥 퍼프슬리브 블라우스"
 category = "상의"
+style = "베이직"
 thickness = "thin"
 role = "베이스"
 tone = "밝음"
@@ -1771,6 +1773,7 @@ texture_worlds = ["denim", "minimal"]
 [items.fw_06]
 name = "머스타드 프린트 티어드 맥시스커트"
 category = "하의"
+style = "베이직"
 thickness = "thin"
 role = "베이스"
 tone = "밝음"
@@ -1784,6 +1787,7 @@ texture_worlds = ["bohemian"]
 [items.fw_07]
 name = "베이비핑크 플리츠 새틴 미디 스커트"
 category = "하의"
+style = "베이직"
 thickness = "thin"
 role = "베이스"
 tone = "밝음"
@@ -1797,6 +1801,7 @@ texture_worlds = ["romantic"]
 [items.fw_08]
 name = "베이지 레더 메리제인 슈즈"
 category = "신발"
+style = "베이직"
 thickness = "medium"
 role = "베이스"
 tone = "밝음"
@@ -1809,6 +1814,7 @@ texture_worlds = ["leather"]
 [items.fw_09]
 name = "베이지 플로럴 프린트 맥시 원피스"
 category = "하의"
+style = "베이직"
 thickness = "thin"
 role = "베이스"
 tone = "밝음"
@@ -1822,6 +1828,7 @@ texture_worlds = ["bohemian"]
 [items.fw_10]
 name = "블랙 나일론 봄버자켓"
 category = "아우터"
+style = "베이직"
 role = "구조템"
 thickness = "medium"
 tone = "어두움"
@@ -1914,6 +1921,7 @@ texture_worlds = ["leather", "minimal"]
 [items.fw_17]
 name = "블랙 미니 체인 숄더백"
 category = "가방"
+style = "베이직"
 thickness = "medium"
 role = "포인트"
 tone = "어두움"
@@ -1967,6 +1975,7 @@ texture_worlds = ["minimal"]
 [items.fw_21]
 name = "블랙 와이드 카고팬츠"
 category = "하의"
+style = "워크"
 thickness = "medium"
 role = "베이스"
 tone = "어두움"
@@ -1993,6 +2002,7 @@ texture_worlds = ["leather"]
 [items.fw_23]
 name = "소프트핑크 숄더백"
 category = "가방"
+style = "베이직"
 thickness = "medium"
 role = "포인트"
 tone = "밝음"
@@ -2005,6 +2015,7 @@ texture_worlds = ["leather"]
 [items.fw_24]
 name = "아이보리 레이스 트리밍 버킷백"
 category = "가방"
+style = "베이직"
 thickness = "medium"
 role = "포인트"
 tone = "밝음"
@@ -2031,6 +2042,7 @@ texture_worlds = ["romantic"]
 [items.fw_26]
 name = "아이보리 에스닉 자수 블라우스"
 category = "상의"
+style = "베이직"
 thickness = "thin"
 role = "베이스"
 tone = "밝음"
@@ -2044,6 +2056,7 @@ texture_worlds = ["bohemian"]
 [items.fw_27]
 name = "아이보리 트위드 자켓"
 category = "아우터"
+style = "포멀"
 role = "구조템"
 thickness = "medium"
 tone = "밝음"
@@ -2057,6 +2070,7 @@ texture_worlds = ["tailoring"]
 [items.fw_28]
 name = "아이보리 플로럴 자수 오간자 블라우스"
 category = "상의"
+style = "베이직"
 thickness = "thin"
 role = "베이스"
 tone = "밝음"
@@ -2070,6 +2084,7 @@ texture_worlds = ["romantic"]
 [items.fw_29]
 name = "오프화이트 에스파드리유 플랫"
 category = "신발"
+style = "베이직"
 thickness = "medium"
 role = "베이스"
 tone = "밝음"
@@ -2082,6 +2097,7 @@ texture_worlds = ["canvas"]
 [items.fw_30]
 name = "올리브 오버핏 윈드브레이커"
 category = "아우터"
+style = "스포츠"
 role = "연결템"
 thickness = "thin"
 tone = "어두움"
@@ -2109,6 +2125,7 @@ texture_worlds = ["military"]
 [items.fw_32]
 name = "워시드 다크블루 와이드 데님"
 category = "하의"
+style = "베이직"
 thickness = "medium"
 role = "베이스"
 tone = "어두움"
@@ -2150,6 +2167,7 @@ texture_worlds = ["tailoring"]
 [items.fw_35]
 name = "차콜 크롭 후드 스웨트셔츠"
 category = "상의"
+style = "베이직"
 thickness = "medium"
 role = "베이스"
 tone = "어두움"
@@ -2191,6 +2209,7 @@ texture_worlds = ["military"]
 [items.fw_38]
 name = "크림 레이스업 발레리나 슈즈"
 category = "신발"
+style = "베이직"
 thickness = "thin"
 role = "베이스"
 tone = "밝음"
@@ -2203,6 +2222,7 @@ texture_worlds = ["leather"]
 [items.fw_39]
 name = "크림 스모크 셔링 탑"
 category = "상의"
+style = "베이직"
 thickness = "thin"
 role = "베이스"
 tone = "밝음"
@@ -2216,6 +2236,7 @@ texture_worlds = ["romantic"]
 [items.fw_40]
 name = "크림 크로셰 니트 가디건"
 category = "아우터"
+style = "베이직"
 role = "약한포인트"
 thickness = "medium"
 tone = "밝음"
@@ -2229,6 +2250,7 @@ texture_worlds = ["bohemian"]
 [items.fw_41]
 name = "크림 플리츠 미디스커트"
 category = "하의"
+style = "베이직"
 thickness = "thin"
 role = "베이스"
 tone = "밝음"
@@ -2242,6 +2264,7 @@ texture_worlds = ["romantic"]
 [items.fw_42]
 name = "탄 레더 앵클 웨스턴 부츠"
 category = "신발"
+style = "베이직"
 thickness = "medium"
 role = "베이스"
 tone = "중간"
@@ -2267,6 +2290,7 @@ texture_worlds = ["leather"]
 [items.fw_44]
 name = "탄 스웨이드 프린지 크로스백"
 category = "가방"
+style = "베이직"
 thickness = "medium"
 role = "포인트"
 tone = "중간"
@@ -2279,6 +2303,7 @@ texture_worlds = ["leather"]
 [items.fw_45]
 name = "핑크 퀼팅 미니 크로스바디백"
 category = "가방"
+style = "베이직"
 thickness = "medium"
 role = "포인트"
 tone = "밝음"
@@ -2291,6 +2316,7 @@ texture_worlds = ["leather"]
 [items.fw_46]
 name = "핑크 플로럴 프린트 랩 미디 스커트"
 category = "하의"
+style = "베이직"
 thickness = "thin"
 role = "베이스"
 tone = "밝음"
@@ -2330,6 +2356,7 @@ texture_worlds = ["leather", "minimal"]
 [items.fw_49]
 name = "화이트 레이스 트리밍 쉬폰 블라우스"
 category = "상의"
+style = "베이직"
 thickness = "thin"
 role = "베이스"
 tone = "밝음"
@@ -2343,6 +2370,7 @@ texture_worlds = ["romantic"]
 [items.fw_50]
 name = "화이트 메리제인 스트랩 플랫슈즈"
 category = "신발"
+style = "베이직"
 thickness = "medium"
 role = "베이스"
 tone = "밝음"
@@ -2368,6 +2396,7 @@ texture_worlds = ["canvas", "minimal"]
 [items.fw_52]
 name = "화이트 캔버스 하이탑 스니커즈"
 category = "신발"
+style = "베이직"
 thickness = "medium"
 role = "베이스"
 tone = "밝음"

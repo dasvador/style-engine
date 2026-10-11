@@ -7,8 +7,13 @@
 - `[[combo]]`  조합 판단 — 충돌/보완/상관없음 (cases.toml). 각 옷의 지금 월드를
   보여 주려고 로컬 DB 를 한 번 읽는다(`.env` 의 DATABASE_URL, mysql 클라이언트 필요).
 - `[[role]]`   아우터 역할 (outer_roles.toml). 역할별 점수 영향(`impact`)을 함께 보여 준다.
+- `[[style]]`  스타일 (female_styles.toml). `[[role]]` 과 같은 형식.
+- `[[ab]]`     두 코디 중 어느 쪽이 나은지 (shadow_ab.toml). 블라인드 — 어느 엔진의
+  코디인지(`a_is`)는 페이지에 싣지 않는다.
 
-    python3 tools/world-review/build.py /tmp/review.html [검수 파일, 기본 cases.toml]
+    python3 tools/world-review/build.py /tmp/review.html [검수 파일 ...]   (기본 cases.toml)
+
+검수 파일을 여러 개 주면 한 페이지에 탭으로 모은다. 결정 키는 파일마다 자기 `round` 로 만든다.
 
 Claude 가 db 기능이 있는 아티팩트로 게시하고, 결정은 `decisions` 컬렉션에
 `{kind, name, decision, note}` 로 쌓인다. 문서 id 는 회차와 이름의 해시다.
@@ -54,16 +59,32 @@ def current_worlds() -> dict[str, list[str]]:
     return worlds
 
 
-def main(out: str, cases: pathlib.Path = CASES) -> None:
+def main(out: str, files: list[pathlib.Path]) -> None:
+    items = []
+    for f in files:
+        items += load_items(f)
+    payload = json.dumps({"items": items}, ensure_ascii=False)
+    html = TEMPLATE.read_text(encoding="utf-8").replace("__DATA__", payload.replace("</", "<\\/"))
+    pathlib.Path(out).write_text(html, encoding="utf-8")
+    n = {k: sum(i["kind"] == k for i in items) for k in ("ab", "style", "role", "assign", "combo")}
+    print(f"코디 비교 {n['ab']}건, 스타일 {n['style']}건, 아우터 역할 {n['role']}건, "
+          f"월드 배정 {n['assign']}건, 조합 판단 {n['combo']}건 → {out}")
+
+
+def load_items(cases: pathlib.Path) -> list[dict]:
     data = tomllib.loads(cases.read_text(encoding="utf-8"))
     round_ = data["round"]
     worlds = current_worlds() if data.get("combo") else {}
     proposed = {a["name"]: a["proposal"] for a in data.get("assign", [])}
 
     items = []
-    for r in data.get("role", []):
-        items.append({"key": key("role", round_, r["name"]), "kind": "role", "name": r["name"],
-                      "proposal": r["proposal"], "why": r.get("why", ""), "impact": r.get("impact", {})})
+    for kind in ("role", "style"):
+        for r in data.get(kind, []):
+            items.append({"key": key(kind, round_, r["name"]), "kind": kind, "name": r["name"],
+                          "proposal": r["proposal"], "why": r.get("why", ""), "impact": r.get("impact", {})})
+    for c in data.get("ab", []):
+        items.append({"key": key("ab", round_, c["id"]), "kind": "ab", "name": c["id"],
+                      "context": c["context"], "a": c["a"], "b": c["b"]})
     for a in data.get("assign", []):
         items.append({"key": key("assign", round_, a["name"]), "kind": "assign", "name": a["name"],
                       "proposal": a["proposal"], "why": a.get("why", "")})
@@ -76,13 +97,11 @@ def main(out: str, cases: pathlib.Path = CASES) -> None:
         items.append({"key": key("combo", round_, c["id"]), "kind": "combo", "name": c["id"],
                       "pair": c["pair"], "pieces": pieces})
 
-    payload = json.dumps({"round": round_, "items": items}, ensure_ascii=False)
-    html = TEMPLATE.read_text(encoding="utf-8").replace("__DATA__", payload.replace("</", "<\\/"))
-    pathlib.Path(out).write_text(html, encoding="utf-8")
-    n = {k: sum(i["kind"] == k for i in items) for k in ("role", "assign", "combo")}
-    print(f"아우터 역할 {n['role']}건, 월드 배정 {n['assign']}건, 조합 판단 {n['combo']}건 → {out}")
+    for i in items:
+        i["round"] = round_
+    return items
 
 
 if __name__ == "__main__":
     main(sys.argv[1] if len(sys.argv) > 1 else "world-review.html",
-         pathlib.Path(sys.argv[2]) if len(sys.argv) > 2 else CASES)
+         [pathlib.Path(a) for a in sys.argv[2:]] or [CASES])

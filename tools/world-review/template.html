@@ -78,6 +78,10 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
 .impact{font-size:13px;display:grid;grid-template-columns:auto 1fr;gap:2px 12px;padding:0 16px 10px;font-variant-numeric:tabular-nums}
 .impact .r{font-weight:600}
 .impact .bad{color:var(--no)} .impact .mild{color:var(--warn)} .impact .zero{color:var(--muted)}
+.abwrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;padding:0 16px 12px}
+.ab{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--sunk);min-width:0}
+.ab h3{margin:0 0 6px;font-family:var(--f-mono);font-size:13px;letter-spacing:.06em}
+.ab ul{margin:0;padding-left:18px;font-size:14px}
 .legend{font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px 14px}
 .empty{color:var(--muted);text-align:center;padding:32px 0}
 @media (prefers-reduced-motion:no-preference){.card{transition:border-color .15s}}
@@ -90,12 +94,16 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
   </header>
   <div id="status" class="banner" hidden></div>
   <section class="stats" aria-label="진행 현황">
+    <div class="stat"><span class="k">코디 비교</span><span class="v" id="s-ab"></span></div>
+    <div class="stat"><span class="k">스타일</span><span class="v" id="s-style"></span></div>
     <div class="stat"><span class="k">아우터 역할</span><span class="v" id="s-role"></span></div>
     <div class="stat"><span class="k">월드 배정</span><span class="v" id="s-assign"></span></div>
     <div class="stat"><span class="k">조합 판단</span><span class="v" id="s-combo"></span></div>
   </section>
   <div class="toolbar">
     <div class="row tabs" role="group" aria-label="목록">
+      <button id="tab-ab" aria-pressed="false">코디 비교</button>
+      <button id="tab-style" aria-pressed="false">스타일</button>
       <button id="tab-role" aria-pressed="false">아우터 역할</button>
       <button id="tab-assign" aria-pressed="false">월드 배정</button>
       <button id="tab-combo" aria-pressed="false">조합 판단</button>
@@ -116,17 +124,23 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
   let db = null, canWrite = true;
 
   const OPTS = {
+    ab:     [['A','A가 낫다'],['B','B가 낫다'],['same','비슷하다']],
+    style:  [['베이직','베이직'],['포멀','포멀'],['워크','워크'],['밀리터리','밀리터리'],['스포츠','스포츠']],
     role:   [['구조템','구조템'],['연결템','연결템'],['약한포인트','약한포인트'],['포인트','포인트']],
     assign: [['romantic','romantic'],['bohemian','bohemian'],['tailoring','tailoring'],['minimal','minimal'],['none','월드 없음']],
     combo:  [['conflict','충돌 (감점)'],['complement','보완 (가점)'],['neutral','상관없음']],
   };
-  const KINDS = ['role','assign','combo'];
+  const KINDS = ['ab','style','role','assign','combo'];
   const LEDE = {
+    ab:     '같은 추천 요청에서 두 엔진이 1위로 고른 코디입니다. 어느 엔진의 코디인지는 숨겼습니다. 오늘 실제로 입는다면 어느 쪽이 나은지 골라 주세요.',
+    style:  '스타일 값이 비어 있는 여성 옷입니다. 베이직 / 포멀 / 워크 / 밀리터리 / 스포츠 중 하나를 골라 주세요. 카드 아래 숫자는 그 스타일을 붙였을 때 이 옷이 들어간 착장의 추천 점수가 어떻게 바뀌는지 미리 잰 값입니다.',
     role:   '역할이 비어 있는 여성 아우터입니다. 각 옷의 역할(구조템 / 연결템 / 약한포인트 / 포인트)을 정해 주세요. 카드 아래 숫자는 그 역할을 붙였을 때 이 옷이 들어간 착장의 추천 점수가 어떻게 바뀌는지 미리 잰 값입니다.',
     assign: '월드가 없는 여성 옷을 어느 텍스처 월드에 넣을지 정해 주세요.',
     combo:  '두 옷이 만났을 때 어색한지(충돌) 잘 어울리는지(보완) 상관없는지 정해 주세요.',
   };
   const LEGEND = {
+    ab:     '제목 옆은 요청 조건(성별 · 무드 · 상황)입니다. 이유가 있으면 메모에 적어 주세요.',
+    style:  '스타일이 비어 있으면 추천 엔진은 베이직과 똑같이 봅니다. 점수는 상황을 정하지 않고 쟀습니다 — 포멀은 출근 상황에서는 오히려 오를 수 있습니다.',
     role:   '역할이 비어 있으면 추천 엔진은 구조템·연결템과 똑같이 봅니다. 그래서 그 둘은 점수가 바뀌지 않고, 약한포인트·포인트만 감점이 생깁니다. 포인트는 가방 같은 다른 포인트와 겹쳐 거의 모든 착장에서 크게 깎입니다.',
     assign: '점선 테두리 태그가 제안입니다. 버튼에 “제안” 표시가 붙어 있고, 다른 것을 고르면 그쪽으로 저장됩니다. romantic·bohemian 은 새로 만드는 월드입니다.',
     combo:  '각 옷 옆 태그는 지금 월드입니다. 점선 태그는 월드 배정 탭에서 제안한 월드입니다. 같은 조합의 다른 옷은 무난한 것으로 골랐습니다.',
@@ -142,6 +156,10 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
     return c;
   }
   function renderStats(){
+    const abc = counts('ab');
+    document.getElementById('s-ab').innerHTML = `A <b>${abc.A}</b> · B <b>${abc.B}</b> · 비슷 <b>${abc.same}</b> · 미정 <b>${abc.none}</b>`;
+    const sy = counts('style');
+    document.getElementById('s-style').innerHTML = `정함 <b>${sy.total-sy.none}</b> / ${sy.total}`;
     const ro = counts('role');
     document.getElementById('s-role').innerHTML = `정함 <b>${ro.total-ro.none}</b> / ${ro.total}`;
     const a = counts('assign'), c = counts('combo');
@@ -162,7 +180,7 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
     const card = document.querySelector(`[data-key="${item.key}"]`);
     if (card) card.dataset.done = state[item.key].decision ? '1' : '';
     if (!db || !canWrite) return;
-    const body = {kind:item.kind, name:item.name, round:DATA.round, decision: state[item.key].decision || null, note: state[item.key].note || '', updatedAt:new Date().toISOString()};
+    const body = {kind:item.kind, name:item.name, round:item.round, decision: state[item.key].decision || null, note: state[item.key].note || '', updatedAt:new Date().toISOString()};
     savedEl.textContent='저장 중…';
     pending[item.key] = (pending[item.key]||Promise.resolve()).then(()=>db.collection('decisions').doc(item.key).set(body))
       .then(()=>{ savedEl.textContent='저장됨'; })
@@ -176,12 +194,17 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
     const st = state[item.key] || {};
     const c = el('article',{class:'card','data-key':item.key,'data-done':st.decision?'1':''});
     const head = el('div',{class:'head'});
-    if (item.kind==='role'){
+    if (item.kind==='ab'){
+      head.append(el('div',{class:'title'}, el('h2',{text:item.name}), el('span',{class:'pair',text:item.context})));
+      c.append(head);
+      const side = (lbl, xs) => el('div',{class:'ab'}, el('h3',{text:lbl}), el('ul',{}, xs.map(x=>el('li',{text:x}))));
+      c.append(el('div',{class:'abwrap'}, side('A', item.a), side('B', item.b)));
+    } else if (item.kind==='role' || item.kind==='style'){
       head.append(el('div',{class:'title'}, el('h2',{text:item.name}), el('span',{class:'w prop','data-w':'other',text:item.proposal+' (제안)'})));
       if (item.why) head.append(el('div',{class:'why',text:item.why}));
       c.append(head);
       const box = el('div',{class:'impact','aria-label':'역할별 점수 영향'});
-      OPTS.role.forEach(([r])=>{
+      OPTS[item.kind].forEach(([r])=>{
         const x = item.impact[r]; if (!x) return;
         const cls = x.avg <= -10 ? 'bad' : (x.avg < 0 ? 'mild' : 'zero');
         const txt = x.avg === 0 && !x.down && !x.up ? '변화 없음' :
@@ -206,7 +229,7 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
     const savedEl = el('div',{class:'saved','aria-live':'polite'});
     OPTS[item.kind].forEach(([v,t])=>{
       const b = el('button',{'data-v':v,'aria-pressed':String(st.decision===v)}, t);
-      if ((item.kind==='assign' || item.kind==='role') && v===item.proposal) b.append(el('span',{class:'mark',text:'제안'}));
+      if ((item.kind==='assign' || item.kind==='role' || item.kind==='style') && v===item.proposal) b.append(el('span',{class:'mark',text:'제안'}));
       if (!db || !canWrite) b.disabled = true;
       b.onclick=()=>{ const next = state[item.key]?.decision===v ? null : v; seg.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed', String(x.dataset.v===next))); save(item,{decision:next},savedEl); };
       seg.append(b);

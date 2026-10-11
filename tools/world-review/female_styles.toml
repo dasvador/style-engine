@@ -1,0 +1,626 @@
+# 스타일이 빈 여성 옷 62벌의 스타일 검수. build.py 가 검수 페이지를 만든다.
+#
+# impact 는 2026-10-11 측정: 그 옷 + 나머지 슬롯을 돌려 가며 만든 착장 400개에 스타일을 붙였을 때
+# 운영 엔진(v1) 점수 변화와 shadow 하드필터 판정이 바뀐 수. 상황(출근 등)은 넣지 않았다.
+# 스타일이 비어 있으면 운영 엔진은 베이직과 똑같이 본다.
+round = "2026-10-11-styles"
+
+[[style]]
+name = "아이보리 코튼 블라우스"
+proposal = "포멀"
+why = "오피스에 입는 단정한 옷. 기존 여성 블라우스·재킷 선례가 포멀이다."
+impact."밀리터리" = { n = 400, avg = -1.0, up = 16, down = 76, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -3.9, up = 45, down = 92, hard = 87 }
+impact."워크" = { n = 400, avg = 0.3, up = 21, down = 20, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 28, down = 108, hard = 81 }
+
+[[style]]
+name = "누드핑크 스트랩 키튼힐"
+proposal = "포멀"
+why = "오피스에 입는 단정한 옷. 기존 여성 블라우스·재킷 선례가 포멀이다."
+impact."밀리터리" = { n = 400, avg = -1.3, up = 12, down = 388, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -5.8, up = 122, down = 271, hard = 76 }
+impact."워크" = { n = 400, avg = -1.2, up = 12, down = 388, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.7, up = 96, down = 303, hard = 89 }
+
+[[style]]
+name = "아이보리 트위드 자켓"
+proposal = "포멀"
+why = "오피스에 입는 단정한 옷. 기존 여성 블라우스·재킷 선례가 포멀이다."
+impact."밀리터리" = { n = 400, avg = -3.5, up = 19, down = 183, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -3.8, up = 51, down = 90, hard = 92 }
+impact."워크" = { n = 400, avg = -2.6, up = 23, down = 150, hard = 0 }
+impact."포멀" = { n = 400, avg = -7.0, up = 26, down = 122, hard = 103 }
+
+[[style]]
+name = "베이지 코듀로이 트러커자켓"
+proposal = "워크"
+why = "남성 코듀로이 트러커가 워크다. 카고팬츠 선례는 워크·스포츠가 하나씩."
+impact."밀리터리" = { n = 400, avg = -0.9, up = 20, down = 79, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -3.8, up = 51, down = 90, hard = 92 }
+impact."워크" = { n = 400, avg = -0.0, up = 25, down = 30, hard = 0 }
+impact."포멀" = { n = 400, avg = -7.0, up = 26, down = 122, hard = 103 }
+
+[[style]]
+name = "블랙 와이드 카고팬츠"
+proposal = "워크"
+why = "남성 코듀로이 트러커가 워크다. 카고팬츠 선례는 워크·스포츠가 하나씩."
+impact."밀리터리" = { n = 400, avg = -1.1, up = 10, down = 75, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -2.9, up = 55, down = 69, hard = 61 }
+impact."워크" = { n = 400, avg = -0.2, up = 15, down = 25, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.4, up = 33, down = 106, hard = 76 }
+
+[[style]]
+name = "차콜 나일론 조거팬츠"
+proposal = "스포츠"
+why = "기능성 나일론·운동복 계열. 같은 품목 선례가 스포츠다."
+impact."밀리터리" = { n = 400, avg = -1.1, up = 10, down = 75, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -2.9, up = 55, down = 69, hard = 61 }
+impact."워크" = { n = 400, avg = -0.2, up = 15, down = 25, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.4, up = 33, down = 106, hard = 76 }
+
+[[style]]
+name = "올리브 오버핏 윈드브레이커"
+proposal = "스포츠"
+why = "기능성 나일론·운동복 계열. 같은 품목 선례가 스포츠다."
+impact."밀리터리" = { n = 400, avg = -0.9, up = 20, down = 79, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -3.8, up = 51, down = 90, hard = 92 }
+impact."워크" = { n = 400, avg = -0.0, up = 25, down = 30, hard = 0 }
+impact."포멀" = { n = 400, avg = -7.0, up = 26, down = 122, hard = 103 }
+
+[[style]]
+name = "블랙 나일론 크로스 슬링백"
+proposal = "스포츠"
+why = "기능성 나일론·운동복 계열. 같은 품목 선례가 스포츠다."
+impact."밀리터리" = { n = 400, avg = -2.4, up = 7, down = 117, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -5.6, up = 65, down = 97, hard = 0 }
+impact."워크" = { n = 400, avg = -0.3, up = 7, down = 25, hard = 0 }
+impact."포멀" = { n = 400, avg = -5.6, up = 40, down = 104, hard = 0 }
+
+[[style]]
+name = "올리브 유틸리티 웨이스트백"
+proposal = "스포츠"
+why = "기능성 나일론·운동복 계열. 같은 품목 선례가 스포츠다."
+impact."밀리터리" = { n = 400, avg = -2.4, up = 7, down = 117, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -5.6, up = 65, down = 97, hard = 0 }
+impact."워크" = { n = 400, avg = -0.3, up = 7, down = 25, hard = 0 }
+impact."포멀" = { n = 400, avg = -5.6, up = 40, down = 104, hard = 0 }
+
+[[style]]
+name = "블랙 청키 플랫폼 스니커즈"
+proposal = "스포츠"
+why = "기능성 나일론·운동복 계열. 같은 품목 선례가 스포츠다."
+impact."밀리터리" = { n = 400, avg = -1.1, up = 12, down = 321, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -5.7, up = 117, down = 222, hard = 75 }
+impact."워크" = { n = 400, avg = -1.0, up = 12, down = 319, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 86, down = 253, hard = 86 }
+
+[[style]]
+name = "내추럴 라피아 라운드 숄더백"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -2.1, up = 7, down = 117, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -5.2, up = 109, down = 97, hard = 0 }
+impact."워크" = { n = 400, avg = -0.3, up = 7, down = 25, hard = 0 }
+impact."포멀" = { n = 400, avg = -5.2, up = 99, down = 104, hard = 0 }
+
+[[style]]
+name = "라벤더 리본 넥 퍼프슬리브 블라우스"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.0, up = 16, down = 76, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -3.9, up = 45, down = 92, hard = 88 }
+impact."워크" = { n = 400, avg = 0.3, up = 21, down = 20, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 28, down = 108, hard = 83 }
+
+[[style]]
+name = "라벤더 리브드 니트"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.0, up = 16, down = 76, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -3.9, up = 45, down = 92, hard = 87 }
+impact."워크" = { n = 400, avg = 0.3, up = 21, down = 20, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 28, down = 108, hard = 81 }
+
+[[style]]
+name = "라이트베이지 버킷백"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -2.1, up = 7, down = 117, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -5.2, up = 109, down = 97, hard = 0 }
+impact."워크" = { n = 400, avg = -0.3, up = 7, down = 25, hard = 0 }
+impact."포멀" = { n = 400, avg = -5.2, up = 99, down = 104, hard = 0 }
+
+[[style]]
+name = "라이트베이지 와이드 코튼팬츠"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -0.9, up = 13, down = 70, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -2.8, up = 47, down = 69, hard = 56 }
+impact."워크" = { n = 400, avg = -0.1, up = 15, down = 17, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 22, down = 106, hard = 73 }
+
+[[style]]
+name = "라이트핑크 울혼방 숏 자켓"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -3.4, up = 16, down = 187, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -4.0, up = 65, down = 90, hard = 89 }
+impact."워크" = { n = 400, avg = -2.8, up = 18, down = 157, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 50, down = 120, hard = 100 }
+
+[[style]]
+name = "라이트핑크 코튼 트렌치코트"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -3.4, up = 16, down = 187, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -4.0, up = 65, down = 90, hard = 92 }
+impact."워크" = { n = 400, avg = -2.8, up = 18, down = 157, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 50, down = 120, hard = 103 }
+
+[[style]]
+name = "머스타드 프린트 티어드 맥시스커트"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -0.9, up = 13, down = 70, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -2.8, up = 47, down = 69, hard = 56 }
+impact."워크" = { n = 400, avg = -0.1, up = 15, down = 17, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 22, down = 106, hard = 73 }
+
+[[style]]
+name = "민트 체크 패턴 트렌치 코트"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -3.4, up = 16, down = 187, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -4.0, up = 65, down = 90, hard = 92 }
+impact."워크" = { n = 400, avg = -2.8, up = 18, down = 157, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 50, down = 120, hard = 103 }
+
+[[style]]
+name = "베이비핑크 플리츠 새틴 미디 스커트"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -0.9, up = 13, down = 70, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -2.8, up = 47, down = 69, hard = 62 }
+impact."워크" = { n = 400, avg = -0.1, up = 15, down = 17, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 22, down = 106, hard = 77 }
+
+[[style]]
+name = "베이지 레더 메리제인 슈즈"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.3, up = 12, down = 388, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -5.8, up = 122, down = 271, hard = 76 }
+impact."워크" = { n = 400, avg = -1.2, up = 12, down = 388, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.7, up = 96, down = 303, hard = 89 }
+
+[[style]]
+name = "베이지 크롭 가디건"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -3.4, up = 16, down = 187, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -4.0, up = 65, down = 90, hard = 89 }
+impact."워크" = { n = 400, avg = -2.8, up = 18, down = 157, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 50, down = 120, hard = 100 }
+
+[[style]]
+name = "베이지 플로럴 프린트 맥시 원피스"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -0.9, up = 13, down = 70, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -2.8, up = 47, down = 69, hard = 56 }
+impact."워크" = { n = 400, avg = -0.1, up = 15, down = 17, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 22, down = 106, hard = 73 }
+
+[[style]]
+name = "브라운 글래디에이터 레더 샌들"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -0.5, up = 12, down = 108, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -5.9, up = 68, down = 151, hard = 75 }
+impact."워크" = { n = 400, avg = -0.4, up = 12, down = 90, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.2, up = 66, down = 170, hard = 86 }
+
+[[style]]
+name = "브라운 우븐 레더 호보백"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -2.4, up = 7, down = 117, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -5.6, up = 65, down = 97, hard = 0 }
+impact."워크" = { n = 400, avg = -0.3, up = 7, down = 25, hard = 0 }
+impact."포멀" = { n = 400, avg = -5.6, up = 40, down = 104, hard = 0 }
+
+[[style]]
+name = "블랙 그래픽 오버핏 티셔츠"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.0, up = 17, down = 78, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -4.0, up = 57, down = 92, hard = 75 }
+impact."워크" = { n = 400, avg = 0.2, up = 21, down = 23, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.4, up = 36, down = 108, hard = 80 }
+
+[[style]]
+name = "블랙 나일론 봄버자켓"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -3.5, up = 19, down = 183, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -3.8, up = 51, down = 90, hard = 92 }
+impact."워크" = { n = 400, avg = -2.6, up = 23, down = 150, hard = 0 }
+impact."포멀" = { n = 400, avg = -7.0, up = 26, down = 122, hard = 103 }
+
+[[style]]
+name = "블랙 메쉬 레이어드 롱슬리브"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.0, up = 17, down = 78, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -4.0, up = 57, down = 92, hard = 75 }
+impact."워크" = { n = 400, avg = 0.2, up = 21, down = 23, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.4, up = 36, down = 108, hard = 80 }
+
+[[style]]
+name = "블랙 미니 체인 숄더백"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -2.4, up = 7, down = 117, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -5.6, up = 65, down = 97, hard = 0 }
+impact."워크" = { n = 400, avg = -0.3, up = 7, down = 25, hard = 0 }
+impact."포멀" = { n = 400, avg = -5.6, up = 40, down = 104, hard = 0 }
+
+[[style]]
+name = "소프트핑크 숄더백"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -2.1, up = 7, down = 117, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -5.2, up = 109, down = 97, hard = 0 }
+impact."워크" = { n = 400, avg = -0.3, up = 7, down = 25, hard = 0 }
+impact."포멀" = { n = 400, avg = -5.2, up = 99, down = 104, hard = 0 }
+
+[[style]]
+name = "아이보리 레이스 트리밍 버킷백"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -2.1, up = 7, down = 117, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -5.2, up = 109, down = 97, hard = 0 }
+impact."워크" = { n = 400, avg = -0.3, up = 7, down = 25, hard = 0 }
+impact."포멀" = { n = 400, avg = -5.2, up = 99, down = 104, hard = 0 }
+
+[[style]]
+name = "아이보리 스트랩 뮬 샌들"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -0.5, up = 12, down = 97, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -6.2, up = 55, down = 118, hard = 76 }
+impact."워크" = { n = 400, avg = -0.4, up = 12, down = 83, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.4, up = 26, down = 140, hard = 89 }
+
+[[style]]
+name = "아이보리 에스닉 자수 블라우스"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.0, up = 16, down = 76, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -3.9, up = 45, down = 92, hard = 87 }
+impact."워크" = { n = 400, avg = 0.3, up = 21, down = 20, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 28, down = 108, hard = 81 }
+
+[[style]]
+name = "아이보리 플로럴 자수 오간자 블라우스"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.0, up = 16, down = 76, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -3.9, up = 45, down = 92, hard = 88 }
+impact."워크" = { n = 400, avg = 0.3, up = 21, down = 20, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 28, down = 108, hard = 83 }
+
+[[style]]
+name = "오프화이트 에스파드리유 플랫"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -0.5, up = 12, down = 97, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -6.2, up = 55, down = 118, hard = 76 }
+impact."워크" = { n = 400, avg = -0.4, up = 12, down = 83, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.4, up = 26, down = 140, hard = 89 }
+
+[[style]]
+name = "올리브 오버사이즈 린넨 셔츠자켓"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -3.5, up = 19, down = 183, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -3.8, up = 51, down = 90, hard = 92 }
+impact."워크" = { n = 400, avg = -2.6, up = 23, down = 150, hard = 0 }
+impact."포멀" = { n = 400, avg = -7.0, up = 26, down = 122, hard = 103 }
+
+[[style]]
+name = "워시드 다크블루 와이드 데님"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.1, up = 10, down = 75, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -2.9, up = 55, down = 69, hard = 61 }
+impact."워크" = { n = 400, avg = -0.2, up = 15, down = 25, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.4, up = 33, down = 106, hard = 76 }
+
+[[style]]
+name = "워시드 블랙 크롭 데님자켓"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -3.5, up = 19, down = 183, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -3.8, up = 51, down = 90, hard = 92 }
+impact."워크" = { n = 400, avg = -2.6, up = 23, down = 150, hard = 0 }
+impact."포멀" = { n = 400, avg = -7.0, up = 26, down = 122, hard = 103 }
+
+[[style]]
+name = "워시드 인디고 플레어 데님"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.2, up = 11, down = 73, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -2.7, up = 72, down = 69, hard = 62 }
+impact."워크" = { n = 400, avg = -0.3, up = 15, down = 26, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.4, up = 32, down = 106, hard = 77 }
+
+[[style]]
+name = "차콜 크롭 후드 스웨트셔츠"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.0, up = 17, down = 78, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -4.0, up = 57, down = 92, hard = 75 }
+impact."워크" = { n = 400, avg = 0.2, up = 21, down = 23, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.4, up = 36, down = 108, hard = 80 }
+
+[[style]]
+name = "카멜 스웨이드 와이드 팬츠"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.2, up = 11, down = 73, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -2.7, up = 72, down = 69, hard = 62 }
+impact."워크" = { n = 400, avg = -0.3, up = 15, down = 26, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.4, up = 32, down = 106, hard = 77 }
+
+[[style]]
+name = "크림 레이스 패치 니트 카디건"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -3.4, up = 16, down = 187, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -4.0, up = 65, down = 90, hard = 89 }
+impact."워크" = { n = 400, avg = -2.8, up = 18, down = 157, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 50, down = 120, hard = 100 }
+
+[[style]]
+name = "크림 레이스업 발레리나 슈즈"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.3, up = 12, down = 388, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -5.8, up = 122, down = 271, hard = 76 }
+impact."워크" = { n = 400, avg = -1.2, up = 12, down = 388, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.7, up = 96, down = 303, hard = 89 }
+
+[[style]]
+name = "크림 미니 크로스백"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -2.1, up = 7, down = 117, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -5.2, up = 109, down = 97, hard = 0 }
+impact."워크" = { n = 400, avg = -0.3, up = 7, down = 25, hard = 0 }
+impact."포멀" = { n = 400, avg = -5.2, up = 99, down = 104, hard = 0 }
+
+[[style]]
+name = "크림 스모크 셔링 탑"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.0, up = 16, down = 76, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -3.9, up = 45, down = 92, hard = 88 }
+impact."워크" = { n = 400, avg = 0.3, up = 21, down = 20, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 28, down = 108, hard = 83 }
+
+[[style]]
+name = "크림 오프숄더 보헤미안 블라우스"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.0, up = 16, down = 76, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -3.9, up = 45, down = 92, hard = 87 }
+impact."워크" = { n = 400, avg = 0.3, up = 21, down = 20, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 28, down = 108, hard = 81 }
+
+[[style]]
+name = "크림 크로셰 니트 가디건"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -3.4, up = 16, down = 187, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -4.0, up = 65, down = 90, hard = 92 }
+impact."워크" = { n = 400, avg = -2.8, up = 18, down = 157, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 50, down = 120, hard = 103 }
+
+[[style]]
+name = "크림 플리츠 미디스커트"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -0.9, up = 13, down = 70, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -2.8, up = 47, down = 69, hard = 62 }
+impact."워크" = { n = 400, avg = -0.1, up = 15, down = 17, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 22, down = 106, hard = 77 }
+
+[[style]]
+name = "탄 레더 앵클 웨스턴 부츠"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.3, up = 12, down = 377, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -5.8, up = 121, down = 260, hard = 77 }
+impact."워크" = { n = 400, avg = -1.2, up = 12, down = 377, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.7, up = 95, down = 293, hard = 91 }
+
+[[style]]
+name = "탄 레더 크로스 사첼백"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -2.5, up = 7, down = 117, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -6.0, up = 25, down = 97, hard = 0 }
+impact."워크" = { n = 400, avg = -0.3, up = 7, down = 25, hard = 0 }
+impact."포멀" = { n = 400, avg = -5.7, up = 29, down = 104, hard = 0 }
+
+[[style]]
+name = "탄 스웨이드 프린지 크로스백"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -2.5, up = 7, down = 117, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -6.0, up = 25, down = 97, hard = 0 }
+impact."워크" = { n = 400, avg = -0.3, up = 7, down = 25, hard = 0 }
+impact."포멀" = { n = 400, avg = -5.7, up = 29, down = 104, hard = 0 }
+
+[[style]]
+name = "탄 스웨이드 프린지 크롭 자켓"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -3.8, up = 16, down = 187, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -4.0, up = 65, down = 90, hard = 92 }
+impact."워크" = { n = 400, avg = -3.3, up = 18, down = 157, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 50, down = 120, hard = 103 }
+
+[[style]]
+name = "테라코타 크링클 코튼 탑"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.0, up = 16, down = 79, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -3.9, up = 55, down = 92, hard = 88 }
+impact."워크" = { n = 400, avg = 0.3, up = 21, down = 22, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 32, down = 108, hard = 83 }
+
+[[style]]
+name = "핑크 퀼팅 미니 크로스바디백"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -2.1, up = 7, down = 117, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -5.2, up = 109, down = 97, hard = 0 }
+impact."워크" = { n = 400, avg = -0.3, up = 7, down = 25, hard = 0 }
+impact."포멀" = { n = 400, avg = -5.2, up = 99, down = 104, hard = 0 }
+
+[[style]]
+name = "핑크 플로럴 프린트 랩 미디 스커트"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -0.9, up = 13, down = 70, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -2.8, up = 47, down = 69, hard = 62 }
+impact."워크" = { n = 400, avg = -0.1, up = 15, down = 17, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 22, down = 106, hard = 77 }
+
+[[style]]
+name = "화이트 A라인 미니스커트"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -0.9, up = 13, down = 70, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -2.8, up = 47, down = 69, hard = 56 }
+impact."워크" = { n = 400, avg = -0.1, up = 15, down = 17, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 22, down = 106, hard = 73 }
+
+[[style]]
+name = "화이트 레이스 트리밍 쉬폰 블라우스"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.0, up = 16, down = 76, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -3.9, up = 45, down = 92, hard = 88 }
+impact."워크" = { n = 400, avg = 0.3, up = 21, down = 20, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 28, down = 108, hard = 83 }
+
+[[style]]
+name = "화이트 레터링 크롭 탑"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.0, up = 16, down = 76, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -3.9, up = 45, down = 92, hard = 87 }
+impact."워크" = { n = 400, avg = 0.3, up = 21, down = 20, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 28, down = 108, hard = 81 }
+
+[[style]]
+name = "화이트 메리제인 스트랩 플랫슈즈"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.3, up = 12, down = 388, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -5.8, up = 122, down = 271, hard = 76 }
+impact."워크" = { n = 400, avg = -1.2, up = 12, down = 388, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.7, up = 96, down = 303, hard = 89 }
+
+[[style]]
+name = "화이트 캔버스 하이탑 스니커즈"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.3, up = 12, down = 388, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -5.8, up = 122, down = 271, hard = 76 }
+impact."워크" = { n = 400, avg = -1.2, up = 12, down = 388, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.7, up = 96, down = 303, hard = 89 }
+
+[[style]]
+name = "화이트 코튼 스모킹 크롭 탑"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.0, up = 16, down = 76, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -3.9, up = 45, down = 92, hard = 88 }
+impact."워크" = { n = 400, avg = 0.3, up = 21, down = 20, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 28, down = 108, hard = 83 }
+
+[[style]]
+name = "화이트 퍼프슬리브 티셔츠"
+proposal = "베이직"
+why = "강한 스타일이 없는 옷. 로맨틱·보헤미안 옷은 지금 어휘에 맞는 스타일이 없어 베이직으로 둔다 — 포멀로 두면 운동화와 함께일 때 '포멀+스포츠' 충돌로 거절될 수 있다."
+impact."밀리터리" = { n = 400, avg = -1.0, up = 16, down = 76, hard = 0 }
+impact."베이직" = { n = 400, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."스포츠" = { n = 400, avg = -3.9, up = 45, down = 92, hard = 88 }
+impact."워크" = { n = 400, avg = 0.3, up = 21, down = 20, hard = 0 }
+impact."포멀" = { n = 400, avg = -6.5, up = 28, down = 108, hard = 83 }
