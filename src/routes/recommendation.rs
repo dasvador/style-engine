@@ -15,6 +15,7 @@ use crate::models::recommendation::{
     RecommendationRequest, RecommendationResponse, ScoringDetail,
 };
 use crate::models::style_vocab::{Role, Style, Tone};
+use crate::services::cross_mood;
 use crate::services::llm::LlmTask;
 use crate::services::recommendation_diversity;
 use crate::services::recommendation_service;
@@ -158,6 +159,7 @@ async fn get_recommendation(
         .filter_map(|ai_item| {
             let matched = find_matching_clothing(&clothes, &ai_item.name)?;
             Some(OutfitItem {
+                id: matched.id.clone(),
                 category: ai_item.category.clone(),
                 name: ai_item.name.clone(),
                 reason: ai_item.reason.clone(),
@@ -366,6 +368,19 @@ async fn get_multi_recommendation(
     )
     .await
     .unwrap_or_default();
+
+    // 이미 보여 준 코디와 거의 같은 후보를 뺀다. 무드를 바꿔 요청해도 같은 코디가 다시
+    // 나오던 문제 — 화면이 무드마다 따로 요청해서 서버는 앞서 보여 준 것을 몰랐다.
+    // 아래 모드 선택 함수는 그대로 두고 그 입력만 거른다.
+    let before = reranked.len();
+    let reranked = cross_mood::drop_repeats(reranked, &body.avoid_outfits);
+    if reranked.len() != before {
+        tracing::info!(
+            dropped = before - reranked.len(),
+            avoid = body.avoid_outfits.len(),
+            "이미 보여 준 코디와 겹치는 후보를 뺐다"
+        );
+    }
 
     // 휴면 아이템 감지
     let all_ids: Vec<String> = clothes.iter().map(|c| c.id.clone()).collect();
@@ -586,6 +601,7 @@ fn build_outfit_items(
         .filter_map(|ai_item| {
             let matched = find_matching_clothing(clothes, &ai_item.name)?;
             Some(OutfitItem {
+                id: matched.id.clone(),
                 category: ai_item.category.clone(),
                 name: ai_item.name.clone(),
                 reason: ai_item.reason.clone(),

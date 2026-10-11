@@ -110,6 +110,8 @@ export type Gender = 'male' | 'female';
 // ─── 추천 (src/models/recommendation.rs) ───
 
 export interface OutfitItem {
+  /** 옷장 아이템 id. 예전에 저장된 룩에는 없다. */
+  id?: string;
   category: string;
   name: string;
   reason: string;
@@ -152,6 +154,8 @@ export interface RecommendationBody {
   occasion?: string;
   gender?: Gender;
   style_mood?: string | null;
+  /** 이미 보여 준 코디들의 아이템 id. 무드가 달라도 같은 코디를 다시 받지 않게 한다. */
+  avoid_outfits?: string[][];
 }
 
 // ─── 코디 평가 (src/models/outfit.rs) ───

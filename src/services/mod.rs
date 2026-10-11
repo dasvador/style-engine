@@ -1,4 +1,5 @@
 pub mod candidate_pipeline;
+pub mod cross_mood;
 pub mod embedding;
 pub mod llm;
 pub mod outfit_scorer;

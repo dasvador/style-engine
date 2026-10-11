@@ -7,6 +7,10 @@ pub struct RecommendationRequest {
     pub style_preference: Option<String>,
     pub gender: Option<String>,
     pub style_mood: Option<String>,
+    /// 이미 보여 준 코디들(아이템 id 목록). 다른 무드에서 본 것도 포함한다 — 같은 코디가
+    /// 무드만 바꿔 다시 나오지 않게 한다. 멀티 추천만 읽는다.
+    #[serde(default)]
+    pub avoid_outfits: Vec<Vec<String>>,
 }
 
 /// Response DTO for recommendation (to client)
@@ -21,6 +25,9 @@ pub struct RecommendationResponse {
 /// Outfit item returned to client — includes image_url
 #[derive(Debug, Serialize)]
 pub struct OutfitItem {
+    /// 옷장 아이템 id. 화면이 이미 본 코디를 다음 요청의 `avoid_outfits` 로 돌려보낼 때
+    /// 쓴다. 이름으로 비교하면 같은 이름의 옷이 둘일 때 틀린다.
+    pub id: String,
     pub category: String,
     pub name: String,
     pub reason: String,

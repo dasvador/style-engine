@@ -11,6 +11,20 @@ import { buildImagePrompt } from '../lib/lookbook';
 import { outfitToImageItems } from '../lib/lookbook';
 import { ErrorMessage, Loading } from '../components/Status';
 
+
+/**
+ * 코디를 같은 것으로 볼지 가르는 키. 아이템 이름만 쓰고 무드는 넣지 않는다.
+ *
+ * 예전에는 무드를 키에 넣어서, 같은 코디가 클래식으로 한 번, 모던 시크로 한 번 나오면
+ * 서로 다른 코디로 여겨 둘 다 쌓였다. 순서도 무관하게 정렬한다.
+ */
+function outfitSig(outfit: { name: string }[]): string {
+  return outfit
+    .map((o) => o.name)
+    .sort()
+    .join('|');
+}
+
 interface Props {
   clothes: Clothing[];
   weather: WeatherResponse | null;
@@ -81,7 +95,7 @@ export function HomePage({
         setLooks(
           saved.map((v) => ({
             key: v.id,
-            sig: `${v.mood_key ?? ''}|${v.outfit_json.map((o) => o.name).join('|')}`,
+            sig: outfitSig(v.outfit_json),
             savedId: v.id,
             title: v.title,
             meta: [formatSavedAt(v.created_at), v.weather_summary].filter(Boolean).join(' · '),
@@ -100,6 +114,7 @@ export function HomePage({
   }, [openLookId]);
   const [recLoading, setRecLoading] = useState(false);
   const [recError, setRecError] = useState<string | null>(null);
+  const [recNotice, setRecNotice] = useState<string | null>(null);
   const recSectionRef = useRef<HTMLDivElement>(null);
 
   const selectedMoodDescription =
@@ -133,10 +148,23 @@ export function HomePage({
     setRecLoading(true);
     setRecError(null);
     try {
+      // 지금까지 보여 준 코디를 무드와 상관없이 보낸다. 서버가 거의 같은 후보를 빼고
+      // 비슷한 품질의 다른 조합을 고른다. 예전에 저장된 룩은 아이템 id 가 없어서
+      // 옷장 목록에서 이름으로 찾아 채운다. 요청이 커지지 않게 최근 30개만.
+      const idByName = new Map(clothes.map((c) => [c.name, c.id]));
+      const avoid_outfits = looksRef.current
+        .slice(-30)
+        .map((l) =>
+          l.outfit
+            .map((o) => o.id ?? idByName.get(o.name))
+            .filter((id): id is string => Boolean(id)),
+        )
+        .filter((ids) => ids.length > 0);
       const r = await api.recommendation.multi({
         occasion: '일상',
         gender,
         style_mood: selectedMood,
+        avoid_outfits,
       });
       const stamp = new Date();
       const time = `${stamp.getHours()}시 ${String(stamp.getMinutes()).padStart(2, '0')}분`;
@@ -145,7 +173,7 @@ export function HomePage({
         // 응답 안에서 두 모드가 같은 착장을 내면 키가 겹쳐 React 가 노드를 제대로
         // 지우지 못했다 — 6장인데 썸네일이 7개 뜨고 번호가 중복됐다.
         key: `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`,
-        sig: `${selectedMood ?? ''}|${m.outfit.map((o) => o.name).join('|')}`,
+        sig: outfitSig(m.outfit),
         title: m.mode_label,
         meta: `${time} · ${moodLabel} · ${r.weather_summary}`,
         moodKey: selectedMood,
@@ -165,6 +193,12 @@ export function HomePage({
         seen.add(l.sig);
         added.push(l);
       }
+      // 전부 이미 본 코디였다면 아무 일도 없던 것처럼 보이지 않게 알린다.
+      setRecNotice(
+        added.length === 0
+          ? '이번에는 이미 보여 드린 코디와 같은 조합만 나왔어요. 다른 무드를 고르거나 한 번 더 눌러 보세요.'
+          : null,
+      );
       if (added.length > 0) {
         // 새 코디는 뒤에 붙인다.
         //
@@ -376,6 +410,7 @@ export function HomePage({
       <section ref={recSectionRef} className="section">
         {recLoading && <Loading>오늘의 조합을 고르는 중...</Loading>}
         {recError && <ErrorMessage>추천을 불러올 수 없습니다: {recError}</ErrorMessage>}
+        {recNotice && !recError && <p className="msg">{recNotice}</p>}
 
         {!recLoading && !recError && looks.length === 0 && (
           <>
