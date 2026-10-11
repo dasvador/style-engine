@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/endpoints';
 import { errorMessage } from '../api/client';
@@ -58,6 +58,10 @@ export function WardrobePage({ clothes, onReload, addPanelOpen, setAddPanelOpen 
         ))}
       </div>
 
+      {/* 목록보다 앞에 둔다. 예전에는 그리드 뒤에 있어서, 옷이 많으면 떠 있는 버튼을 눌러도
+          패널이 수백 벌 아래에서 열려 아무 반응이 없는 것처럼 보였다. */}
+      <AddPanel open={addPanelOpen} onClose={() => setAddPanelOpen(false)} onAdded={onReload} />
+
       {items.length === 0 ? (
         <EmptyState
           icon="Wardrobe"
@@ -94,8 +98,6 @@ export function WardrobePage({ clothes, onReload, addPanelOpen, setAddPanelOpen 
         </div>
       )}
 
-      <AddPanel open={addPanelOpen} onClose={() => setAddPanelOpen(false)} onAdded={onReload} />
-
       <button className="fab" onClick={() => setAddPanelOpen(!addPanelOpen)}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <path d="M12 5v14M5 12h14" />
@@ -117,9 +119,17 @@ function AddPanel({
   onAdded: () => Promise<void>;
 }) {
   const [tab, setTab] = useState<'manual' | 'image'>('manual');
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // 떠 있는 버튼은 화면 어디서든 누를 수 있으므로, 열릴 때 패널이 보이는 곳까지 옮긴다.
+  useEffect(() => {
+    if (!open) return;
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    panelRef.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+  }, [open]);
 
   return (
-    <div className={`add-panel${open ? ' open' : ''}`}>
+    <div ref={panelRef} className={`add-panel${open ? ' open' : ''}`}>
       <div className="add-panel-header">
         <span className="add-panel-title">옷 등록하기</span>
         <button className="add-panel-close" onClick={onClose}>
