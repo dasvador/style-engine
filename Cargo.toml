@@ -11,6 +11,9 @@ tokio = { version = "1", features = ["full"] }
 # JSON serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# 레퍼런스 카탈로그(`data/clothing_references.toml`)를 include_str! 로 읽어 파싱한다.
+# 설명이 긴 한국어 산문이라 JSON 의 한 줄 문자열로는 검토가 어렵다.
+toml = "0.8"
 
 # Middleware layer
 tower = { version = "0.5", features = ["full"] }
@@ -41,4 +44,3 @@ anyhow = "1"
 base64 = "0.22"
 
 [dev-dependencies]
-toml = "0.8"

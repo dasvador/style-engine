@@ -10,7 +10,7 @@ use crate::models::clothing::{Pass1Result, VisionAnalysisResult};
 use crate::models::recommendation::{AiMultiRecommendation, AiRecommendation};
 use crate::models::reference::ReferenceMatch;
 use crate::models::weather::CurrentWeather;
-use crate::services::embedding::EmbeddingService;
+use crate::services::embedding::{EmbeddingService, SearchScope};
 use crate::services::llm::{ChatRequest, LlmClient, LlmTask, Message};
 
 // ─── 1) get_outfit_recommendation ───
@@ -412,7 +412,10 @@ pub async fn analyze_clothing_pass1(
 5. 색상
 
 반드시 JSON 형식으로 응답하세요:
-{"description": "한국어로 작성한 상세 서술. 180~300자 내외 권장, 단 식별 가능한 특징을 우선"}"#;
+{"category": "상의/하의/아우터/신발/가방/액세서리/모자/벨트 중 하나", "description": "한국어로 작성한 상세 서술. 180~300자 내외 권장, 단 식별 가능한 특징을 우선"}
+
+category 는 레퍼런스를 같은 종류끼리만 비교하기 위한 것입니다. 보이는 그대로
+고르세요. 애매하면 가장 가까운 것을 고르고, 목록에 없으면 빈 문자열로 두세요."#;
 
     Ok(llm
         .chat_json::<Pass1Result>(
@@ -544,16 +547,36 @@ pub async fn analyze_clothing_image_with_rag(
     let pass1 = analyze_clothing_pass1(llm, image_data_url).await?;
     tracing::info!("RAG Pass 1 result: {}", &pass1.description);
 
-    let references = embedding_service.search(&pass1.description, 5).await?;
+    // 같은 종류의 레퍼런스만 본다. 2026-10-11 측정에서 오답 6건이 전부 다른
+    // 카테고리에 걸렸다 — 미디 스커트와 스트랩 힐이 `셀비지 데님 진` 설명을
+    // 참고자료로 받고 있었다.
+    let scope = SearchScope {
+        category: pass1.search_category(),
+        include_drafts: false,
+    };
+    let references = embedding_service
+        .search_scoped(&pass1.description, 5, &scope)
+        .await?;
 
     let top_similarity = references.first().map(|r| r.similarity).unwrap_or(0.0);
     let ref_names: Vec<&str> = references.iter().map(|r| r.name.as_str()).collect();
     tracing::info!(
-        "RAG retrieved {} references (top sim={:.3}): {:?}",
+        "RAG retrieved {} references (category={:?}, top sim={:.3}): {:?}",
         references.len(),
+        scope.category,
         top_similarity,
         ref_names
     );
+
+    // 그 종류의 레퍼런스가 아예 없으면 유사도를 볼 필요가 없다. 임계값은 분포가
+    // 겹치지만 빈 후보는 겹치지 않는다 — 가장 확실한 폴백 신호다.
+    if references.is_empty() {
+        tracing::info!(
+            "RAG has no reference for category {:?}, falling back to general analysis",
+            scope.category
+        );
+        return analyze_clothing_image(llm, image_data_url).await;
+    }
 
     if top_similarity < 0.5 {
         tracing::info!(

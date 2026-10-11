@@ -66,11 +66,18 @@ async fn main() {
         EmbeddingService::new(llm.clone()).expect("Failed to initialize embedding service"),
     );
 
-    // Seed reference data if empty, then load cache
-    embedding_service
-        .seed_if_empty(&pool)
+    // 레퍼런스: 카탈로그 업서트 → 캐시 적재.
+    //
+    // 순서가 중요하다. `sync_catalog` 는 설명이 바뀐 행의 `embedding` 을 NULL 로
+    // 되돌리고, 뒤이어 도는 `load_cache` 가 NULL 인 것만 임베딩해 저장한다. 순서를
+    // 뒤집으면 바뀐 설명이 옛 벡터로 검색된다.
+    //
+    // 예전에는 여기서 `seed_if_empty` 가 먼저 돌았다. 그 함수는 표가 비어 있을 때만
+    // 전체를 넣고 한 행이라도 있으면 건너뛰어서, 레퍼런스를 추가해도 기존 DB 에는
+    // 반영되지 않았다. 카탈로그 업서트가 그 역할까지 대신한다 — 빈 표든 아니든 같다.
+    services::reference_catalog::sync_catalog(&pool)
         .await
-        .expect("Failed to seed reference data");
+        .expect("레퍼런스 카탈로그 반영 실패");
     embedding_service
         .load_cache(&pool)
         .await
