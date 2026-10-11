@@ -23,8 +23,13 @@ use crate::services::weather as weather_service;
 /// 업로드 분석의 `prompts::RAG_MIN_SIMILARITY` 와 값은 같지만 **다른 기준이다.** 저쪽은
 /// Vision 1차 서술 ↔ 레퍼런스 검색 문장이고, 이쪽은 짧은 대화 표현 ↔ 옷장 아이템 이름·
 /// 색·소재를 이어 붙인 문장이다. 비교하는 글의 길이와 형식이 달라 유사도 분포도 다르다.
-/// 한쪽을 보정했다고 다른 쪽에 같은 값을 쓰면 안 된다. 이 값은 아직 측정으로 보정한 적이
-/// 없다.
+/// 한쪽을 보정했다고 다른 쪽에 같은 값을 쓰면 안 된다.
+///
+/// **카테고리를 모를 때만 쓴다.** 2026-10-11 질의 44개(옷장 333벌)로 쟀을 때 기준값으로는
+/// 맞는 옷과 엉뚱한 옷이 갈리지 않았다 — 옷장에 정확히 있는 옷이 0.42 까지 내려가고,
+/// 다른 카테고리 옷이 0.70 까지 올라간다(색이 같으면 걸린다). 카테고리를 알면 그 안의
+/// 1위를 그대로 쓰고, 이 값은 카테고리를 모를 때 다른 카테고리로 새는 것을 일부 막는
+/// 용도로만 남긴다(0.5 에서 다른 카테고리 3건 통과, 0.4 에서 7건).
 const WARDROBE_MATCH_MIN_SIMILARITY: f32 = 0.5;
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -291,6 +296,7 @@ async fn chat(
                         let (outfit_json, mut items, chosen_ids) = tool_get_outfit(
                             user_query,
                             anchor_name,
+                            anchor_category.as_deref(),
                             &clothes,
                             &OutfitContext {
                                 user: user_profile.as_ref(),
@@ -1748,11 +1754,18 @@ async fn tool_search_wardrobe(
 async fn tool_get_outfit(
     user_query: &str,
     anchor_name: &str,
+    searched_category: Option<&str>,
     clothes: &[Clothing],
     ctx: &OutfitContext<'_>,
     embedding: &std::sync::Arc<crate::services::embedding::EmbeddingService>,
 ) -> (String, Vec<ChatItem>, Vec<String>) {
-    let cat_hint_str = extract_category_from_wardrobe(anchor_name, clothes);
+    // 카테고리는 대화 모델이 search_wardrobe 에 넘긴 값을 먼저 쓴다. 이름에서 추정하는
+    // 것은 옷장에 같은 이름이 있을 때만 맞는다 — 사용자가 말한 옷이 옷장에 없으면
+    // 추정이 비어서 전 카테고리를 검색하게 되고, 그러면 "화이트 테니스 스커트" 가
+    // 색만 같은 하이탑 스니커즈(0.70)에 걸린다.
+    let cat_hint_str = searched_category
+        .map(str::to_string)
+        .or_else(|| extract_category_from_wardrobe(anchor_name, clothes));
     let cat_hint = cat_hint_str.as_deref();
 
     // anchor 탐색: 정확 → fuzzy → 임베딩. 못 찾아도 유저 원문 유지.
@@ -1779,12 +1792,21 @@ async fn tool_get_outfit(
                 .filter(|c| cat_hint.is_none_or(|cat| c.category == cat))
                 .cloned()
                 .collect();
+            // 카테고리를 알면 그 안의 1위를 그대로 쓴다. 기준값으로 거르면 맞는 옷이
+            // 버려진다 — "검정 더비" → 블랙 레더 더비 슈즈가 0.45, "가죽 라이더" → 블랙
+            // 레더 라이더 자켓이 0.38 이다. 버려지면 아래에서 옷장 첫 옷으로 가는데,
+            // 같은 카테고리의 가장 비슷한 옷이 그보다 항상 낫다.
+            let min_similarity = if cat_hint.is_some() {
+                f32::MIN
+            } else {
+                WARDROBE_MATCH_MIN_SIMILARITY
+            };
             embedding
                 .search_wardrobe(anchor_name, &filtered, 1)
                 .await
                 .ok()
                 .and_then(|m| m.into_iter().next())
-                .filter(|m| m.similarity > WARDROBE_MATCH_MIN_SIMILARITY)
+                .filter(|m| m.similarity > min_similarity)
                 .and_then(|m| clothes.iter().find(|c| c.name == m.name))
         }
     };
@@ -1809,8 +1831,9 @@ async fn tool_get_outfit(
     let scoring_anchor = match proxy_anchor {
         Some(pa) => pa,
         None => {
-            // DB에 유사 아이템도 없으면 첫 번째 아이템 기준으로 폴백
-            match clothes.first() {
+            // DB에 유사 아이템도 없으면 같은 카테고리의 첫 아이템, 그것도 없으면 첫 아이템
+            let same_category = cat_hint.and_then(|cat| clothes.iter().find(|c| c.category == cat));
+            match same_category.or_else(|| clothes.first()) {
                 Some(c) => c,
                 None => {
                     return (
