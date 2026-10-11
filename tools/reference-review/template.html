@@ -24,6 +24,7 @@
   --ok:#6fd19c; --ok-soft:#18311f; --warn:#e5b45b; --warn-soft:#352812; --no:#ef8b8b; --no-soft:#3a1c1c;
   --caution:#2a2416; --caution-line:#6b5523; color-scheme:dark }
 *{box-sizing:border-box}
+[hidden]{display:none !important}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6;margin:0}
 .wrap{max-width:860px;margin:0 auto;padding-inline:16px;padding-block:28px 64px;display:flex;flex-direction:column;gap:20px}
 h1{font-size:26px;font-weight:700;margin:0;letter-spacing:-.01em;text-wrap:balance}
@@ -85,18 +86,20 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:56px;border:1px solid
 <div class="wrap">
   <header>
     <h1>레퍼런스 검수</h1>
-    <p class="lede">Vision 분석이 참고할 의류 레퍼런스입니다. 신규 레퍼런스는 승인할지, 기존 레퍼런스는 제안한 검색 문장을 적용할지 정해 주세요. 결정은 바로 저장되고, Claude 가 읽어서 <code>data/clothing_references.toml</code> 에 반영합니다.</p>
+    <p class="lede">Vision 분석이 참고할 의류 레퍼런스입니다. 신규 레퍼런스는 승인할지, 기존 레퍼런스는 제안한 검색 문장과 설명 수정을 적용할지 정해 주세요. 결정은 바로 저장되고, Claude 가 읽어서 <code>data/clothing_references.toml</code> 에 반영합니다.</p>
   </header>
   <div id="status" class="banner" hidden></div>
   <div class="banner" id="seed-warn" hidden>기존 레퍼런스는 설명 전체로 검색하고 있어, 검색 문장을 따로 둔 신규 레퍼런스에 순위가 밀립니다. 신규를 승인할 때 아래 제안도 함께 정하는 것을 권합니다.</div>
   <section class="stats" aria-label="진행 현황">
     <div class="stat"><span class="k" id="k-new">신규</span><span class="v" id="s-new"></span><div class="bar" id="b-new"></div></div>
     <div class="stat"><span class="k" id="k-seed">검색 문장 제안</span><span class="v" id="s-seed"></span><div class="bar" id="b-seed"></div></div>
+    <div class="stat"><span class="k" id="k-rewrite">설명 수정</span><span class="v" id="s-rewrite"></span><div class="bar" id="b-rewrite"></div></div>
   </section>
   <div class="toolbar">
     <div class="row tabs" role="group" aria-label="목록">
       <button id="tab-new" aria-pressed="true">신규 레퍼런스</button>
       <button id="tab-seed" aria-pressed="false">검색 문장 제안</button>
+      <button id="tab-rewrite" aria-pressed="false">설명 수정</button>
     </div>
     <div class="row" id="filters" role="group" aria-label="필터"></div>
   </div>
@@ -110,11 +113,13 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:56px;border:1px solid
   const items = DATA.items;
   const state = {}; // key -> {decision, note}
   const ui = {tab:'new', cat:'전체', only:'all'};
+  const TABS = {new:'draft', seed:'seed', rewrite:'rewrite'}; // 탭 → 항목 종류
   let db = null, canWrite = true;
 
   const OPTS = {
     draft: [['approve','승인'],['revise','수정 필요'],['reject','제외']],
     seed:  [['apply','적용'],['keep','적용 안 함']],
+    rewrite: [['apply','적용'],['keep','적용 안 함']],
   };
   const el = (t, a={}, ...kids) => { const e=document.createElement(t); for (const [k,v] of Object.entries(a)) { if (k==='class') e.className=v; else if (k==='text') e.textContent=v; else e.setAttribute(k,v);} kids.flat().forEach(c=>c!=null&&e.append(c)); return e; };
 
@@ -153,17 +158,19 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:56px;border:1px solid
     return c;
   }
   function renderStats(){
-    const n = counts('draft'), s = counts('seed');
+    const n = counts('draft'), s = counts('seed'), r = counts('rewrite');
     document.getElementById('s-new').innerHTML = `승인 <b>${n.approve}</b> · 수정 필요 <b>${n.revise}</b> · 제외 <b>${n.reject}</b> · 미검수 <b>${n.none}</b>`;
     document.getElementById('s-seed').innerHTML = `적용 <b>${s.apply}</b> · 적용 안 함 <b>${s.keep}</b> · 미정 <b>${s.none}</b>`;
     const bar = (id, parts, total) => { const b=document.getElementById(id); b.replaceChildren(...parts.map(([n,c])=>{ const i=el('i'); i.style.width=(n/total*100)+'%'; i.style.background=c; return i; })); };
     bar('b-new', [[n.approve,'var(--ok)'],[n.revise,'var(--warn)'],[n.reject,'var(--no)']], n.total);
     bar('b-seed', [[s.apply,'var(--ok)'],[s.keep,'var(--warn)']], s.total);
+    document.getElementById('s-rewrite').innerHTML = `적용 <b>${r.apply}</b> · 적용 안 함 <b>${r.keep}</b> · 미정 <b>${r.none}</b>`;
+    bar('b-rewrite', [[r.apply,'var(--ok)'],[r.keep,'var(--warn)']], r.total);
   }
 
   function renderFilters(){
     const box = document.getElementById('filters'); box.replaceChildren();
-    const kind = ui.tab==='new' ? 'draft' : 'seed';
+    const kind = TABS[ui.tab];
     const cats = ['전체', ...new Set(items.filter(i=>i.kind===kind).map(i=>i.category))];
     cats.forEach(c=>{ const b=el('button',{class:'chip','aria-pressed':String(ui.cat===c),text:c}); b.onclick=()=>{ui.cat=c; renderFilters(); renderList();}; box.append(b); });
     const sep = el('span',{class:'note',text:'·'}); box.append(sep);
@@ -206,6 +213,11 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:56px;border:1px solid
     if (item.kind==='draft'){
       body.append(el('div',{}, el('div',{class:'label',text:'검색 문장 · 사진 서술과 비교되는 부분'}), el('div',{class:'search',text:item.embedding_text})));
       body.append(el('div',{}, el('div',{class:'label',text:'설명 · 분석 모델이 읽는 부분'}), renderDesc(item.description)));
+    } else if (item.kind==='rewrite'){
+      if (item.evidence) body.append(el('div',{class:'evidence'}, el('strong',{text:'바꾼 이유 '}), item.evidence));
+      body.append(el('div',{}, el('div',{class:'label',text:'제안한 설명 · 적용하면 분석 모델이 이것을 읽음'}), renderDesc(item.proposal)));
+      body.append(el('details',{}, el('summary',{text:'지금 설명 보기'}), renderDesc(item.description)));
+      if (!item.embedding_text) body.append(el('div',{class:'note',text:'이 레퍼런스는 설명 전체로 검색하므로, 적용하면 검색 결과도 달라집니다.'}));
     } else {
       if (item.embedding_text){
         body.append(el('div',{}, el('div',{class:'label',text:'지금 검색 문장 · 승인된 내용'}), el('div',{class:'search current',text:item.embedding_text})));
@@ -240,7 +252,7 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:56px;border:1px solid
   }
 
   function renderList(){
-    const kind = ui.tab==='new' ? 'draft' : 'seed';
+    const kind = TABS[ui.tab];
     const list = document.getElementById('list');
     const shown = items.filter(i=>i.kind===kind)
       .filter(i=>ui.cat==='전체' || i.category===ui.cat)
@@ -250,22 +262,20 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:56px;border:1px solid
 
   function showStatus(msg,tone){ const s=document.getElementById('status'); s.textContent=msg; s.dataset.tone=tone||''; s.hidden=!msg; }
 
-  function setTab(t){ ui.tab=t; ui.cat='전체'; ui.only='all';
-    document.getElementById('tab-new').setAttribute('aria-pressed',String(t==='new'));
-    document.getElementById('tab-seed').setAttribute('aria-pressed',String(t==='seed'));
-    renderFilters(); renderList(); }
-  document.getElementById('tab-new').onclick=()=>setTab('new');
-  document.getElementById('tab-seed').onclick=()=>setTab('seed');
+  const pressTabs = () => Object.keys(TABS).forEach(t=>document.getElementById('tab-'+t).setAttribute('aria-pressed',String(ui.tab===t)));
+  function setTab(t){ ui.tab=t; ui.cat='전체'; ui.only='all'; pressTabs(); renderFilters(); renderList(); }
+  Object.keys(TABS).forEach(t=>document.getElementById('tab-'+t).onclick=()=>setTab(t));
 
-  const nNew=items.filter(i=>i.kind==='draft').length, nSeed=items.filter(i=>i.kind==='seed').length;
+  const nOf = k => items.filter(i=>i.kind===k).length;
+  const nNew=nOf('draft'), nSeed=nOf('seed'), nRe=nOf('rewrite');
   document.getElementById('k-new').textContent='신규 '+nNew+'건';
   document.getElementById('k-seed').textContent='검색 문장 제안 '+nSeed+'건';
+  document.getElementById('k-rewrite').textContent='설명 수정 '+nRe+'건';
   document.getElementById('seed-warn').hidden = !(nNew && nSeed);
-  if (!nNew) document.getElementById('tab-new').hidden = true;
-  if (!nSeed) document.getElementById('tab-seed').hidden = true;
-  if (!nNew && nSeed) ui.tab='seed';
-  document.getElementById('tab-new').setAttribute('aria-pressed',String(ui.tab==='new'));
-  document.getElementById('tab-seed').setAttribute('aria-pressed',String(ui.tab==='seed'));
+  // 항목이 없는 종류는 탭과 현황 칸을 숨기고, 첫 탭은 항목이 있는 것으로 고른다
+  Object.entries(TABS).forEach(([t,k])=>{ if (!nOf(k)){ document.getElementById('tab-'+t).hidden=true; document.getElementById('k-'+t).parentElement.hidden=true; } });
+  ui.tab = Object.keys(TABS).find(t=>nOf(TABS[t])) || 'new';
+  pressTabs();
   renderStats(); renderFilters(); renderList();
   showStatus('저장소에 연결하는 중입니다…');
 

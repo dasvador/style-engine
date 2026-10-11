@@ -5,6 +5,8 @@
 
 - `review_status = "draft"` 인 레퍼런스 — 승인 / 수정 필요 / 제외
 - `# 검수 대기 — 제안한 검색 문장(적용 안 됨):` 주석이 붙은 레퍼런스 — 적용 / 적용 안 함
+- `tools/reference-review/proposals.toml` 의 제안 — 검색 문장 첫 줄 추가(seed),
+  설명 다시 쓰기(rewrite). 둘 다 적용 / 적용 안 함
 
 쓰는 법:
     python3 tools/reference-review/build.py /tmp/reference-review.html
@@ -13,7 +15,8 @@
 `decisions` 컬렉션에 쌓인다. 각 문서는 `{name, kind, decision, note}` 다.
 
 문서 id 는 레퍼런스 이름의 해시라서, 같은 아티팩트에 다시 게시해도 이전 회차의
-결정이 다른 항목에 붙지 않는다.
+결정이 다른 항목에 붙지 않는다. proposals.toml 의 항목은 `round` 까지 해시에 넣는다 —
+같은 레퍼런스에 지난 회차의 "적용" 이 남아 있어도 새 제안에 붙지 않게.
 """
 import hashlib
 import json
@@ -25,6 +28,7 @@ import tomllib
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CATALOG = ROOT / "data" / "clothing_references.toml"
 TEMPLATE = pathlib.Path(__file__).with_name("template.html")
+PROPOSALS = pathlib.Path(__file__).with_name("proposals.toml")
 PROPOSAL = re.compile(r"# 검수 대기 — 제안한 검색 문장\(적용 안 됨\):\n# (.+)(?:\n# 근거: (.+))?")
 GENRE_LABEL = {
     "minimal": "미니멀", "classic": "클래식", "romantic": "로맨틱",
@@ -34,8 +38,9 @@ GENRE_LABEL = {
 }
 
 
-def key(kind: str, name: str) -> str:
-    return f"{kind[0]}-{hashlib.sha1(name.encode()).hexdigest()[:12]}"
+def key(kind: str, name: str, round_: str = "") -> str:
+    seed = f"{round_}:{name}" if round_ else name
+    return f"{kind[0]}-{hashlib.sha1(seed.encode()).hexdigest()[:12]}"
 
 
 def main(out: str) -> None:
@@ -73,14 +78,41 @@ def main(out: str) -> None:
             item["proposal"], item["evidence"] = proposals[r["name"]]
         items.append(item)
 
+    if PROPOSALS.exists():
+        extra = tomllib.loads(PROPOSALS.read_text(encoding="utf-8"))
+        round_ = extra["round"]
+        by_name = {r["name"]: r for r in refs}
+        for p in extra.get("proposals", []):
+            r = by_name[p["name"]]  # 카탈로그에 없는 이름이면 여기서 멈춘다
+            base = {
+                "name": r["name"],
+                "category": r["category"],
+                "subcategory": r.get("subcategory"),
+                "era": r.get("era"),
+                "genres": r.get("genres", []),
+                "source_note": "",
+                "flag": False,
+                "embedding_text": (r.get("embedding_text") or "").strip(),
+                "description": r["description"].strip(),
+            }
+            if "embedding_prefix" in p:
+                current = base["embedding_text"] or base["description"]
+                items.append({**base, "kind": "seed", "key": key("seed", r["name"], round_),
+                              "proposal": p["embedding_prefix"].strip() + "\n" + current,
+                              "evidence": p.get("evidence", "")})
+            if "description" in p:
+                items.append({**base, "kind": "rewrite", "key": key("rewrite", r["name"], round_),
+                              "proposal": p["description"].strip(),
+                              "evidence": p.get("reason", "")})
+
     if not items:
         sys.exit("검수할 항목이 없다 (draft 도, 제안 검색 문장도 없음)")
 
     data = json.dumps({"items": items, "genreLabel": GENRE_LABEL}, ensure_ascii=False)
     html = TEMPLATE.read_text(encoding="utf-8").replace("__DATA__", data.replace("</", "<\\/"))
     pathlib.Path(out).write_text(html, encoding="utf-8")
-    drafts = sum(i["kind"] == "draft" for i in items)
-    print(f"신규 {drafts}건, 검색 문장 제안 {len(items) - drafts}건 → {out}")
+    n = {k: sum(i["kind"] == k for i in items) for k in ("draft", "seed", "rewrite")}
+    print(f"신규 {n['draft']}건, 검색 문장 제안 {n['seed']}건, 설명 수정 {n['rewrite']}건 → {out}")
 
 
 if __name__ == "__main__":
