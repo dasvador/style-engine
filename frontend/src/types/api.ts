@@ -53,6 +53,11 @@ export interface CreateClothingBody {
   thickness: Thickness;
 }
 
+/** 등록 후 고칠 수 있는 필드만. 서버는 보낸 필드만 바꾼다. */
+export interface UpdateClothingBody {
+  category?: string;
+}
+
 export interface ImageUploadBody {
   image_data: string;
 }

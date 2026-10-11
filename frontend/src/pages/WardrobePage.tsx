@@ -357,6 +357,15 @@ const GENRE_CHOICES: { key: string; label: string }[] = [
   { key: 'outdoor_casual', label: '아웃도어 캐주얼' },
 ];
 
+/**
+ * 등록 직후 고를 수 있는 종류. 옷장 화면의 분류 탭과 같은 다섯 가지다.
+ *
+ * 분석이 고른 종류를 여기서 바로잡게 한다. 잠가 입은 가디건처럼 사진 한 장으로는 모델도
+ * 헷갈리는 경우가 있고, 원피스·가디건은 옷장 규칙(원피스는 하의, 가디건은 아우터)을
+ * 알아야 맞출 수 있다.
+ */
+const CATEGORY_CHOICES = ['상의', '하의', '아우터', '신발', '가방'];
+
 const GENDER_CHOICES: { key: string; label: string }[] = [
   { key: 'female', label: '여성' },
   { key: 'male', label: '남성' },
@@ -373,6 +382,7 @@ const GENDER_CHOICES: { key: string; label: string }[] = [
 function GenreConfirm({ item, onDone }: { item: Clothing; onDone: () => Promise<void> }) {
   const [genres, setGenres] = useState<string[]>(item.style_genres ?? []);
   const [gender, setGender] = useState<string>(item.gender ?? 'unisex');
+  const [category, setCategory] = useState<string>(item.category);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -383,6 +393,10 @@ function GenreConfirm({ item, onDone }: { item: Clothing; onDone: () => Promise<
     setSaving(true);
     setError(null);
     try {
+      // 종류를 먼저 고친다. 장르 저장이 실패해도 고친 종류는 남는다.
+      if (category !== item.category) {
+        await api.clothes.update(item.id, { category });
+      }
       await api.clothes.setGenres(item.id, { style_genres: genres, gender });
       await onDone();
     } catch (err) {
@@ -396,6 +410,23 @@ function GenreConfirm({ item, onDone }: { item: Clothing; onDone: () => Promise<
       <p className="prose" style={{ marginBottom: 16 }}>
         <strong>{item.name}</strong> 을(를) 등록했습니다. 분석이 제안한 분류를 확인해 주세요.
       </p>
+
+      <div className="pick-group">
+        <span className="eyebrow">종류</span>
+        <div className="gender-tabs" role="group" aria-label="종류 선택">
+          {CATEGORY_CHOICES.map((c) => (
+            <button
+              key={c}
+              className={`gender-btn${category === c ? ' active' : ''}`}
+              aria-pressed={category === c}
+              onClick={() => setCategory(c)}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+        <p className="mood-note">원피스는 하의, 가디건과 후드집업은 아우터로 분류합니다.</p>
+      </div>
 
       <div className="pick-group">
         <span className="eyebrow">누구의 옷</span>
