@@ -244,6 +244,18 @@ fn detect_all_one_tone_without_rescue(ctx: &OutfitContext) -> bool {
         return false;
     }
 
+    // Rescue 3: 밝은 톤온톤에 로맨틱 아이템이 있으면 의도한 파스텔 룩으로 본다.
+    // 라벤더 퍼프 블라우스 + 베이비핑크 새틴 스커트 + 크림 발레리나(RW15)는 사람이
+    // "보완"으로 판단했다. 레이스·셔링·새틴의 질감 차이가 톤 대신 분리를 만든다.
+    // 어두운 톤온톤에는 적용하지 않는다 — 그쪽은 이런 판단을 받은 적이 없다.
+    let has_romantic = ctx
+        .slots
+        .iter()
+        .any(|s| s.texture_worlds.iter().any(|w| w == "romantic"));
+    if all_bright && has_romantic {
+        return false;
+    }
+
     true
 }
 

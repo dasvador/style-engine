@@ -1592,9 +1592,9 @@ bottom = "fw_05"
 shoes = "fw_47"
 bag = "fw_43"
 expected_hard_pass = true
-expected_today_fit = "Pass"
+expected_today_fit = "Borderline"
 expected_preference = "Accept"
-notes = "romantic × military — 보완(사용자 판단)."
+notes = "romantic × military — 보완(사용자 판단). today_fit 은 경계(신발·가방 격식 차이, 2026-10-11 사용자 승인)."
 tags = ["texture_world", "romantic_mix"]
 
 [[cases]]
@@ -1722,9 +1722,9 @@ bottom = "fw_33"
 shoes = "fw_22"
 bag = "fw_17"
 expected_hard_pass = true
-expected_today_fit = "Pass"
+expected_today_fit = "Borderline"
 expected_preference = "Accept"
-notes = "tailoring(트위드) × denim — 보완(사용자 판단)."
+notes = "tailoring(트위드) × denim — 보완(사용자 판단). today_fit 은 경계(신발·가방 격식 차이, 2026-10-11 사용자 승인)."
 tags = ["texture_world", "romantic_mix"]
 
 [[cases]]
