@@ -537,6 +537,12 @@ name 작성 원칙:
         .await?)
 }
 
+/// 이 값보다 1위 유사도가 낮으면 레퍼런스 없이 일반 분석으로 돌아간다.
+///
+/// `tests/retrieval_eval.rs` 가 같은 값으로 "정답인데 폴백" / "정답 없는데 통과" 를
+/// 센다. 값을 바꿀 때는 그 스코어카드로 근거를 남길 것.
+pub const RAG_MIN_SIMILARITY: f32 = 0.5;
+
 /// Full 2-pass RAG pipeline: pass1 → embed → retrieve → pass2
 pub async fn analyze_clothing_image_with_rag(
     llm: &LlmClient,
@@ -578,7 +584,7 @@ pub async fn analyze_clothing_image_with_rag(
         return analyze_clothing_image(llm, image_data_url).await;
     }
 
-    if top_similarity < 0.5 {
+    if top_similarity < RAG_MIN_SIMILARITY {
         tracing::info!(
             "RAG similarity too low ({:.3}), falling back to general analysis",
             top_similarity
