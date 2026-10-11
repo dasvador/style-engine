@@ -256,3 +256,164 @@ id = "N006"
 group = "negative"
 category = "가방"
 query = "골드 클러치백. 손잡이와 끈이 없이 손에 쥐는 납작한 가방. 금속 잠금장치가 위에 있다."
+# ─── 2차 추가 (임계값 보정용) ───
+#
+# 정답 질의는 일부러 짧거나 정보가 빠진 형태로 썼다. 실제 Pass 1 은 사진 각도·조명에
+# 따라 디테일을 놓치므로, 잘 쓴 서술만으로 보정하면 임계값이 실제보다 높게 잡힌다.
+# 음성은 카테고리마다 두세 건씩, 지식 베이스에 가까운 친척이 있는 것을 섞었다.
+
+[[cases]]
+id = "R031"
+group = "after"
+category = "아우터"
+expected = "트렌치코트"
+query = "베이지 롱코트. 허리에 벨트가 있고 단추가 두 줄이다. 어깨에 작은 끈이 달려 있다."
+
+[[cases]]
+id = "R032"
+group = "after"
+category = "아우터"
+expected = "울 테일러드 블레이저"
+query = "네이비 재킷. 라펠이 있고 단추 하나로 여민다. 사진이 정면이라 포켓은 잘 안 보인다."
+
+[[cases]]
+id = "R033"
+group = "after"
+category = "하의"
+expected = "플리츠 미디 스커트"
+query = "검정 스커트. 잔주름이 세로로 촘촘하게 잡혀 있고 길이는 종아리까지 온다."
+
+[[cases]]
+id = "R034"
+group = "after"
+category = "상의"
+expected = "새틴 블라우스"
+query = "핑크색 블라우스. 반짝이고 매끄럽다. 앞 단추가 있다."
+
+[[cases]]
+id = "R035"
+group = "after"
+category = "상의"
+expected = "케이블 니트 스웨터"
+query = "회색 스웨터. 앞에 꽈배기 무늬가 있다."
+
+[[cases]]
+id = "R036"
+group = "after"
+category = "신발"
+expected = "첼시 부츠"
+query = "검정 가죽 앵클부츠. 옆에 고무줄이 들어가 있고 끈은 없다."
+
+[[cases]]
+id = "R037"
+group = "after"
+category = "가방"
+expected = "라피아 토트백"
+query = "밀짚 느낌의 여름 가방. 엮어 만든 표면이고 손잡이가 두 개다."
+
+[[cases]]
+id = "R038"
+group = "after"
+category = "아우터"
+expected = "MA-1 봄버 자켓"
+query = "카키색 짧은 점퍼. 소매 끝과 밑단이 쫀쫀한 고무단이다. 지퍼로 여민다."
+
+[[cases]]
+id = "R039"
+group = "after"
+category = "하의"
+expected = "와이드 슬랙스"
+query = "아이보리 통 넓은 정장 바지. 허리 밑에 주름이 잡혀 있다."
+
+[[cases]]
+id = "R040"
+group = "after"
+category = "상의"
+expected = "코튼 포플린 셔츠"
+query = "하늘색 셔츠. 칼라가 있고 앞에 단추가 쭉 달렸다. 얇고 빳빳하다."
+
+[[cases]]
+id = "R041"
+group = "after"
+category = "신발"
+expected = "페니 로퍼"
+query = "와인색 로퍼. 발등 띠에 동전 넣는 홈이 있다."
+
+[[cases]]
+id = "R042"
+group = "after"
+category = "아우터"
+expected = "가죽 라이더 자켓"
+query = "브라운 가죽 자켓. 지퍼가 비스듬하게 지나간다."
+
+[[cases]]
+id = "N007"
+group = "negative"
+category = "상의"
+query = "그린 니트 베스트. 소매가 없고 브이넥이며 셔츠 위에 겹쳐 입는 형태다. 마름모 무늬가 있다."
+
+[[cases]]
+id = "N008"
+group = "negative"
+category = "상의"
+query = "화이트 오프숄더 블라우스. 어깨가 드러나도록 넥라인이 가로로 넓게 파였고 고무줄로 잡혀 있다. 소매는 풍성하다."
+
+[[cases]]
+id = "N009"
+group = "negative"
+category = "하의"
+query = "화이트 테니스 스커트. 짧은 기장에 주름이 몇 개 크게 잡혀 있고 안에 속바지가 있다."
+
+[[cases]]
+id = "N010"
+group = "negative"
+category = "하의"
+query = "검정 바이커 쇼츠. 허벅지 중간까지 오는 짧은 길이에 몸에 딱 붙고 허리는 밴드다."
+
+[[cases]]
+id = "N011"
+group = "negative"
+category = "아우터"
+query = "아이보리 플리스 자켓. 털이 보송보송한 합성 원단이고 지퍼로 여민다. 가슴에 작은 덮개 포켓이 있다."
+
+[[cases]]
+id = "N012"
+group = "negative"
+category = "아우터"
+query = "네이비 바시티 자켓. 몸판은 울이고 소매는 가죽이다. 목·손목·밑단이 줄무늬 리브이고 가슴에 큰 글자 패치가 있다."
+
+[[cases]]
+id = "N013"
+group = "negative"
+category = "신발"
+query = "브라운 웨스턴 부츠. 종아리 중간까지 오고 앞코가 뾰족하며 굽이 높고 비스듬하다. 갑피에 자수 무늬가 있다."
+
+[[cases]]
+id = "N014"
+group = "negative"
+category = "신발"
+query = "흰색 하이탑 캔버스 스니커즈. 발목까지 덮고 끈으로 묶는다. 고무 앞코와 고무 밑창이 있다."
+
+[[cases]]
+id = "N015"
+group = "negative"
+category = "신발"
+query = "검정 스포츠 샌들. 두꺼운 고무 밑창에 넓은 웨빙 끈 세 줄을 벨크로로 조인다."
+
+[[cases]]
+id = "N016"
+group = "negative"
+category = "가방"
+query = "검정 나일론 백팩. 어깨끈 두 개로 등에 메고 앞에 지퍼 포켓이 있다."
+
+[[cases]]
+id = "N017"
+group = "negative"
+category = "가방"
+query = "탄색 가죽 버킷백. 원통형 몸체에 입구를 끈으로 조여 닫는다."
+
+[[cases]]
+id = "N018"
+group = "negative"
+category = "하의"
+query = "그레이 스웨트 조거 팬츠. 허리는 고무 밴드와 끈이고 발목이 리브로 조여진다. 기모 안감."

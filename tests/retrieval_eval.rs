@@ -317,6 +317,7 @@ fn markdown(sc: &Scorecard, results: &[CaseResult]) -> String {
         sc.lowest_positive_top1, sc.highest_negative_top1
     ));
 
+    md.push_str(&threshold_sweep(results));
     md.push_str(
         "## 1위를 놓친 케이스\n\n| id | 정답 | 1위 | 유사도 | 정답 순위 |\n|---|---|---|---|---|\n",
     );
@@ -340,6 +341,47 @@ fn markdown(sc: &Scorecard, results: &[CaseResult]) -> String {
             r.case.id, r.case.category, r.top1_name, r.top1_sim, r.pool
         ));
     }
+    md
+}
+
+/// 임계값을 바꿨을 때 두 종류의 오류가 어떻게 움직이는지.
+///
+/// 2026-10-11 보정 결과 어떤 값도 두 분포를 가르지 못했다(정답 0.30~0.94, 음성
+/// 0.41~0.57). 그래서 값은 그대로 두고, 바꾸려는 사람이 같은 표를 보고 판단하도록
+/// 스코어카드에 남긴다.
+fn threshold_sweep(results: &[CaseResult]) -> String {
+    let pos: Vec<f32> = results
+        .iter()
+        .filter(|r| r.case.expected.is_some())
+        .map(|r| r.top1_sim)
+        .collect();
+    let neg: Vec<f32> = results
+        .iter()
+        .filter(|r| r.case.expected.is_none())
+        .map(|r| r.top1_sim)
+        .collect();
+    let mut md = String::from(
+        "## 임계값별 오류\n\n정답인데 폴백하면 맞는 레퍼런스를 버리고, 정답 없는데 통과하면 \
+         같은 카테고리의 엉뚱한 레퍼런스를 Pass 2 가 받는다.\n\n\
+         | 임계값 | 정답인데 폴백 | 정답 없는데 통과 | 합 |\n|---|---|---|---|\n",
+    );
+    for step in 0..=10 {
+        let t = 0.40 + step as f32 * 0.02;
+        let a = pos.iter().filter(|s| **s < t).count();
+        let b = neg.iter().filter(|s| **s >= t).count();
+        let mark = if (t - RAG_MIN_SIMILARITY).abs() < 1e-6 {
+            " ← 현재"
+        } else {
+            ""
+        };
+        md.push_str(&format!(
+            "| {t:.2}{mark} | {a}/{} | {b}/{} | {} |\n",
+            pos.len(),
+            neg.len(),
+            a + b
+        ));
+    }
+    md.push('\n');
     md
 }
 
