@@ -19,6 +19,7 @@ use crate::services::cross_mood;
 use crate::services::llm::LlmTask;
 use crate::services::recommendation_diversity;
 use crate::services::recommendation_service;
+use crate::services::unfit_gate;
 use crate::services::{prompts, style_engine, weather as weather_service};
 
 pub fn router() -> Router<AppState> {
@@ -396,21 +397,50 @@ async fn get_multi_recommendation(
         .map(|c| c.weather_summary.clone())
         .unwrap_or_default();
 
+    // 오늘 입기에 "실패" 인 후보는 세 추천 자리 모두에서 뺀다. 후보가 전부 실패면
+    // 그대로 둔다(빈 추천을 내지 않는다). 아래 shadow 로그는 거르기 전 목록으로 남긴다.
+    let mut unfit = Vec::with_capacity(reranked.len());
+    for c in &reranked {
+        let fail = match crate::services::candidate_pipeline::rebuild_context(
+            c,
+            &clothes,
+            &state.db,
+            body.occasion.as_deref(),
+        )
+        .await
+        {
+            Some(ctx) => {
+                crate::services::serving_ranker::compute_today_fit(&ctx, weather.temperature)
+                    == crate::services::style_engine_v2::TodayFitLevel::Fail
+            }
+            None => false,
+        };
+        unfit.push((c.ai_candidate_index, fail));
+    }
+    let (servable, dropped) = unfit_gate::keep_wearable(reranked.clone(), |c| {
+        unfit
+            .iter()
+            .any(|(i, fail)| *i == c.ai_candidate_index && *fail)
+    });
+    if dropped > 0 {
+        tracing::info!(dropped, "오늘 입기 실패 후보를 추천 자리에서 뺐다");
+    }
+
     // ─── 순차 모드 선택 (하드 필터링) ───
 
     // Step 1: 오늘의 추천 — 최고 점수
     let todays =
-        recommendation_service::select_todays_pick(&reranked, weather.temperature, &clothes);
+        recommendation_service::select_todays_pick(&servable, weather.temperature, &clothes);
 
     // Step 2: 다른 조합 — Today와 상의+하의가 다른 후보
     let variation = match &todays {
-        Some(t) => recommendation_service::select_variation(&reranked, &t.candidate),
+        Some(t) => recommendation_service::select_variation(&servable, &t.candidate),
         None => None,
     };
 
     // Step 3: 안 입은 옷 — 휴면 아이템 포함 후보
     let dormant = match &todays {
-        Some(t) => recommendation_service::select_dormant(&reranked, &dormant_ids, &t.candidate),
+        Some(t) => recommendation_service::select_dormant(&servable, &dormant_ids, &t.candidate),
         None => None,
     };
 

@@ -12,4 +12,5 @@ pub mod serving_ranker;
 pub mod shortlist;
 pub mod style_engine;
 pub mod style_engine_v2;
+pub mod unfit_gate;
 pub mod weather;
