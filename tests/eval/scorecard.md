@@ -9,8 +9,8 @@
 | — false negative (엔진 통과 / 사람 거절) | 2 |
 | — 거절 정밀도 / 재현율 | 75.0% / 81.8% |
 | Today-fit 정확도 (3-class) | **76.6%** |
-| 선호도 순위 정확도 (Accept > Reject 쌍) | **73.8%** |
-| — Accept 평균 / Reject 평균 / 간격 | 97.0 / 92.5 / 4.5 |
+| 선호도 순위 정확도 (Accept > Reject 쌍) | **79.9%** |
+| — Accept 평균 / Reject 평균 / 간격 | 96.8 / 91.3 / 5.5 |
 | Hard + fit 동시 일치 | **73.8%** |
 
 ## False positive를 유발한 룰

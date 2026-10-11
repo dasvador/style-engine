@@ -63,6 +63,7 @@ struct TodayFitMetrics {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct PreferenceMetrics {
     /// Accept 케이스가 Reject 케이스보다 높은 점수를 받은 쌍의 비율.
+    /// `temperature` 태그가 붙은 케이스는 넣지 않는다(스타일 점수는 기온을 보지 않는다).
     /// 임계값을 정하지 않아도 되므로 점수 스케일이 바뀌어도 비교 가능하다.
     pairwise_ranking_pct: f64,
     accept_mean_score: f64,
@@ -148,6 +149,14 @@ fn compute_scorecard() -> Scorecard {
         }
 
         // preference — 점수 분리도
+        //
+        // 기온 때문에 거절한 케이스는 뺀다. 스타일 점수는 기온을 보지 않으므로, 10도에
+        // 반팔 단독(TG001)처럼 옷차림 자체는 멀쩡한 조합이 높은 점수를 받는 것은 엔진의
+        // 실수가 아니다. 넣어 두면 기온 라벨을 하나 추가할 때마다 이 지표가 떨어진다
+        // (TG011 추가로 75.1 → 73.8%). 기온 판단은 위의 today-fit 지표가 잰다.
+        if case.tags.iter().any(|t| t == "temperature") {
+            continue;
+        }
         match case.expected_preference.as_str() {
             "Accept" => accept_scores.push(score),
             "Reject" => reject_scores.push(score),

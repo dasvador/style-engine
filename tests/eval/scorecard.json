@@ -22,10 +22,10 @@
     }
   },
   "preference": {
-    "pairwise_ranking_pct": 73.8,
-    "accept_mean_score": 97.0,
-    "reject_mean_score": 92.5,
-    "separation": 4.5
+    "pairwise_ranking_pct": 79.9,
+    "accept_mean_score": 96.8,
+    "reject_mean_score": 91.3,
+    "separation": 5.5
   },
   "combined_accuracy_pct": 73.8
 }
