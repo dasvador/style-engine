@@ -1697,3 +1697,690 @@ weight = "중간"
 formality_level = 4
 silhouette = "oversized"
 texture_worlds = ["tailoring"]
+
+# ───────────────────────────────────────────────────────────────
+# 여성 옷장에서 가져온 아이템 — 로맨틱·보헤미안 조합 케이스(RW01~RW16)용. 2026-10-11 DB 값 그대로.
+# ───────────────────────────────────────────────────────────────
+
+[items.fw_01]
+name = "그레이 맨투맨 스웨트셔츠"
+category = "상의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "중간"
+saturation = "낮음"
+weight = "중간"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "겨울", "봄"]
+texture_worlds = ["sweat"]
+
+[items.fw_02]
+name = "그레이 스트럭처드 토트백"
+category = "가방"
+thickness = "medium"
+style = "베이직"
+role = "포인트"
+tone = "중간"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather", "minimal"]
+
+[items.fw_03]
+name = "내추럴 라피아 라운드 숄더백"
+category = "가방"
+thickness = "medium"
+role = "포인트"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["canvas"]
+
+[items.fw_04]
+name = "라벤더 리본 넥 퍼프슬리브 블라우스"
+category = "상의"
+thickness = "thin"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 3
+silhouette = "regular"
+seasons = ["가을", "봄", "여름"]
+texture_worlds = ["romantic"]
+
+[items.fw_05]
+name = "라이트 인디고 스트레이트 데님"
+category = "하의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "중간"
+saturation = "중간"
+weight = "중간"
+formality_level = 2
+silhouette = "relaxed"
+seasons = ["가을", "봄"]
+texture_worlds = ["denim", "minimal"]
+
+[items.fw_06]
+name = "머스타드 프린트 티어드 맥시스커트"
+category = "하의"
+thickness = "thin"
+role = "베이스"
+tone = "밝음"
+saturation = "중간"
+weight = "가벼움"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄", "여름"]
+texture_worlds = ["bohemian"]
+
+[items.fw_07]
+name = "베이비핑크 플리츠 새틴 미디 스커트"
+category = "하의"
+thickness = "thin"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 3
+silhouette = "regular"
+seasons = ["가을", "봄", "여름"]
+texture_worlds = ["romantic"]
+
+[items.fw_08]
+name = "베이지 레더 메리제인 슈즈"
+category = "신발"
+thickness = "medium"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather"]
+
+[items.fw_09]
+name = "베이지 플로럴 프린트 맥시 원피스"
+category = "하의"
+thickness = "thin"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄", "여름"]
+texture_worlds = ["bohemian"]
+
+[items.fw_10]
+name = "블랙 나일론 봄버자켓"
+category = "아우터"
+thickness = "medium"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["nylon"]
+
+[items.fw_11]
+name = "블랙 나일론 크로스백"
+category = "가방"
+thickness = "thin"
+style = "베이직"
+role = "약한포인트"
+tone = "어두움"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 2
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["minimal", "nylon"]
+
+[items.fw_12]
+name = "블랙 레더 라이더 자켓"
+category = "아우터"
+thickness = "medium"
+style = "베이직"
+role = "포인트"
+tone = "어두움"
+saturation = "낮음"
+weight = "무거움"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["leather", "minimal"]
+
+[items.fw_13]
+name = "블랙 레더 미니 숄더백"
+category = "가방"
+thickness = "thin"
+style = "베이직"
+role = "약한포인트"
+tone = "어두움"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 3
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather", "minimal"]
+
+[items.fw_14]
+name = "블랙 레더 스퀘어토 로퍼"
+category = "신발"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather", "minimal"]
+
+[items.fw_15]
+name = "블랙 레더 스트럭처드 토트백"
+category = "가방"
+thickness = "medium"
+style = "베이직"
+role = "약한포인트"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather", "minimal"]
+
+[items.fw_16]
+name = "블랙 레더 앵클부츠"
+category = "신발"
+thickness = "medium"
+style = "베이직"
+role = "연결템"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+seasons = ["가을", "겨울"]
+texture_worlds = ["leather", "minimal"]
+
+[items.fw_17]
+name = "블랙 미니 체인 숄더백"
+category = "가방"
+thickness = "medium"
+role = "포인트"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather"]
+
+[items.fw_18]
+name = "블랙 슬링백 키튼힐"
+category = "신발"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 4
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather", "minimal"]
+
+[items.fw_19]
+name = "블랙 싱글 테일러드 자켓"
+category = "아우터"
+thickness = "medium"
+style = "베이직"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 4
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["tailoring"]
+
+[items.fw_20]
+name = "블랙 와이드 슬랙스"
+category = "하의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 4
+silhouette = "oversized"
+seasons = ["가을", "봄"]
+texture_worlds = ["minimal"]
+
+[items.fw_21]
+name = "블랙 와이드 카고팬츠"
+category = "하의"
+thickness = "medium"
+role = "베이스"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 1
+silhouette = "oversized"
+seasons = ["가을", "봄"]
+texture_worlds = ["military"]
+
+[items.fw_22]
+name = "블랙 포인티드토 플랫 슈즈"
+category = "신발"
+thickness = "medium"
+style = "포멀"
+role = "베이스"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 4
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather"]
+
+[items.fw_23]
+name = "소프트핑크 숄더백"
+category = "가방"
+thickness = "medium"
+role = "포인트"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather"]
+
+[items.fw_24]
+name = "아이보리 레이스 트리밍 버킷백"
+category = "가방"
+thickness = "medium"
+role = "포인트"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 2
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather"]
+
+[items.fw_25]
+name = "아이보리 새틴 셔츠 블라우스"
+category = "상의"
+thickness = "thin"
+style = "포멀"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 4
+silhouette = "regular"
+seasons = ["가을", "봄", "여름"]
+texture_worlds = ["romantic"]
+
+[items.fw_26]
+name = "아이보리 에스닉 자수 블라우스"
+category = "상의"
+thickness = "thin"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 3
+silhouette = "regular"
+seasons = ["가을", "봄", "여름"]
+texture_worlds = ["bohemian"]
+
+[items.fw_27]
+name = "아이보리 트위드 자켓"
+category = "아우터"
+thickness = "medium"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+silhouette = "regular"
+seasons = ["가을", "겨울"]
+texture_worlds = ["tailoring"]
+
+[items.fw_28]
+name = "아이보리 플로럴 자수 오간자 블라우스"
+category = "상의"
+thickness = "thin"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 3
+silhouette = "regular"
+seasons = ["가을", "봄", "여름"]
+texture_worlds = ["romantic"]
+
+[items.fw_29]
+name = "오프화이트 에스파드리유 플랫"
+category = "신발"
+thickness = "medium"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 1
+seasons = ["봄", "여름"]
+texture_worlds = ["canvas"]
+
+[items.fw_30]
+name = "올리브 오버핏 윈드브레이커"
+category = "아우터"
+thickness = "thin"
+tone = "어두움"
+saturation = "중간"
+weight = "가벼움"
+formality_level = 1
+silhouette = "oversized"
+seasons = ["가을", "봄"]
+texture_worlds = ["nylon", "outdoor"]
+
+[items.fw_31]
+name = "올리브 코튼 필드자켓"
+category = "아우터"
+thickness = "thick"
+style = "밀리터리"
+tone = "어두움"
+saturation = "중간"
+weight = "무거움"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "겨울"]
+texture_worlds = ["military"]
+
+[items.fw_32]
+name = "워시드 다크블루 와이드 데님"
+category = "하의"
+thickness = "medium"
+role = "베이스"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 2
+silhouette = "oversized"
+seasons = ["가을", "봄"]
+texture_worlds = ["denim"]
+
+[items.fw_33]
+name = "워시드 미디엄블루 와이드 데님"
+category = "하의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "중간"
+saturation = "중간"
+weight = "중간"
+formality_level = 2
+silhouette = "oversized"
+seasons = ["가을", "봄"]
+texture_worlds = ["denim", "minimal"]
+
+[items.fw_34]
+name = "차콜 울 와이드 슬랙스"
+category = "하의"
+thickness = "medium"
+style = "포멀"
+role = "베이스"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 4
+silhouette = "oversized"
+seasons = ["가을", "겨울"]
+texture_worlds = ["tailoring"]
+
+[items.fw_35]
+name = "차콜 크롭 후드 스웨트셔츠"
+category = "상의"
+thickness = "medium"
+role = "베이스"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "겨울", "봄"]
+texture_worlds = ["sweat"]
+
+[items.fw_36]
+name = "카키 코튼 유틸리티 자켓"
+category = "아우터"
+thickness = "medium"
+style = "베이직"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["workwear"]
+
+[items.fw_37]
+name = "카키 코튼 카고팬츠"
+category = "하의"
+thickness = "medium"
+style = "워크"
+role = "베이스"
+tone = "중간"
+saturation = "낮음"
+weight = "중간"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["military"]
+
+[items.fw_38]
+name = "크림 레이스업 발레리나 슈즈"
+category = "신발"
+thickness = "thin"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 3
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather"]
+
+[items.fw_39]
+name = "크림 스모크 셔링 탑"
+category = "상의"
+thickness = "thin"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 3
+silhouette = "regular"
+seasons = ["가을", "봄", "여름"]
+texture_worlds = ["romantic"]
+
+[items.fw_40]
+name = "크림 크로셰 니트 가디건"
+category = "아우터"
+thickness = "medium"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["bohemian"]
+
+[items.fw_41]
+name = "크림 플리츠 미디스커트"
+category = "하의"
+thickness = "thin"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 3
+silhouette = "regular"
+seasons = ["가을", "봄", "여름"]
+texture_worlds = ["romantic"]
+
+[items.fw_42]
+name = "탄 레더 앵클 웨스턴 부츠"
+category = "신발"
+thickness = "medium"
+role = "베이스"
+tone = "중간"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+seasons = ["가을", "겨울"]
+texture_worlds = ["leather"]
+
+[items.fw_43]
+name = "탄 미디엄 토트백"
+category = "가방"
+thickness = "medium"
+style = "포멀"
+role = "포인트"
+tone = "중간"
+saturation = "낮음"
+weight = "중간"
+formality_level = 4
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather"]
+
+[items.fw_44]
+name = "탄 스웨이드 프린지 크로스백"
+category = "가방"
+thickness = "medium"
+role = "포인트"
+tone = "중간"
+saturation = "낮음"
+weight = "중간"
+formality_level = 2
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather"]
+
+[items.fw_45]
+name = "핑크 퀼팅 미니 크로스바디백"
+category = "가방"
+thickness = "medium"
+role = "포인트"
+tone = "밝음"
+saturation = "중간"
+weight = "중간"
+formality_level = 2
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather"]
+
+[items.fw_46]
+name = "핑크 플로럴 프린트 랩 미디 스커트"
+category = "하의"
+thickness = "thin"
+role = "베이스"
+tone = "밝음"
+saturation = "중간"
+weight = "가벼움"
+formality_level = 3
+silhouette = "regular"
+seasons = ["가을", "봄", "여름"]
+texture_worlds = ["romantic"]
+
+[items.fw_47]
+name = "화이트 레더 로우 스니커즈"
+category = "신발"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 1
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather", "minimal"]
+
+[items.fw_48]
+name = "화이트 레더 로우탑 스니커즈"
+category = "신발"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 1
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather", "minimal"]
+
+[items.fw_49]
+name = "화이트 레이스 트리밍 쉬폰 블라우스"
+category = "상의"
+thickness = "thin"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 3
+silhouette = "regular"
+seasons = ["가을", "봄", "여름"]
+texture_worlds = ["romantic"]
+
+[items.fw_50]
+name = "화이트 메리제인 스트랩 플랫슈즈"
+category = "신발"
+thickness = "medium"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather"]
+
+[items.fw_51]
+name = "화이트 캔버스 토트백"
+category = "가방"
+thickness = "medium"
+style = "베이직"
+role = "포인트"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["canvas", "minimal"]
+
+[items.fw_52]
+name = "화이트 캔버스 하이탑 스니커즈"
+category = "신발"
+thickness = "medium"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 1
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["canvas"]
+
+[items.fw_53]
+name = "화이트 코튼 크루넥 티셔츠"
+category = "상의"
+thickness = "thin"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 1
+silhouette = "regular"
+seasons = ["봄", "여름"]
+texture_worlds = ["minimal"]

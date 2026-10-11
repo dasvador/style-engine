@@ -1,0 +1,226 @@
+<title>텍스처 월드 검수</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* 레이아웃: 레퍼런스 검수 페이지와 같은 좁은 단일 열 작업 목록. 위에 진행 현황과 탭,
+   아래로 카드. 월드는 원단 견본 태그처럼 — 작은 고정폭 라벨, 월드마다 색 하나. */
+:root{
+  --bg:#f3f4f7; --surface:#ffffff; --sunk:#f7f8fa; --ink:#1a1d26; --muted:#5b6170; --line:#dde0e7;
+  --accent:#3245a6; --accent-soft:#e7eafb;
+  --ok:#1d7448; --ok-soft:#e3f2ea; --warn:#9a6200; --warn-soft:#fbf0dc; --no:#9d3434; --no-soft:#f8e6e6;
+  --caution:#fff7e6; --caution-line:#e8c27a;
+  --w-romantic:#b0477a; --w-bohemian:#9a5a1c; --w-tailoring:#2f4f8a; --w-minimal:#5b6170; --w-other:#3d6b52;
+  --f-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12141a; --surface:#1b1e27; --sunk:#161920; --ink:#e7e9ef; --muted:#9aa0ae; --line:#2c303c;
+  --accent:#8fa0ff; --accent-soft:#232a4d;
+  --ok:#6fd19c; --ok-soft:#18311f; --warn:#e5b45b; --warn-soft:#352812; --no:#ef8b8b; --no-soft:#3a1c1c;
+  --caution:#2a2416; --caution-line:#6b5523;
+  --w-romantic:#f08cbc; --w-bohemian:#e0a46a; --w-tailoring:#94b2f0; --w-minimal:#9aa0ae; --w-other:#8fcfaa; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#12141a; --surface:#1b1e27; --sunk:#161920; --ink:#e7e9ef; --muted:#9aa0ae; --line:#2c303c;
+  --accent:#8fa0ff; --accent-soft:#232a4d;
+  --ok:#6fd19c; --ok-soft:#18311f; --warn:#e5b45b; --warn-soft:#352812; --no:#ef8b8b; --no-soft:#3a1c1c;
+  --caution:#2a2416; --caution-line:#6b5523;
+  --w-romantic:#f08cbc; --w-bohemian:#e0a46a; --w-tailoring:#94b2f0; --w-minimal:#9aa0ae; --w-other:#8fcfaa; color-scheme:dark }
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6;margin:0}
+.wrap{max-width:860px;margin:0 auto;padding-inline:16px;padding-block:28px 64px;display:flex;flex-direction:column;gap:20px}
+h1{font-size:26px;font-weight:700;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.lede{color:var(--muted);margin:4px 0 0;max-width:64ch}
+.banner{border:1px solid var(--caution-line);background:var(--caution);border-radius:8px;padding:10px 14px;font-size:14px}
+.banner[data-tone="error"]{border-color:var(--no);background:var(--no-soft)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 14px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat .k{font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.stat .v{font-size:15px;font-variant-numeric:tabular-nums}
+.stat .v b{font-size:20px}
+.toolbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:10px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tabs button,.chip{font:inherit;font-size:14px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:5px 12px;cursor:pointer}
+.tabs button[aria-pressed="true"],.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.chip{font-size:13px;padding:3px 10px}
+button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.list{display:flex;flex-direction:column;gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.card[data-done="1"]{border-color:var(--ok)}
+.head{padding:12px 16px 8px;display:flex;flex-direction:column;gap:6px}
+.title{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px}
+.title h2{font-size:17px;margin:0;font-weight:600}
+.pair{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.why{font-size:13px;color:var(--muted)}
+.w{font-family:var(--f-mono);font-size:12px;border:1px solid currentColor;border-radius:4px;padding:0 6px;white-space:nowrap}
+.w[data-w="romantic"]{color:var(--w-romantic)} .w[data-w="bohemian"]{color:var(--w-bohemian)}
+.w[data-w="tailoring"]{color:var(--w-tailoring)} .w[data-w="minimal"]{color:var(--w-minimal)}
+.w:not([data-w="romantic"]):not([data-w="bohemian"]):not([data-w="tailoring"]):not([data-w="minimal"]){color:var(--w-other)}
+.w.prop{border-style:dashed}
+.pieces{list-style:none;margin:0;padding:4px 16px 12px;display:flex;flex-direction:column;gap:6px}
+.pieces li{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline;min-width:0}
+.pieces .nm{font-size:14px}
+.pieces .none{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.decide{padding:10px 16px 12px;background:var(--sunk);border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{font:inherit;font-size:14px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:6px;padding:6px 12px;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+.seg button .mark{font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.seg button[aria-pressed="true"] .mark{color:var(--surface)}
+.seg button[aria-pressed="true"][data-v="conflict"]{background:var(--no);border-color:var(--no)}
+.seg button[aria-pressed="true"][data-v="complement"]{background:var(--ok);border-color:var(--ok)}
+.seg button[aria-pressed="true"][data-v="neutral"]{background:var(--warn);border-color:var(--warn)}
+.seg button:disabled{opacity:.5;cursor:not-allowed}
+textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid var(--line);border-radius:6px;padding:8px 10px;background:var(--surface);color:var(--ink);resize:vertical}
+.label{font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.saved{font-size:12px;color:var(--muted);min-height:1em}
+.legend{font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px 14px}
+.empty{color:var(--muted);text-align:center;padding:32px 0}
+@media (prefers-reduced-motion:no-preference){.card{transition:border-color .15s}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>텍스처 월드 검수</h1>
+    <p class="lede">월드가 없는 여성 옷 33벌을 어느 월드에 넣을지, 그리고 로맨틱·보헤미안 옷이 다른 월드와 만났을 때 어색한지(충돌) 잘 어울리는지(보완) 상관없는지 정해 주세요. 결정은 바로 저장되고, Claude 가 읽어서 데이터와 라벨 케이스에 반영합니다.</p>
+  </header>
+  <div id="status" class="banner" hidden></div>
+  <section class="stats" aria-label="진행 현황">
+    <div class="stat"><span class="k">월드 배정</span><span class="v" id="s-assign"></span></div>
+    <div class="stat"><span class="k">조합 판단</span><span class="v" id="s-combo"></span></div>
+  </section>
+  <div class="toolbar">
+    <div class="row tabs" role="group" aria-label="목록">
+      <button id="tab-assign" aria-pressed="true">월드 배정</button>
+      <button id="tab-combo" aria-pressed="false">조합 판단</button>
+    </div>
+    <div class="row" id="filters" role="group" aria-label="필터"></div>
+  </div>
+  <p class="legend" id="legend"></p>
+  <main id="list" class="list"></main>
+</div>
+
+<script id="data" type="application/json">__DATA__</script>
+<script>
+(function(){
+  const DATA = JSON.parse(document.getElementById('data').textContent);
+  const items = DATA.items;
+  const state = {};
+  const ui = {tab:'assign', only:'all'};
+  let db = null, canWrite = true;
+
+  const OPTS = {
+    assign: [['romantic','romantic'],['bohemian','bohemian'],['tailoring','tailoring'],['minimal','minimal'],['none','월드 없음']],
+    combo:  [['conflict','충돌 (감점)'],['complement','보완 (가점)'],['neutral','상관없음']],
+  };
+  const LEGEND = {
+    assign: '점선 테두리 태그가 제안입니다. 버튼에 “제안” 표시가 붙어 있고, 다른 것을 고르면 그쪽으로 저장됩니다. romantic·bohemian 은 새로 만드는 월드입니다.',
+    combo:  '각 옷 옆 태그는 지금 월드입니다. 점선 태그는 월드 배정 탭에서 제안한 월드입니다. 같은 조합의 다른 옷은 무난한 것으로 골랐습니다.',
+  };
+  const el = (t, a={}, ...kids) => { const e=document.createElement(t); for (const [k,v] of Object.entries(a)) { if (k==='class') e.className=v; else if (k==='text') e.textContent=v; else e.setAttribute(k,v);} kids.flat().forEach(c=>c!=null&&e.append(c)); return e; };
+  const wtag = (w, prop) => el('span',{class:'w'+(prop?' prop':''),'data-w':w,text:w + (prop?' (제안)':'')});
+
+  function counts(kind){
+    const list = items.filter(i=>i.kind===kind);
+    const c = {total:list.length, none:0};
+    OPTS[kind].forEach(([v])=>c[v]=0);
+    list.forEach(i=>{ const d=state[i.key]?.decision; if (d && d in c) c[d]++; else c.none++; });
+    return c;
+  }
+  function renderStats(){
+    const a = counts('assign'), c = counts('combo');
+    document.getElementById('s-assign').innerHTML = `정함 <b>${a.total-a.none}</b> / ${a.total}`;
+    document.getElementById('s-combo').innerHTML = `충돌 <b>${c.conflict}</b> · 보완 <b>${c.complement}</b> · 상관없음 <b>${c.neutral}</b> · 미정 <b>${c.none}</b>`;
+  }
+  function renderFilters(){
+    const box = document.getElementById('filters'); box.replaceChildren();
+    [['all','전부'],['open','미정만']].forEach(([v,t])=>{ const b=el('button',{class:'chip','aria-pressed':String(ui.only===v),text:t}); b.onclick=()=>{ui.only=v; renderFilters(); renderList();}; box.append(b); });
+    document.getElementById('legend').textContent = LEGEND[ui.tab];
+  }
+
+  const pending = {}, timers = {};
+  function save(item, patch, savedEl){
+    state[item.key] = {...(state[item.key]||{}), ...patch};
+    renderStats();
+    const card = document.querySelector(`[data-key="${item.key}"]`);
+    if (card) card.dataset.done = state[item.key].decision ? '1' : '';
+    if (!db || !canWrite) return;
+    const body = {kind:item.kind, name:item.name, round:DATA.round, decision: state[item.key].decision || null, note: state[item.key].note || '', updatedAt:new Date().toISOString()};
+    savedEl.textContent='저장 중…';
+    pending[item.key] = (pending[item.key]||Promise.resolve()).then(()=>db.collection('decisions').doc(item.key).set(body))
+      .then(()=>{ savedEl.textContent='저장됨'; })
+      .catch(e=>{
+        if (e && (e.code==='invalid_argument' || e.code==='permission_denied')){ canWrite=false; showStatus('이 계정에는 결정을 저장할 권한이 없습니다. 아티팩트 소유자 계정으로 열어 주세요.','error'); renderList(); }
+        else { savedEl.textContent='저장하지 못했습니다. 잠시 뒤 다시 눌러 주세요.'; }
+      });
+  }
+
+  function card(item){
+    const st = state[item.key] || {};
+    const c = el('article',{class:'card','data-key':item.key,'data-done':st.decision?'1':''});
+    const head = el('div',{class:'head'});
+    if (item.kind==='assign'){
+      head.append(el('div',{class:'title'}, el('h2',{text:item.name}), wtag(item.proposal==='none'?'월드 없음':item.proposal, true)));
+      if (item.why) head.append(el('div',{class:'why',text:item.why}));
+      c.append(head);
+    } else {
+      head.append(el('div',{class:'title'}, el('h2',{text:item.name}), el('span',{class:'pair',text:item.pair})));
+      c.append(head);
+      c.append(el('ul',{class:'pieces'}, item.pieces.map(p=>{
+        const tags = p.worlds.length ? p.worlds.map(w=>wtag(w,false)) : (p.proposed ? [wtag(p.proposed==='none'?'월드 없음':p.proposed,true)] : [el('span',{class:'none',text:'월드 없음'})]);
+        return el('li',{}, el('span',{class:'nm',text:p.name}), tags);
+      })));
+    }
+    const decide = el('div',{class:'decide'});
+    const seg = el('div',{class:'seg',role:'group','aria-label':'결정'});
+    const savedEl = el('div',{class:'saved','aria-live':'polite'});
+    OPTS[item.kind].forEach(([v,t])=>{
+      const b = el('button',{'data-v':v,'aria-pressed':String(st.decision===v)}, t);
+      if (item.kind==='assign' && v===item.proposal) b.append(el('span',{class:'mark',text:'제안'}));
+      if (!db || !canWrite) b.disabled = true;
+      b.onclick=()=>{ const next = state[item.key]?.decision===v ? null : v; seg.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed', String(x.dataset.v===next))); save(item,{decision:next},savedEl); };
+      seg.append(b);
+    });
+    const taId = 'note-'+item.key;
+    const ta = el('textarea',{id:taId,placeholder:'이유나 조건 (선택) — 예: 아우터가 크면 충돌'});
+    ta.value = st.note || '';
+    if (!db || !canWrite) ta.disabled = true;
+    ta.addEventListener('input',()=>{ clearTimeout(timers[item.key]); timers[item.key]=setTimeout(()=>{ if ((state[item.key]?.note||'')!==ta.value) save(item,{note:ta.value},savedEl); },900); });
+    ta.addEventListener('blur',()=>{ clearTimeout(timers[item.key]); if ((state[item.key]?.note||'')!==ta.value) save(item,{note:ta.value},savedEl); });
+    decide.append(seg, el('label',{for:taId,class:'label',text:'메모'}), ta, savedEl);
+    c.append(decide);
+    return c;
+  }
+
+  function renderList(){
+    const shown = items.filter(i=>i.kind===ui.tab).filter(i=> ui.only==='all' || !state[i.key]?.decision);
+    document.getElementById('list').replaceChildren(...(shown.length ? shown.map(card) : [el('p',{class:'empty',text:'이 조건에 맞는 항목이 없습니다.'})]));
+  }
+  function showStatus(msg,tone){ const s=document.getElementById('status'); s.textContent=msg; s.dataset.tone=tone||''; s.hidden=!msg; }
+  function setTab(t){ ui.tab=t; ui.only='all';
+    ['assign','combo'].forEach(x=>document.getElementById('tab-'+x).setAttribute('aria-pressed',String(x===t)));
+    renderFilters(); renderList(); }
+  document.getElementById('tab-assign').onclick=()=>setTab('assign');
+  document.getElementById('tab-combo').onclick=()=>setTab('combo');
+
+  renderStats(); renderFilters(); renderList();
+  showStatus('저장소에 연결하는 중입니다…');
+
+  (async ()=>{
+    const use = window.claude?.use;
+    db = use ? await use('db') : null;
+    if (!db){ showStatus('이 화면에서는 결정을 저장할 수 없습니다. claude.ai 에 로그인한 상태로 열어 주세요. 내용은 읽을 수 있습니다.','error'); renderList(); return; }
+    const user = await use('user');
+    const w = user && user.can ? await user.can('data.write') : null;
+    if (w === false){ canWrite=false; showStatus('읽기 전용으로 열려 있습니다. 결정은 소유자만 저장할 수 있습니다.'); }
+    else showStatus('');
+    let first = true;
+    db.collection('decisions').onSnapshot(snap=>{
+      snap.docs.forEach(d=>{ const v=d.data(); if (v) state[d.id]={decision:v.decision||null, note:v.note||''}; });
+      renderStats();
+      if (first){ first=false; renderList(); }
+    }, ()=>{ showStatus('저장소 연결이 끊겼습니다. 페이지를 새로 열어 주세요.','error'); });
+  })();
+})();
+</script>

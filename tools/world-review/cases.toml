@@ -1,0 +1,212 @@
+# 텍스처 월드 검수 — 월드가 없는 여성 의류 33벌의 배정과, 로맨틱·보헤미안 옷이 다른
+# 월드와 만났을 때의 판단을 받는다. build.py 가 이 파일로 검수 페이지를 만든다.
+#
+# 판단이 나오면: 배정은 마이그레이션으로, 조합 판단은 recommendation_cases.toml 의 라벨
+# 케이스와 (충돌·보완이 갈린 경우) 규칙 후보로 옮긴다. 규칙은 shadow 경로에만 넣는다.
+round = "2026-10-11"
+
+# ── 1. 월드 배정 ──
+# 제안은 이름·소재·품목으로 정했다. 선택지: romantic(신규), bohemian(신규), tailoring,
+# minimal, none. minimal 은 하드필터의 weak anchor 구제가 보는 값이라 기본템에만 제안했다.
+
+[[assign]]
+name = "화이트 코튼 스모킹 크롭 탑"
+proposal = "romantic"
+why = "스모킹(잔주름 고무 박음질) 장식."
+[[assign]]
+name = "라벤더 리본 넥 퍼프슬리브 블라우스"
+proposal = "romantic"
+why = "리본 넥, 퍼프 소매, 쉬폰."
+[[assign]]
+name = "아이보리 플로럴 자수 오간자 블라우스"
+proposal = "romantic"
+why = "오간자에 꽃 자수."
+[[assign]]
+name = "크림 스모크 셔링 탑"
+proposal = "romantic"
+why = "셔링 장식."
+[[assign]]
+name = "화이트 퍼프슬리브 티셔츠"
+proposal = "romantic"
+why = "퍼프 소매. 티셔츠라 minimal 로 볼 수도 있다."
+[[assign]]
+name = "화이트 레이스 트리밍 쉬폰 블라우스"
+proposal = "romantic"
+why = "레이스 장식, 쉬폰."
+[[assign]]
+name = "크림 레이스 패치 니트 카디건"
+proposal = "romantic"
+why = "레이스 패치."
+[[assign]]
+name = "크림 플리츠 미디스커트"
+proposal = "romantic"
+why = "플리츠 미디. 장식이 없어 minimal 로 볼 수도 있다."
+[[assign]]
+name = "베이비핑크 플리츠 새틴 미디 스커트"
+proposal = "romantic"
+why = "새틴 광택, 파스텔, 플리츠."
+[[assign]]
+name = "핑크 플로럴 프린트 랩 미디 스커트"
+proposal = "romantic"
+why = "꽃무늬 쉬폰 랩스커트."
+[[assign]]
+name = "아이보리 새틴 셔츠 블라우스"
+proposal = "romantic"
+why = "새틴 광택. 셔츠 형태라 tailoring 으로 볼 수도 있다."
+[[assign]]
+name = "아이보리 V넥 실크터치 블라우스"
+proposal = "romantic"
+why = "실크 같은 광택 원단의 블라우스."
+[[assign]]
+name = "크림 오프숄더 보헤미안 블라우스"
+proposal = "bohemian"
+why = "이름 그대로 보헤미안. 오프숄더."
+[[assign]]
+name = "테라코타 크링클 코튼 탑"
+proposal = "bohemian"
+why = "구김 가공 면, 흙빛 색."
+[[assign]]
+name = "아이보리 에스닉 자수 블라우스"
+proposal = "bohemian"
+why = "에스닉 자수."
+[[assign]]
+name = "크림 크로셰 니트 가디건"
+proposal = "bohemian"
+why = "코바늘 뜨개(크로셰)."
+[[assign]]
+name = "머스타드 프린트 티어드 맥시스커트"
+proposal = "bohemian"
+why = "층층이 이어 붙인 맥시, 프린트."
+[[assign]]
+name = "베이지 플로럴 프린트 맥시 원피스"
+proposal = "bohemian"
+why = "꽃무늬 맥시 원피스. romantic 으로 볼 수도 있다."
+[[assign]]
+name = "아이보리 트위드 자켓"
+proposal = "tailoring"
+why = "구조 있는 재킷. 트위드 질감이 로맨틱 쪽이라 romantic 으로 볼 수도 있다."
+[[assign]]
+name = "라이트핑크 울혼방 숏 자켓"
+proposal = "tailoring"
+why = "울 재킷. 파스텔이라 romantic 으로 볼 수도 있다."
+[[assign]]
+name = "블랙 H라인 미디 스커트"
+proposal = "tailoring"
+why = "스타일이 포멀. 오피스 스커트."
+[[assign]]
+name = "아이보리 코튼 블라우스"
+proposal = "minimal"
+why = "장식 없는 면 블라우스."
+[[assign]]
+name = "라벤더 리브드 니트"
+proposal = "minimal"
+why = "기본 골지 니트."
+[[assign]]
+name = "베이지 크롭 가디건"
+proposal = "minimal"
+why = "기본 가디건."
+[[assign]]
+name = "그레이 니트 터틀넥 탑"
+proposal = "minimal"
+why = "기본 터틀넥."
+[[assign]]
+name = "화이트 코튼 오버사이즈 셔츠"
+proposal = "minimal"
+why = "같은 품목인 '화이트 코튼 오버핏 셔츠' 가 minimal 이다."
+[[assign]]
+name = "라이트베이지 와이드 코튼팬츠"
+proposal = "minimal"
+why = "같은 품목인 '크림 코튼 와이드 팬츠' 가 minimal 이다."
+[[assign]]
+name = "화이트 A라인 미니스커트"
+proposal = "minimal"
+why = "장식 없는 미니스커트."
+[[assign]]
+name = "민트 체크 패턴 트렌치 코트"
+proposal = "minimal"
+why = "기존 여성 트렌치코트 2벌이 minimal 이다."
+[[assign]]
+name = "라이트핑크 코튼 트렌치코트"
+proposal = "minimal"
+why = "기존 여성 트렌치코트 2벌이 minimal 이다."
+[[assign]]
+name = "블랙 그래픽 오버핏 티셔츠"
+proposal = "none"
+why = "스트리트. 맞는 월드가 없다."
+[[assign]]
+name = "화이트 레터링 크롭 탑"
+proposal = "none"
+why = "스트리트. 맞는 월드가 없다."
+[[assign]]
+name = "블랙 메쉬 레이어드 롱슬리브"
+proposal = "none"
+why = "스트리트. 맞는 월드가 없다."
+
+# ── 2. 조합 판단 ──
+# 로맨틱·보헤미안 옷 하나에 다른 월드 옷 하나를 붙이고 나머지는 무난한 옷으로 채웠다.
+# 판단: conflict(어색해서 감점) / complement(믹스매치로 가점) / neutral(상관없음).
+
+[[combo]]
+id = "RW01"
+pair = "romantic × military"
+items = ["아이보리 플로럴 자수 오간자 블라우스", "블랙 와이드 카고팬츠", "블랙 레더 앵클부츠", "블랙 레더 미니 숄더백"]
+[[combo]]
+id = "RW02"
+pair = "romantic × military"
+items = ["올리브 코튼 필드자켓", "화이트 레이스 트리밍 쉬폰 블라우스", "라이트 인디고 스트레이트 데님", "화이트 레더 로우 스니커즈", "탄 미디엄 토트백"]
+[[combo]]
+id = "RW03"
+pair = "bohemian × military"
+items = ["아이보리 에스닉 자수 블라우스", "카키 코튼 카고팬츠", "탄 레더 앵클 웨스턴 부츠", "탄 스웨이드 프린지 크로스백"]
+[[combo]]
+id = "RW04"
+pair = "bohemian × leather"
+items = ["블랙 레더 라이더 자켓", "베이지 플로럴 프린트 맥시 원피스", "블랙 레더 앵클부츠", "블랙 미니 체인 숄더백"]
+[[combo]]
+id = "RW05"
+pair = "romantic × tailoring"
+items = ["블랙 싱글 테일러드 자켓", "아이보리 새틴 셔츠 블라우스", "블랙 와이드 슬랙스", "블랙 슬링백 키튼힐", "블랙 레더 스트럭처드 토트백"]
+[[combo]]
+id = "RW06"
+pair = "romantic × tailoring"
+items = ["아이보리 플로럴 자수 오간자 블라우스", "차콜 울 와이드 슬랙스", "블랙 슬링백 키튼힐", "그레이 스트럭처드 토트백"]
+[[combo]]
+id = "RW07"
+pair = "bohemian × sweat"
+items = ["크림 크로셰 니트 가디건", "그레이 맨투맨 스웨트셔츠", "라이트 인디고 스트레이트 데님", "화이트 캔버스 하이탑 스니커즈", "화이트 캔버스 토트백"]
+[[combo]]
+id = "RW08"
+pair = "romantic × sweat"
+items = ["차콜 크롭 후드 스웨트셔츠", "베이비핑크 플리츠 새틴 미디 스커트", "화이트 레더 로우탑 스니커즈", "화이트 캔버스 토트백"]
+[[combo]]
+id = "RW09"
+pair = "tailoring(트위드) × sweat"
+items = ["아이보리 트위드 자켓", "그레이 맨투맨 스웨트셔츠", "블랙 와이드 슬랙스", "블랙 레더 스퀘어토 로퍼", "탄 미디엄 토트백"]
+[[combo]]
+id = "RW10"
+pair = "romantic × denim"
+items = ["라벤더 리본 넥 퍼프슬리브 블라우스", "워시드 다크블루 와이드 데님", "베이지 레더 메리제인 슈즈", "소프트핑크 숄더백"]
+[[combo]]
+id = "RW11"
+pair = "tailoring(트위드) × denim"
+items = ["아이보리 트위드 자켓", "화이트 코튼 크루넥 티셔츠", "워시드 미디엄블루 와이드 데님", "블랙 포인티드토 플랫 슈즈", "블랙 미니 체인 숄더백"]
+[[combo]]
+id = "RW12"
+pair = "bohemian × outdoor"
+items = ["올리브 오버핏 윈드브레이커", "화이트 코튼 크루넥 티셔츠", "머스타드 프린트 티어드 맥시스커트", "오프화이트 에스파드리유 플랫", "내추럴 라피아 라운드 숄더백"]
+[[combo]]
+id = "RW13"
+pair = "romantic × nylon"
+items = ["블랙 나일론 봄버자켓", "화이트 코튼 크루넥 티셔츠", "핑크 플로럴 프린트 랩 미디 스커트", "화이트 레더 로우 스니커즈", "블랙 나일론 크로스백"]
+[[combo]]
+id = "RW14"
+pair = "romantic × workwear"
+items = ["카키 코튼 유틸리티 자켓", "화이트 레이스 트리밍 쉬폰 블라우스", "블랙 와이드 슬랙스", "블랙 레더 스퀘어토 로퍼", "탄 미디엄 토트백"]
+[[combo]]
+id = "RW15"
+pair = "romantic × romantic"
+items = ["라벤더 리본 넥 퍼프슬리브 블라우스", "베이비핑크 플리츠 새틴 미디 스커트", "크림 레이스업 발레리나 슈즈", "핑크 퀼팅 미니 크로스바디백"]
+[[combo]]
+id = "RW16"
+pair = "romantic × romantic × bohemian"
+items = ["크림 크로셰 니트 가디건", "크림 스모크 셔링 탑", "크림 플리츠 미디스커트", "화이트 메리제인 스트랩 플랫슈즈", "아이보리 레이스 트리밍 버킷백"]

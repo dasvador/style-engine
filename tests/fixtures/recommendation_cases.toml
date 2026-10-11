@@ -1561,3 +1561,242 @@ expected_today_fit = "Pass"
 expected_preference = "Accept"
 notes = "상의는 실루엣 값이 없고 하의는 regular. 가점도 감점도 없어야 한다 — 남성 옷장이 아직 일괄 regular 라서 이 중립성이 중요하다."
 tags = ["silhouette", "office", "anchor"]
+
+# ───────────────────────────────────────────────────────────────
+# 로맨틱·보헤미안 × 다른 텍스처 월드 — 2026-10-11 사용자 판단: 16개 모두 "보완"(어울리는 믹스매치).
+# 선호(Accept)와 하드필터 통과는 사용자 판단이고, today_fit(Pass)은 20도·상황 기준으로 붙인 기본값이다.
+# 출처: tools/world-review/cases.toml
+# ───────────────────────────────────────────────────────────────
+
+[[cases]]
+case_id = "RW01"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "fw_28"
+bottom = "fw_21"
+shoes = "fw_16"
+bag = "fw_13"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "romantic × military — 보완(사용자 판단)."
+tags = ["texture_world", "romantic_mix"]
+
+[[cases]]
+case_id = "RW02"
+situation = "캐주얼"
+temperature_c = 20.0
+outer = "fw_31"
+top = "fw_49"
+bottom = "fw_05"
+shoes = "fw_47"
+bag = "fw_43"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "romantic × military — 보완(사용자 판단)."
+tags = ["texture_world", "romantic_mix"]
+
+[[cases]]
+case_id = "RW03"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "fw_26"
+bottom = "fw_37"
+shoes = "fw_42"
+bag = "fw_44"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "bohemian × military — 보완(사용자 판단)."
+tags = ["texture_world", "romantic_mix"]
+
+[[cases]]
+case_id = "RW04"
+situation = "캐주얼"
+temperature_c = 20.0
+outer = "fw_12"
+bottom = "fw_09"
+shoes = "fw_16"
+bag = "fw_17"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "bohemian × leather — 보완(사용자 판단)."
+tags = ["texture_world", "romantic_mix"]
+
+[[cases]]
+case_id = "RW05"
+situation = "출근"
+temperature_c = 20.0
+outer = "fw_19"
+top = "fw_25"
+bottom = "fw_20"
+shoes = "fw_18"
+bag = "fw_15"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "romantic × tailoring — 보완(사용자 판단)."
+tags = ["texture_world", "romantic_mix"]
+
+[[cases]]
+case_id = "RW06"
+situation = "출근"
+temperature_c = 20.0
+top = "fw_28"
+bottom = "fw_34"
+shoes = "fw_18"
+bag = "fw_02"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "romantic × tailoring — 보완(사용자 판단)."
+tags = ["texture_world", "romantic_mix"]
+
+[[cases]]
+case_id = "RW07"
+situation = "캐주얼"
+temperature_c = 20.0
+outer = "fw_40"
+top = "fw_01"
+bottom = "fw_05"
+shoes = "fw_52"
+bag = "fw_51"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "bohemian × sweat — 보완(사용자 판단)."
+tags = ["texture_world", "romantic_mix"]
+
+[[cases]]
+case_id = "RW08"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "fw_35"
+bottom = "fw_07"
+shoes = "fw_48"
+bag = "fw_51"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "romantic × sweat — 보완(사용자 판단)."
+tags = ["texture_world", "romantic_mix"]
+
+[[cases]]
+case_id = "RW09"
+situation = "캐주얼"
+temperature_c = 20.0
+outer = "fw_27"
+top = "fw_01"
+bottom = "fw_20"
+shoes = "fw_14"
+bag = "fw_43"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "tailoring(트위드) × sweat — 보완(사용자 판단)."
+tags = ["texture_world", "romantic_mix"]
+
+[[cases]]
+case_id = "RW10"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "fw_04"
+bottom = "fw_32"
+shoes = "fw_08"
+bag = "fw_23"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "romantic × denim — 보완(사용자 판단)."
+tags = ["texture_world", "romantic_mix"]
+
+[[cases]]
+case_id = "RW11"
+situation = "캐주얼"
+temperature_c = 20.0
+outer = "fw_27"
+top = "fw_53"
+bottom = "fw_33"
+shoes = "fw_22"
+bag = "fw_17"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "tailoring(트위드) × denim — 보완(사용자 판단)."
+tags = ["texture_world", "romantic_mix"]
+
+[[cases]]
+case_id = "RW12"
+situation = "캐주얼"
+temperature_c = 20.0
+outer = "fw_30"
+top = "fw_53"
+bottom = "fw_06"
+shoes = "fw_29"
+bag = "fw_03"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "bohemian × outdoor — 보완(사용자 판단)."
+tags = ["texture_world", "romantic_mix"]
+
+[[cases]]
+case_id = "RW13"
+situation = "캐주얼"
+temperature_c = 20.0
+outer = "fw_10"
+top = "fw_53"
+bottom = "fw_46"
+shoes = "fw_47"
+bag = "fw_11"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "romantic × nylon — 보완(사용자 판단)."
+tags = ["texture_world", "romantic_mix"]
+
+[[cases]]
+case_id = "RW14"
+situation = "캐주얼"
+temperature_c = 20.0
+outer = "fw_36"
+top = "fw_49"
+bottom = "fw_20"
+shoes = "fw_14"
+bag = "fw_43"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "romantic × workwear — 보완(사용자 판단)."
+tags = ["texture_world", "romantic_mix"]
+
+[[cases]]
+case_id = "RW15"
+situation = "캐주얼"
+temperature_c = 20.0
+top = "fw_04"
+bottom = "fw_07"
+shoes = "fw_38"
+bag = "fw_45"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "romantic × romantic — 보완(사용자 판단)."
+tags = ["texture_world", "romantic_mix"]
+
+[[cases]]
+case_id = "RW16"
+situation = "캐주얼"
+temperature_c = 20.0
+outer = "fw_40"
+top = "fw_39"
+bottom = "fw_41"
+shoes = "fw_50"
+bag = "fw_24"
+expected_hard_pass = true
+expected_today_fit = "Pass"
+expected_preference = "Accept"
+notes = "romantic × romantic × bohemian — 보완(사용자 판단)."
+tags = ["texture_world", "romantic_mix"]
