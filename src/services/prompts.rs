@@ -317,6 +317,17 @@ macro_rules! fashion_item_rule {
     };
 }
 
+/// texture_worlds 로 고를 수 있는 값.
+///
+/// romantic·bohemian 은 2026-10-11 에 생겼다 — 그 전에는 레이스 블라우스나 크로셰
+/// 가디건이 들어갈 월드가 없어 비어 있었다. 두 프롬프트(일반 분석, RAG 2차)가 같은
+/// 목록을 쓰도록 한 곳에 둔다.
+macro_rules! texture_world_rule {
+    () => {
+        "- texture_worlds는 workwear, military, tailoring, sweat, outdoor, minimal, romantic, bohemian 중 복수 선택 가능.\n  romantic: 레이스·셔링·스모킹·퍼프 소매·리본·새틴·쉬폰·오간자처럼 여성스러운 장식이나 광택이 있는 옷.\n  bohemian: 크로셰·에스닉 자수·티어드 맥시·구김 면처럼 자연스럽고 느슨한 옷.\n"
+    };
+}
+
 /// 브랜드 규칙. 2026-10-11 결정: 로고나 브랜드 표기가 사진에 보일 때만 브랜드를 붙인다.
 ///
 /// 예전 문장("확실히 식별할 수 없으면 추측하지 말 것")은 무엇이 "확실" 한지 정하지 않아,
@@ -421,8 +432,9 @@ name 작성 원칙:
     fashion_item_rule!(),
     r#"
 - is_clothing이 false이면 name/category/color/thickness/seasons는 null, rejection_reason을 작성하세요.
-- texture_worlds는 workwear, military, tailoring, sweat, outdoor, minimal 중 복수 선택 가능.
-- category는 상의, 하의, 아우터, 신발, 액세서리, 가방, 모자, 벨트 중 하나입니다. "#,
+"#,
+    texture_world_rule!(),
+    r#"- category는 상의, 하의, 아우터, 신발, 액세서리, 가방, 모자, 벨트 중 하나입니다. "#,
     category_rule!()
 );
 
@@ -616,7 +628,9 @@ name 작성 원칙:
             fashion_item_rule!(),
             r#"
 - is_clothing이 false이면 name/category/color/thickness/seasons는 null, rejection_reason을 작성하세요.
-- "#,
+"#,
+            texture_world_rule!(),
+            "- ",
             category_rule!()
         ),
         // concat! 으로 만든 형식 문자열은 변수를 이름으로 자동 캡처하지 못해 명시한다.
