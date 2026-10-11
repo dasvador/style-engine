@@ -298,6 +298,19 @@ macro_rules! category_rule {
     };
 }
 
+/// `is_clothing` 의 뜻. 이름과 달리 "옷인가" 가 아니라 "옷장에 넣을 패션 아이템인가" 다.
+///
+/// 이 설명이 없을 때 가방 사진에 `is_clothing: false` 가 3번 모두 돌아왔다 — 가방은 옷이
+/// 아니라고 읽은 것이다. 카테고리와 속성은 다 채우고 이름만 null 로 비웠고, 등록 경로는
+/// false 를 보고 "의류 항목이 아닙니다" 로 거절했다.
+macro_rules! fashion_item_rule {
+    () => {
+        "is_clothing 은 이 사진이 옷장에 넣을 패션 아이템인지입니다. 신발, 가방, 모자, \
+벨트, 액세서리도 true 입니다. 음식, 풍경, 사람 얼굴만 찍힌 사진처럼 패션 아이템이 \
+아닐 때만 false 로 두고 rejection_reason 을 쓰세요."
+    };
+}
+
 /// 이름 규칙. 빈 문자열도 null 과 같이 금지한다.
 ///
 /// "null 금지" 만 적었을 때 신발·가방 사진 3장에서 빈 문자열이 돌아왔다. 브랜드를
@@ -309,12 +322,10 @@ macro_rules! name_rule {
     };
 }
 
-pub async fn analyze_clothing_image(
-    llm: &LlmClient,
-    image_data_url: &str,
-) -> anyhow::Result<VisionAnalysisResult> {
-    let system_prompt = concat!(
-        r#"당신은 캐주얼, 클래식, 스트리트, 워크웨어, 아웃도어 및 스포츠웨어에 익숙한 의류 분석 AI입니다.
+/// 레퍼런스 없는 분석의 시스템 프롬프트. 평가 도구가 같은 문장으로 원문 응답을
+/// 받아 볼 수 있도록 공개한다.
+pub const GENERAL_ANALYSIS_PROMPT: &str = concat!(
+    r#"당신은 캐주얼, 클래식, 스트리트, 워크웨어, 아웃도어 및 스포츠웨어에 익숙한 의류 분석 AI입니다.
 사용자가 업로드한 이미지에서 의류/신발/가방/모자/벨트 등 패션 아이템을 분석하여 구조화된 정보를 추출하세요.
 
 가장 중요한 원칙:
@@ -362,8 +373,8 @@ name 작성 원칙:
 
 추가 규칙:
 - "#,
-        name_rule!(),
-        r#"
+    name_rule!(),
+    r#"
 - gender 는 이 옷이 주로 어느 쪽 옷장에 들어갈지입니다. 어느 쪽이든 입을 수 있으면 unisex.
 - style_genres 는 이 옷이 어울리는 장르를 **모두** 고릅니다. 한 벌이 여러 장르에
   들어갈 수 있습니다 — 옥스퍼드 셔츠는 classic 이면서 amekaji 이고 preppy 입니다.
@@ -375,11 +386,20 @@ name 작성 원칙:
   preppy(아이비리그), workwear(작업복), outdoor_casual(기능성 아웃도어).
   확신이 서는 것만 고르고, 애매하면 비워 두세요 — 틀린 장르에 들어가면 그 장르의
   추천이 전부 어긋납니다.
+- "#,
+    fashion_item_rule!(),
+    r#"
 - is_clothing이 false이면 name/category/color/thickness/seasons는 null, rejection_reason을 작성하세요.
 - texture_worlds는 workwear, military, tailoring, sweat, outdoor, minimal 중 복수 선택 가능.
 - category는 상의, 하의, 아우터, 신발, 액세서리, 가방, 모자, 벨트 중 하나입니다. "#,
-        category_rule!()
-    );
+    category_rule!()
+);
+
+pub async fn analyze_clothing_image(
+    llm: &LlmClient,
+    image_data_url: &str,
+) -> anyhow::Result<VisionAnalysisResult> {
+    let system_prompt = GENERAL_ANALYSIS_PROMPT;
 
     Ok(llm
         .chat_json::<VisionAnalysisResult>(
@@ -559,6 +579,9 @@ name 작성 원칙:
   preppy(아이비리그), workwear(작업복), outdoor_casual(기능성 아웃도어).
   확신이 서는 것만 고르고, 애매하면 비워 두세요 — 틀린 장르에 들어가면 그 장르의
   추천이 전부 어긋납니다.
+- "#,
+            fashion_item_rule!(),
+            r#"
 - is_clothing이 false이면 name/category/color/thickness/seasons는 null, rejection_reason을 작성하세요.
 - "#,
             category_rule!()

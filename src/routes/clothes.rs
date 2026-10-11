@@ -220,7 +220,7 @@ async fn upload_clothing_image(
             .await
             .map_err(AppError::Internal)?;
 
-    if !analysis.is_clothing {
+    if !analysis.is_wardrobe_item() {
         let reason = analysis
             .rejection_reason
             .unwrap_or_else(|| "이미지가 의류 항목이 아닙니다.".to_string());

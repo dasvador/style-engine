@@ -159,6 +159,38 @@ pub struct VisionAnalysisResult {
 }
 
 impl VisionAnalysisResult {
+    /// 옷장에 넣을 아이템인지. 모델의 `is_clothing` 을 그대로 믿지 않는 경우가 하나 있다.
+    ///
+    /// 가방 사진에 모델이 `is_clothing: false` 를 주면서 카테고리 `가방` 과 나머지 속성을
+    /// 전부 채우고 거절 사유는 비운 적이 있다(2026-10-11, 3회 중 3회). "가방은 옷이
+    /// 아니다" 로 읽은 자기모순이다. 거절 사유 없이 알려진 카테고리를 채웠다면 아이템으로
+    /// 받아들인다. 거절 사유가 있으면 모델의 판단을 따른다 — 그때는 정말로 옷이 아닌
+    /// 사진일 가능성이 높다.
+    pub fn is_wardrobe_item(&self) -> bool {
+        const KNOWN: [&str; 8] = [
+            "상의",
+            "하의",
+            "아우터",
+            "신발",
+            "가방",
+            "액세서리",
+            "모자",
+            "벨트",
+        ];
+        if self.is_clothing {
+            return true;
+        }
+        let no_reason = self
+            .rejection_reason
+            .as_deref()
+            .is_none_or(|r| r.trim().is_empty());
+        let known_category = self
+            .category
+            .as_deref()
+            .is_some_and(|c| KNOWN.contains(&c.trim()));
+        no_reason && known_category
+    }
+
     /// 저장할 이름. 비어 있으면 색상과 카테고리로 만든 임시 이름을 쓴다.
     ///
     /// 프롬프트가 이름을 비우지 말라고 해도, 신발·가방 사진에서 빈 문자열이 돌아왔다
@@ -340,6 +372,26 @@ mod vision_result_tests {
         assert_eq!(r.name_or_fallback().as_deref(), Some("베이지 신발"));
         let r = parse(r#"{"is_clothing": true, "name": "", "category": "가방"}"#);
         assert_eq!(r.name_or_fallback().as_deref(), Some("가방"));
+    }
+
+    /// 가방을 "옷이 아니다" 로 읽은 자기모순 응답.
+    #[test]
+    fn a_bag_marked_not_clothing_without_a_reason_is_still_an_item() {
+        let r = parse(
+            r#"{"is_clothing": false, "name": null, "category": "가방", "color": "스트라이프", "rejection_reason": null}"#,
+        );
+        assert!(r.is_wardrobe_item());
+        assert_eq!(r.name_or_fallback().as_deref(), Some("스트라이프 가방"));
+    }
+
+    #[test]
+    fn a_real_rejection_is_respected() {
+        let r = parse(
+            r#"{"is_clothing": false, "category": "가방", "rejection_reason": "음식 사진입니다"}"#,
+        );
+        assert!(!r.is_wardrobe_item());
+        let r = parse(r#"{"is_clothing": false, "category": null, "rejection_reason": null}"#);
+        assert!(!r.is_wardrobe_item());
     }
 
     #[test]

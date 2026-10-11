@@ -34,6 +34,9 @@ struct Entry {
 #[derive(Serialize, Deserialize)]
 struct Analysis {
     is_clothing: bool,
+    /// 등록 경로가 받아들이는지. false 면 사용자는 "의류 항목이 아닙니다" 를 받는다.
+    #[serde(default)]
+    accepted: bool,
     name: Option<String>,
     /// 등록 경로가 실제로 저장할 이름 — 모델이 이름을 비우면 임시 이름이 들어간다.
     #[serde(default)]
@@ -46,6 +49,7 @@ impl From<&VisionAnalysisResult> for Analysis {
     fn from(r: &VisionAnalysisResult) -> Self {
         Self {
             is_clothing: r.is_clothing,
+            accepted: r.is_wardrobe_item(),
             name: r.name.clone(),
             saved_name: r.name_or_fallback(),
             category: r.category.clone(),
