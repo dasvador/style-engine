@@ -417,3 +417,64 @@ id = "N018"
 group = "negative"
 category = "하의"
 query = "그레이 스웨트 조거 팬츠. 허리는 고무 밴드와 끈이고 발목이 리브로 조여진다. 기모 안감."
+
+# ─── 3차 추가 (검색 문장 수정의 일반화 확인용) ───
+#
+# 1위를 놓친 8건을 고치려고 검색 문장을 바꾸기 **전에** 썼다. 수정이 기존 질의에만
+# 맞춘 것인지, 처음 보는 표현에도 통하는지를 이 8건으로 본다.
+
+[[cases]]
+id = "R043"
+group = "after"
+category = "신발"
+expected = "스트랩 힐"
+query = "누드톤 하이힐 샌들. 얇은 줄 몇 개가 발을 감싸고 발목 끈이 있다. 굽이 10cm 가까이 된다."
+
+[[cases]]
+id = "R044"
+group = "after"
+category = "하의"
+expected = "펜슬 스커트"
+query = "그레이 정장 스커트. 엉덩이부터 무릎까지 몸에 붙게 내려온다. 뒤에 트임이 있다."
+
+[[cases]]
+id = "R045"
+group = "after"
+category = "하의"
+expected = "스트레이트 데님 팬츠"
+query = "연청 일자 청바지. 뒷주머니가 두 개 있고 리벳이 박혀 있다."
+
+[[cases]]
+id = "R046"
+group = "after"
+category = "신발"
+expected = "뮬"
+query = "베이지 스웨이드 블로퍼 느낌의 구두. 뒤가 없어서 신고 벗기 쉽다. 굽은 낮다."
+
+[[cases]]
+id = "R047"
+group = "after"
+category = "상의"
+expected = "새틴 블라우스"
+query = "블랙 광택 셔츠형 블라우스. 빛을 받으면 반들거리고 원단이 흐르듯 부드럽다."
+
+[[cases]]
+id = "R048"
+group = "after"
+category = "상의"
+expected = "케이블 니트 스웨터"
+query = "크림색 두꺼운 니트. 세로로 땋은 듯한 무늬가 여러 줄 있다. 목은 둥글다."
+
+[[cases]]
+id = "R049"
+group = "after"
+category = "아우터"
+expected = "MA-1 봄버 자켓"
+query = "검정 항공점퍼. 허리 길이이고 목과 소매, 밑단이 골지로 되어 있다."
+
+[[cases]]
+id = "R050"
+group = "after"
+category = "하의"
+expected = "와이드 슬랙스"
+query = "블랙 와이드 팬츠. 바지통이 넓고 앞에 다림질 선이 있다. 허리에 벨트 고리."

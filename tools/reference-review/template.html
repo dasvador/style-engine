@@ -60,6 +60,8 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
 .body{padding:12px 16px;display:flex;flex-direction:column;gap:12px;min-width:0}
 .label{font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
 .search{background:var(--sunk);border-left:3px solid var(--accent);padding:8px 12px;border-radius:0 6px 6px 0;font-size:14px}
+.search.current{border-left-color:var(--line);color:var(--muted)}
+.evidence{font-size:13px;background:var(--ok-soft);border-radius:6px;padding:6px 10px}
 .desc p{margin:0 0 8px;max-width:68ch}
 .desc ul{margin:0 0 8px;padding-left:20px}
 .desc li{margin:2px 0}
@@ -205,8 +207,13 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:56px;border:1px solid
       body.append(el('div',{}, el('div',{class:'label',text:'검색 문장 · 사진 서술과 비교되는 부분'}), el('div',{class:'search',text:item.embedding_text})));
       body.append(el('div',{}, el('div',{class:'label',text:'설명 · 분석 모델이 읽는 부분'}), renderDesc(item.description)));
     } else {
-      body.append(el('div',{class:'note',text:'지금은 아래 기존 설명 전체로 검색합니다. 이 설명은 이미 승인된 내용입니다.'}));
+      if (item.embedding_text){
+        body.append(el('div',{}, el('div',{class:'label',text:'지금 검색 문장 · 승인된 내용'}), el('div',{class:'search current',text:item.embedding_text})));
+      } else {
+        body.append(el('div',{class:'note',text:'지금은 아래 기존 설명 전체로 검색합니다. 이 설명은 이미 승인된 내용입니다.'}));
+      }
       body.append(el('div',{}, el('div',{class:'label',text:'제안한 검색 문장 · 적용하면 이것으로 검색'}), el('div',{class:'search',text:item.proposal})));
+      if (item.evidence) body.append(el('div',{class:'evidence'}, el('strong',{text:'측정 결과 '}), item.evidence));
       const det = el('details',{}, el('summary',{text:'기존 설명 보기'}), renderDesc(item.description));
       body.append(det);
     }

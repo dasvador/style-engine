@@ -25,7 +25,7 @@ import tomllib
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CATALOG = ROOT / "data" / "clothing_references.toml"
 TEMPLATE = pathlib.Path(__file__).with_name("template.html")
-PROPOSAL = re.compile(r"# 검수 대기 — 제안한 검색 문장\(적용 안 됨\):\n# (.+)")
+PROPOSAL = re.compile(r"# 검수 대기 — 제안한 검색 문장\(적용 안 됨\):\n# (.+)(?:\n# 근거: (.+))?")
 GENRE_LABEL = {
     "minimal": "미니멀", "classic": "클래식", "romantic": "로맨틱",
     "modern_chic": "모던 시크", "bohemian": "보헤미안", "street": "스트리트",
@@ -46,7 +46,7 @@ def main(out: str) -> None:
         nm = re.search(r'^name = "([^"]+)"', block, re.M)
         pr = PROPOSAL.search(block)
         if nm and pr:
-            proposals[nm.group(1)] = pr.group(1).strip()
+            proposals[nm.group(1)] = (pr.group(1).strip(), (pr.group(2) or "").strip())
 
     items = []
     for r in refs:
@@ -70,7 +70,7 @@ def main(out: str) -> None:
             "description": r["description"].strip(),
         }
         if kind == "seed":
-            item["proposal"] = proposals[r["name"]]
+            item["proposal"], item["evidence"] = proposals[r["name"]]
         items.append(item)
 
     if not items:
