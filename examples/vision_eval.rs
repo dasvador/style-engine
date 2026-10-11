@@ -43,6 +43,9 @@ struct Analysis {
     saved_name: Option<String>,
     category: Option<String>,
     style_genres: Vec<String>,
+    /// 등록 경로가 `clothing_texture_world` 에 넣을 값.
+    #[serde(default)]
+    texture_worlds: Vec<String>,
 }
 
 impl From<&VisionAnalysisResult> for Analysis {
@@ -54,6 +57,7 @@ impl From<&VisionAnalysisResult> for Analysis {
             saved_name: r.name_or_fallback(),
             category: r.category.clone(),
             style_genres: r.style_genres.clone(),
+            texture_worlds: r.texture_worlds.clone().unwrap_or_default(),
         }
     }
 }
