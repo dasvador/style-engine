@@ -380,6 +380,8 @@ pub fn pairwise_score(a: &Clothing, b: &Clothing) -> i32 {
     s
 }
 
+/// 색 이름을 색상군으로 묶는다. 색은 한국어로 저장돼 있어야 한다 — 영어 값은 전부
+/// "other" 가 되어 색 관련 규칙이 조용히 꺼진다(여성 옷장이 그랬다).
 pub fn color_group(color: &str) -> &str {
     if color.is_empty() {
         return "other";
@@ -388,6 +390,7 @@ pub fn color_group(color: &str) -> &str {
         || color.contains("인디고")
         || color.contains("잉크")
         || color.contains("다크네이비")
+        || color.contains("다크블루")
     {
         return "navy";
     }
@@ -397,10 +400,14 @@ pub fn color_group(color: &str) -> &str {
     if color.contains("차콜") || color.contains("블랙") {
         return "dark";
     }
+    // 아이보리 · 내추럴은 여성 옷장에만 있는 이름이다(20261011000005 에서 영어 표기를
+    // 한국어로 옮기며 생겼다). 빠뜨리면 그 옷들은 색상군 "other" 로 떨어진다.
     if color.contains("크림")
         || color.contains("오트밀")
         || color.contains("화이트")
         || color.contains("오프")
+        || color.contains("아이보리")
+        || color.contains("내추럴")
     {
         return "cream";
     }
@@ -1320,4 +1327,60 @@ pub fn total_outfit_score_full(
         return base;
     }
     base + diversity_penalty(outfit, recent)
+}
+
+#[cfg(test)]
+mod color_group_tests {
+    use super::color_group;
+
+    /// 여성 옷장의 색(20261011000005 에서 한국어로 옮긴 값)이 남성 값과 같은 색상군에 든다.
+    #[test]
+    fn womens_colours_land_in_the_same_groups_as_mens() {
+        for (c, g) in [
+            ("블랙", "dark"),
+            ("워시드블랙", "dark"),
+            ("차콜", "dark"),
+            ("네이비", "navy"),
+            ("다크블루", "navy"),
+            ("인디고", "navy"),
+            ("라이트인디고", "navy"),
+            ("오프화이트", "cream"),
+            ("아이보리", "cream"),
+            ("내추럴", "cream"),
+            ("크림", "cream"),
+            ("오트밀", "cream"),
+            ("다크브라운", "brown"),
+            ("헤더그레이", "gray"),
+            ("다크그레이", "gray"),
+            ("라이트베이지", "beige"),
+            ("누드베이지", "beige"),
+            ("올리브", "olive"),
+            ("카키", "olive"),
+        ] {
+            assert_eq!(color_group(c), g, "{c}");
+        }
+    }
+
+    /// 영어로 저장된 색은 어느 색상군에도 들지 않는다 — 한국어로 저장해야 하는 이유.
+    #[test]
+    fn english_colour_names_fall_through_to_other() {
+        for c in ["black", "navy", "off_white", "ivory"] {
+            assert_eq!(color_group(c), "other", "{c}");
+        }
+    }
+
+    /// 강조색은 묶지 않는다.
+    #[test]
+    fn accent_colours_stay_ungrouped() {
+        for c in [
+            "라벤더",
+            "머스타드",
+            "테라코타",
+            "베이비핑크",
+            "민트",
+            "실버",
+        ] {
+            assert_eq!(color_group(c), "other", "{c}");
+        }
+    }
 }
