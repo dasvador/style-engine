@@ -77,18 +77,6 @@ Wardrobe Edit은 사용자의 옷장과 그날의 상황을 바탕으로 코디�
   </tr>
 </table>
 
-<details>
-<summary>등록 과정 전체 화면 보기</summary>
-<br>
-<table>
-  <tr>
-    <td align="center" valign="top" width="33%"><img src="docs/images/upload-photo-full.png" alt="옷장 화면에서 등록 패널을 연 전체 화면" width="100%"></td>
-    <td align="center" valign="top" width="33%"><img src="docs/images/upload-confirm-full.png" alt="장르 확인 패널과 그 아래 등록된 스니커와 봄버 자켓" width="100%"></td>
-    <td align="center" valign="top" width="33%"><img src="docs/images/upload-detail-full.png" alt="등록된 스니커의 상세 화면 전체" width="100%"></td>
-  </tr>
-</table>
-</details>
-
 ## 기술 요약
 
 개인 프로젝트이지만, LLM을 쓰는 제품에서 반복되는 세 가지 문제를 실제로 다뤘습니다 — 모델을 용도별로 나누는 일, 추천 품질이 나빠졌는지 알아내는 일, 생성 비용을 통제하는 일.
