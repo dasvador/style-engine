@@ -1,0 +1,282 @@
+<title>레퍼런스 검수</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* 레이아웃: 좁은 단일 열 작업 목록. 위에 진행 현황과 필터, 아래로 카드가 이어진다.
+   카드는 의류 스펙 시트처럼 — 머리에 품목 태그, 본문에 검색 문장과 설명, 바닥에 결정. */
+:root{
+  --bg:#f3f4f7; --surface:#ffffff; --sunk:#f7f8fa; --ink:#1a1d26; --muted:#5b6170; --line:#dde0e7;
+  --accent:#3245a6; --accent-soft:#e7eafb;
+  --ok:#1d7448; --ok-soft:#e3f2ea; --warn:#9a6200; --warn-soft:#fbf0dc; --no:#9d3434; --no-soft:#f8e6e6;
+  --caution:#fff7e6; --caution-line:#e8c27a;
+  --f-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12141a; --surface:#1b1e27; --sunk:#161920; --ink:#e7e9ef; --muted:#9aa0ae; --line:#2c303c;
+  --accent:#8fa0ff; --accent-soft:#232a4d;
+  --ok:#6fd19c; --ok-soft:#18311f; --warn:#e5b45b; --warn-soft:#352812; --no:#ef8b8b; --no-soft:#3a1c1c;
+  --caution:#2a2416; --caution-line:#6b5523; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#12141a; --surface:#1b1e27; --sunk:#161920; --ink:#e7e9ef; --muted:#9aa0ae; --line:#2c303c;
+  --accent:#8fa0ff; --accent-soft:#232a4d;
+  --ok:#6fd19c; --ok-soft:#18311f; --warn:#e5b45b; --warn-soft:#352812; --no:#ef8b8b; --no-soft:#3a1c1c;
+  --caution:#2a2416; --caution-line:#6b5523; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6;margin:0}
+.wrap{max-width:860px;margin:0 auto;padding-inline:16px;padding-block:28px 64px;display:flex;flex-direction:column;gap:20px}
+h1{font-size:26px;font-weight:700;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.lede{color:var(--muted);margin:4px 0 0;max-width:62ch}
+.banner{border:1px solid var(--caution-line);background:var(--caution);border-radius:8px;padding:10px 14px;font-size:14px}
+.banner[data-tone="error"]{border-color:var(--no);background:var(--no-soft)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 14px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat .k{font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.stat .v{font-size:15px;font-variant-numeric:tabular-nums}
+.stat .v b{font-size:20px}
+.bar{display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--line);margin-top:6px}
+.bar i{display:block}
+.toolbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:10px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tabs button,.chip{font:inherit;font-size:14px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:5px 12px;cursor:pointer}
+.tabs button[aria-pressed="true"],.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.chip{font-size:13px;padding:3px 10px}
+button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.list{display:flex;flex-direction:column;gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.card[data-decision="approve"]{border-color:var(--ok)}
+.card[data-decision="revise"],.card[data-decision="keep"]{border-color:var(--warn)}
+.card[data-decision="reject"]{border-color:var(--no)}
+.card[data-decision="apply"]{border-color:var(--ok)}
+.head{padding:14px 16px 10px;display:flex;flex-direction:column;gap:8px;border-bottom:1px dashed var(--line)}
+.title{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px}
+.title h2{font-size:18px;margin:0;font-weight:600}
+.tag{font-family:var(--f-mono);font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 6px}
+.flag{font-size:12px;font-weight:600;color:var(--warn);background:var(--warn-soft);border-radius:4px;padding:1px 8px}
+.genres{display:flex;flex-wrap:wrap;gap:6px}
+.genre{font-size:12px;background:var(--accent-soft);color:var(--accent);border-radius:4px;padding:1px 8px}
+.note{font-size:13px;color:var(--muted)}
+.body{padding:12px 16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.label{font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.search{background:var(--sunk);border-left:3px solid var(--accent);padding:8px 12px;border-radius:0 6px 6px 0;font-size:14px}
+.desc p{margin:0 0 8px;max-width:68ch}
+.desc ul{margin:0 0 8px;padding-left:20px}
+.desc li{margin:2px 0}
+.desc .sec{margin-bottom:8px}
+.desc .sec strong{font-weight:600}
+.desc .warnbox{background:var(--caution);border:1px solid var(--caution-line);border-radius:6px;padding:8px 12px;margin-bottom:8px}
+details summary{cursor:pointer;color:var(--accent);font-size:14px}
+.decide{padding:12px 16px 14px;background:var(--sunk);border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{font:inherit;font-size:14px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:6px;padding:6px 14px;cursor:pointer}
+.seg button[aria-pressed="true"][data-v="approve"],.seg button[aria-pressed="true"][data-v="apply"]{background:var(--ok);border-color:var(--ok);color:var(--surface)}
+.seg button[aria-pressed="true"][data-v="revise"],.seg button[aria-pressed="true"][data-v="keep"]{background:var(--warn);border-color:var(--warn);color:var(--surface)}
+.seg button[aria-pressed="true"][data-v="reject"]{background:var(--no);border-color:var(--no);color:var(--surface)}
+.seg button:disabled{opacity:.5;cursor:not-allowed}
+textarea{font:inherit;font-size:14px;width:100%;min-height:56px;border:1px solid var(--line);border-radius:6px;padding:8px 10px;background:var(--surface);color:var(--ink);resize:vertical}
+.saved{font-size:12px;color:var(--muted);min-height:1em}
+.empty{color:var(--muted);text-align:center;padding:32px 0}
+@media (prefers-reduced-motion:no-preference){.card{transition:border-color .15s}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>레퍼런스 검수</h1>
+    <p class="lede">Vision 분석이 참고할 의류 레퍼런스입니다. 신규 레퍼런스는 승인할지, 기존 레퍼런스는 제안한 검색 문장을 적용할지 정해 주세요. 결정은 바로 저장되고, Claude 가 읽어서 <code>data/clothing_references.toml</code> 에 반영합니다.</p>
+  </header>
+  <div id="status" class="banner" hidden></div>
+  <div class="banner" id="seed-warn" hidden>기존 레퍼런스는 설명 전체로 검색하고 있어, 검색 문장을 따로 둔 신규 레퍼런스에 순위가 밀립니다. 신규를 승인할 때 아래 제안도 함께 정하는 것을 권합니다.</div>
+  <section class="stats" aria-label="진행 현황">
+    <div class="stat"><span class="k" id="k-new">신규</span><span class="v" id="s-new"></span><div class="bar" id="b-new"></div></div>
+    <div class="stat"><span class="k" id="k-seed">검색 문장 제안</span><span class="v" id="s-seed"></span><div class="bar" id="b-seed"></div></div>
+  </section>
+  <div class="toolbar">
+    <div class="row tabs" role="group" aria-label="목록">
+      <button id="tab-new" aria-pressed="true">신규 레퍼런스</button>
+      <button id="tab-seed" aria-pressed="false">검색 문장 제안</button>
+    </div>
+    <div class="row" id="filters" role="group" aria-label="필터"></div>
+  </div>
+  <main id="list" class="list"></main>
+</div>
+
+<script id="data" type="application/json">__DATA__</script>
+<script>
+(function(){
+  const DATA = JSON.parse(document.getElementById('data').textContent);
+  const items = DATA.items;
+  const state = {}; // key -> {decision, note}
+  const ui = {tab:'new', cat:'전체', only:'all'};
+  let db = null, canWrite = true;
+
+  const OPTS = {
+    draft: [['approve','승인'],['revise','수정 필요'],['reject','제외']],
+    seed:  [['apply','적용'],['keep','적용 안 함']],
+  };
+  const el = (t, a={}, ...kids) => { const e=document.createElement(t); for (const [k,v] of Object.entries(a)) { if (k==='class') e.className=v; else if (k==='text') e.textContent=v; else e.setAttribute(k,v);} kids.flat().forEach(c=>c!=null&&e.append(c)); return e; };
+
+  function renderDesc(text){
+    const box = el('div',{class:'desc'});
+    text.split(/\n\s*\n/).forEach(par=>{
+      const lines = par.split('\n').map(s=>s.trimEnd()).filter(Boolean);
+      if (!lines.length) return;
+      const m = lines[0].match(/^([^:：]{2,24})[:：]\s*(.*)$/);
+      const label = m ? m[1].trim() : null;
+      const warn = label && /확정할 수 없는|카테고리 주의/.test(label);
+      const sec = el('div',{class: warn ? 'warnbox' : 'sec'});
+      const first = m ? m[2] : lines[0];
+      const p = el('p');
+      if (label){ p.append(el('strong',{text:label+': '})); }
+      if (first) p.append(first);
+      // 이어지는 줄: '- ' 는 목록, 나머지는 문단에 붙인다
+      let ul = null;
+      lines.slice(1).forEach(line=>{
+        if (/^\s*-\s+/.test(line)){ if(!ul){ ul=el('ul'); } ul.append(el('li',{text:line.replace(/^\s*-\s+/,'')})); }
+        else if (ul && /^\s{2,}/.test(line)){ ul.lastChild.append(' '+line.trim()); }
+        else { p.append(' '+line.trim()); }
+      });
+      if (p.textContent.trim()) sec.append(p);
+      if (ul) sec.append(ul);
+      box.append(sec);
+    });
+    return box;
+  }
+
+  function counts(kind){
+    const list = items.filter(i=>i.kind===kind);
+    const c = {total:list.length};
+    OPTS[kind].forEach(([v])=>c[v]=0); c.none=0;
+    list.forEach(i=>{ const d=state[i.key]?.decision; if (d && d in c) c[d]++; else c.none++; });
+    return c;
+  }
+  function renderStats(){
+    const n = counts('draft'), s = counts('seed');
+    document.getElementById('s-new').innerHTML = `승인 <b>${n.approve}</b> · 수정 필요 <b>${n.revise}</b> · 제외 <b>${n.reject}</b> · 미검수 <b>${n.none}</b>`;
+    document.getElementById('s-seed').innerHTML = `적용 <b>${s.apply}</b> · 적용 안 함 <b>${s.keep}</b> · 미정 <b>${s.none}</b>`;
+    const bar = (id, parts, total) => { const b=document.getElementById(id); b.replaceChildren(...parts.map(([n,c])=>{ const i=el('i'); i.style.width=(n/total*100)+'%'; i.style.background=c; return i; })); };
+    bar('b-new', [[n.approve,'var(--ok)'],[n.revise,'var(--warn)'],[n.reject,'var(--no)']], n.total);
+    bar('b-seed', [[s.apply,'var(--ok)'],[s.keep,'var(--warn)']], s.total);
+  }
+
+  function renderFilters(){
+    const box = document.getElementById('filters'); box.replaceChildren();
+    const kind = ui.tab==='new' ? 'draft' : 'seed';
+    const cats = ['전체', ...new Set(items.filter(i=>i.kind===kind).map(i=>i.category))];
+    cats.forEach(c=>{ const b=el('button',{class:'chip','aria-pressed':String(ui.cat===c),text:c}); b.onclick=()=>{ui.cat=c; renderFilters(); renderList();}; box.append(b); });
+    const sep = el('span',{class:'note',text:'·'}); box.append(sep);
+    const onlyOpts = kind==='draft' ? [['all','전부'],['open','미검수만'],['flag','검수 필요 표시만']] : [['all','전부'],['open','미정만']];
+    if (!onlyOpts.some(([v])=>v===ui.only)) ui.only='all';
+    onlyOpts.forEach(([v,t])=>{ const b=el('button',{class:'chip','aria-pressed':String(ui.only===v),text:t}); b.onclick=()=>{ui.only=v; renderFilters(); renderList();}; box.append(b); });
+  }
+
+  const pending = {}; // key -> promise chain
+  const timers = {};
+  function save(item, patch, savedEl){
+    state[item.key] = {...(state[item.key]||{}), ...patch};
+    renderStats();
+    const card = document.querySelector(`[data-key="${item.key}"]`);
+    if (card) card.dataset.decision = state[item.key].decision || '';
+    if (!db || !canWrite) return;
+    const body = {name:item.name, kind:item.kind, decision: state[item.key].decision || null, note: state[item.key].note || '', updatedAt:new Date().toISOString()};
+    savedEl && (savedEl.textContent='저장 중…');
+    pending[item.key] = (pending[item.key]||Promise.resolve()).then(()=>db.collection('decisions').doc(item.key).set(body))
+      .then(()=>{ savedEl && (savedEl.textContent='저장됨'); })
+      .catch(e=>{
+        if (e && e.code==='invalid_argument'){ canWrite=false; showStatus('이 계정에는 결정을 저장할 권한이 없습니다. 아티팩트 소유자 계정으로 열어 주세요.','error'); renderList(); }
+        else { savedEl && (savedEl.textContent='저장하지 못했습니다. 잠시 뒤 다시 눌러 주세요.'); }
+      });
+  }
+
+  function card(item){
+    const st = state[item.key] || {};
+    const c = el('article',{class:'card','data-key':item.key,'data-decision':st.decision||''});
+    const head = el('div',{class:'head'});
+    const title = el('div',{class:'title'}, el('h2',{text:item.name}), el('span',{class:'tag',text:item.category + (item.subcategory? ' / '+item.subcategory : '')}));
+    if (item.era) title.append(el('span',{class:'tag',text:item.era}));
+    if (item.flag) title.append(el('span',{class:'flag',text:'검수 필요'}));
+    head.append(title);
+    if (item.genres?.length) head.append(el('div',{class:'genres'}, item.genres.map(g=>el('span',{class:'genre',text:DATA.genreLabel[g]||g}))));
+    if (item.kind==='draft' && item.source_note) head.append(el('div',{class:'note',text:'근거 · '+item.source_note}));
+    c.append(head);
+
+    const body = el('div',{class:'body'});
+    if (item.kind==='draft'){
+      body.append(el('div',{}, el('div',{class:'label',text:'검색 문장 · 사진 서술과 비교되는 부분'}), el('div',{class:'search',text:item.embedding_text})));
+      body.append(el('div',{}, el('div',{class:'label',text:'설명 · 분석 모델이 읽는 부분'}), renderDesc(item.description)));
+    } else {
+      body.append(el('div',{class:'note',text:'지금은 아래 기존 설명 전체로 검색합니다. 이 설명은 이미 승인된 내용입니다.'}));
+      body.append(el('div',{}, el('div',{class:'label',text:'제안한 검색 문장 · 적용하면 이것으로 검색'}), el('div',{class:'search',text:item.proposal})));
+      const det = el('details',{}, el('summary',{text:'기존 설명 보기'}), renderDesc(item.description));
+      body.append(det);
+    }
+    c.append(body);
+
+    const decide = el('div',{class:'decide'});
+    const seg = el('div',{class:'seg',role:'group','aria-label':'결정'});
+    const savedEl = el('div',{class:'saved','aria-live':'polite'});
+    OPTS[item.kind].forEach(([v,t])=>{
+      const b = el('button',{'data-v':v,'aria-pressed':String(st.decision===v),text:t});
+      if (!db || !canWrite) b.disabled = true;
+      b.onclick=()=>{ const next = state[item.key]?.decision===v ? null : v; seg.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed', String(x.dataset.v===next))); save(item,{decision:next},savedEl); };
+      seg.append(b);
+    });
+    const taId = 'note-'+item.key;
+    const ta = el('textarea',{id:taId,placeholder: item.kind==='draft' ? '고칠 점이나 이유 (선택)' : '메모 (선택)'});
+    ta.value = st.note || '';
+    if (!db || !canWrite) ta.disabled = true;
+    ta.addEventListener('input',()=>{ clearTimeout(timers[item.key]); timers[item.key]=setTimeout(()=>{ if ((state[item.key]?.note||'')!==ta.value) save(item,{note:ta.value},savedEl); },900); });
+    ta.addEventListener('blur',()=>{ clearTimeout(timers[item.key]); if ((state[item.key]?.note||'')!==ta.value) save(item,{note:ta.value},savedEl); });
+    decide.append(seg, el('label',{for:taId,class:'label',text:'메모'}), ta, savedEl);
+    c.append(decide);
+    return c;
+  }
+
+  function renderList(){
+    const kind = ui.tab==='new' ? 'draft' : 'seed';
+    const list = document.getElementById('list');
+    const shown = items.filter(i=>i.kind===kind)
+      .filter(i=>ui.cat==='전체' || i.category===ui.cat)
+      .filter(i=> ui.only==='all' || (ui.only==='open' && !state[i.key]?.decision) || (ui.only==='flag' && i.flag));
+    list.replaceChildren(...(shown.length ? shown.map(card) : [el('p',{class:'empty',text:'이 조건에 맞는 항목이 없습니다.'})]));
+  }
+
+  function showStatus(msg,tone){ const s=document.getElementById('status'); s.textContent=msg; s.dataset.tone=tone||''; s.hidden=!msg; }
+
+  function setTab(t){ ui.tab=t; ui.cat='전체'; ui.only='all';
+    document.getElementById('tab-new').setAttribute('aria-pressed',String(t==='new'));
+    document.getElementById('tab-seed').setAttribute('aria-pressed',String(t==='seed'));
+    renderFilters(); renderList(); }
+  document.getElementById('tab-new').onclick=()=>setTab('new');
+  document.getElementById('tab-seed').onclick=()=>setTab('seed');
+
+  const nNew=items.filter(i=>i.kind==='draft').length, nSeed=items.filter(i=>i.kind==='seed').length;
+  document.getElementById('k-new').textContent='신규 '+nNew+'건';
+  document.getElementById('k-seed').textContent='검색 문장 제안 '+nSeed+'건';
+  document.getElementById('seed-warn').hidden = !(nNew && nSeed);
+  if (!nNew) document.getElementById('tab-new').hidden = true;
+  if (!nSeed) document.getElementById('tab-seed').hidden = true;
+  if (!nNew && nSeed) ui.tab='seed';
+  document.getElementById('tab-new').setAttribute('aria-pressed',String(ui.tab==='new'));
+  document.getElementById('tab-seed').setAttribute('aria-pressed',String(ui.tab==='seed'));
+  renderStats(); renderFilters(); renderList();
+  showStatus('저장소에 연결하는 중입니다…');
+
+  (async ()=>{
+    const use = window.claude?.use;
+    db = use ? await use('db') : null;
+    if (!db){ showStatus('이 화면에서는 결정을 저장할 수 없습니다. claude.ai 에 로그인한 상태로 열어 주세요. 내용은 읽을 수 있습니다.','error'); renderList(); return; }
+    const user = await use('user');
+    const w = user && user.can ? await user.can('data.write') : null;
+    if (w === false){ canWrite=false; showStatus('읽기 전용으로 열려 있습니다. 결정은 소유자만 저장할 수 있습니다.'); }
+    else showStatus('');
+    let first = true;
+    db.collection('decisions').onSnapshot(snap=>{
+      snap.docs.forEach(d=>{ const v=d.data(); if (v) state[d.id]={decision:v.decision||null, note:v.note||''}; });
+      renderStats();
+      // 입력 중인 메모를 덮어쓰지 않도록 처음 한 번만 목록을 다시 그린다
+      if (first){ first=false; renderList(); }
+    }, e=>{ showStatus('저장소 연결이 끊겼습니다. 페이지를 새로 열어 주세요.','error'); });
+  })();
+})();
+</script>
