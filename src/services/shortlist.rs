@@ -163,6 +163,30 @@ fn is_temp_appropriate(item: &Clothing, temp: f64) -> bool {
     true
 }
 
+/// 이 상황에서 입으면 오늘 입기 판정(`serving_ranker::compute_today_fit`)이 바로
+/// "실패" 가 되는 옷인가.
+///
+/// 그 판정은 출근·비즈니스에서 스포츠 신발, 스웻 상하의, 평균 격식 2 미만을, 데이트에서
+/// 스포츠 신발을 실패로 본다. 격식 1(후드티·스웻팬츠·반팔 티·러닝화 등)이 섞이면 평균이
+/// 2 아래로 내려가기 쉬워서 출근에서는 격식 1 을 통째로 뺀다. 스웻 세트도 여기서 같이
+/// 빠진다(스웻 옷은 전부 격식 1 이다).
+///
+/// 2026-10-11 측정: "여성 · 스트리트 · 출근" 요청에서 후보 5개가 모두 실패였다. 점수
+/// 감점만으로는 옷이 적은 무드에서 이런 옷이 그대로 후보에 들어간다.
+fn fails_situation(item: &Clothing, situation: Option<&str>) -> bool {
+    let sport_shoes = item.category == "신발" && item.style == Some(Style::Sport);
+    match situation {
+        Some("출근" | "비즈니스") => sport_shoes || item.formality_level.unwrap_or(2) <= 1,
+        Some("데이트") => sport_shoes,
+        _ => false,
+    }
+}
+
+/// 상황에 안 맞는 옷을 뺀 뒤 슬롯에 남는 옷이 이보다 적으면 빼지 않는다. 후보가 비면
+/// 조합을 만들 수 없다 — 그때는 예전처럼 감점만 하고, 남은 실패는 추천 단계의
+/// `unfit_gate` 가 거른다.
+const MIN_AFTER_SITUATION_FILTER: usize = 2;
+
 /// 슬롯별 shortlist를 생성.
 /// 단순 top-k가 아니라 role bucket을 섞어 다양성을 확보.
 pub fn build_shortlist<'a>(
@@ -171,12 +195,23 @@ pub fn build_shortlist<'a>(
     k: usize,
     ctx: &ShortlistContext,
 ) -> Vec<&'a Clothing> {
-    let mut candidates: Vec<(&Clothing, i32)> = clothes
+    let in_slot: Vec<&Clothing> = clothes
         .iter()
         .filter(|c| c.category == category)
         .filter(|c| is_temp_appropriate(c, ctx.temperature))
-        .map(|c| (c, score_item(c, ctx)))
         .collect();
+    let fitting: Vec<&Clothing> = in_slot
+        .iter()
+        .copied()
+        .filter(|c| !fails_situation(c, ctx.situation))
+        .collect();
+    let pool = if fitting.len() >= MIN_AFTER_SITUATION_FILTER {
+        fitting
+    } else {
+        in_slot
+    };
+    let mut candidates: Vec<(&Clothing, i32)> =
+        pool.into_iter().map(|c| (c, score_item(c, ctx))).collect();
 
     candidates.sort_by_key(|a| std::cmp::Reverse(a.1));
 
@@ -291,5 +326,103 @@ impl<'a> ShortlistResult<'a> {
             self.shoes.len(),
             self.bags.len(),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::style_vocab::Thickness;
+    use chrono::NaiveDateTime;
+
+    fn item(id: &str, category: &str, style: Style, formality: i8) -> Clothing {
+        let ts = NaiveDateTime::parse_from_str("2026-10-11 09:00:00", "%Y-%m-%d %H:%M:%S").unwrap();
+        Clothing {
+            id: id.into(),
+            name: id.into(),
+            category: category.into(),
+            gender: None,
+            style_mood: None,
+            color: None,
+            thickness: Thickness::Medium,
+            image_url: None,
+            tone: None,
+            saturation: None,
+            style: Some(style),
+            weight: None,
+            role: None,
+            color_temperature: None,
+            versatility: None,
+            statement_level: None,
+            formality_level: Some(formality),
+            visual_weight: None,
+            texture_depth: None,
+            visual_weight_v2: None,
+            texture_depth_v2: None,
+            grounding_score: None,
+            shadow_tone: None,
+            silhouette_volume: None,
+            material_primary: None,
+            sub_category: None,
+            floating_score: None,
+            strong_style_score: None,
+            texture_keywords: None,
+            created_at: ts,
+            updated_at: ts,
+        }
+    }
+
+    fn ids(clothes: &[Clothing], category: &str, situation: Option<&str>) -> Vec<String> {
+        let recent = HashSet::new();
+        let ctx = ShortlistContext {
+            temperature: 18.0,
+            situation,
+            current_season: None,
+            recent_item_ids: &recent,
+        };
+        let mut v: Vec<String> = build_shortlist(clothes, category, 10, &ctx)
+            .into_iter()
+            .map(|c| c.id.clone())
+            .collect();
+        v.sort();
+        v
+    }
+
+    #[test]
+    fn office_drops_sport_shoes_and_formality_one() {
+        let clothes = vec![
+            item("러닝화", "신발", Style::Sport, 1),
+            item("로퍼", "신발", Style::Basic, 3),
+            item("더비", "신발", Style::Formal, 4),
+            item("후드티", "상의", Style::Basic, 1),
+            item("셔츠", "상의", Style::Basic, 3),
+            item("니트", "상의", Style::Basic, 2),
+        ];
+        assert_eq!(ids(&clothes, "신발", Some("출근")), vec!["더비", "로퍼"]);
+        assert_eq!(ids(&clothes, "상의", Some("출근")), vec!["니트", "셔츠"]);
+        // 데이트는 스포츠 신발만 뺀다. 캐주얼은 아무것도 빼지 않는다.
+        assert_eq!(ids(&clothes, "신발", Some("데이트")), vec!["더비", "로퍼"]);
+        assert_eq!(
+            ids(&clothes, "상의", Some("데이트")),
+            vec!["니트", "셔츠", "후드티"]
+        );
+        assert_eq!(
+            ids(&clothes, "신발", Some("캐주얼")),
+            vec!["더비", "러닝화", "로퍼"]
+        );
+    }
+
+    /// 빼고 나서 두 벌이 안 남으면 빼지 않는다 — 빈 후보로는 조합을 못 만든다.
+    #[test]
+    fn too_few_left_keeps_the_slot_as_it_was() {
+        let clothes = vec![
+            item("후드티", "상의", Style::Basic, 1),
+            item("그래픽 티", "상의", Style::Basic, 1),
+            item("셔츠", "상의", Style::Basic, 3),
+        ];
+        assert_eq!(
+            ids(&clothes, "상의", Some("출근")),
+            vec!["그래픽 티", "셔츠", "후드티"]
+        );
     }
 }
