@@ -365,9 +365,11 @@ category = "하의"
 query = "화이트 테니스 스커트. 짧은 기장에 주름이 몇 개 크게 잡혀 있고 안에 속바지가 있다."
 
 [[cases]]
+# 2026-10-11 쇼츠 레퍼런스(저지·고무줄 허리 변형 포함)가 생겨 정답이 됐다. 레퍼런스보다 먼저 쓴 질의라 before.
 id = "N010"
-group = "negative"
+group = "before"
 category = "하의"
+expected = "쇼츠"
 query = "검정 바이커 쇼츠. 허벅지 중간까지 오는 짧은 길이에 몸에 딱 붙고 허리는 밴드다."
 
 [[cases]]
@@ -383,9 +385,11 @@ category = "아우터"
 query = "네이비 바시티 자켓. 몸판은 울이고 소매는 가죽이다. 목·손목·밑단이 줄무늬 리브이고 가슴에 큰 글자 패치가 있다."
 
 [[cases]]
+# 2026-10-11 레퍼런스 추가로 정답이 생겼다. 레퍼런스보다 먼저 쓴 질의라 before.
 id = "N013"
-group = "negative"
+group = "before"
 category = "신발"
+expected = "웨스턴 부츠"
 query = "브라운 웨스턴 부츠. 종아리 중간까지 오고 앞코가 뾰족하며 굽이 높고 비스듬하다. 갑피에 자수 무늬가 있다."
 
 [[cases]]
@@ -413,9 +417,11 @@ category = "가방"
 query = "탄색 가죽 버킷백. 원통형 몸체에 입구를 끈으로 조여 닫는다."
 
 [[cases]]
+# 2026-10-11 레퍼런스 추가로 정답이 생겼다. 레퍼런스보다 먼저 쓴 질의라 before.
 id = "N018"
-group = "negative"
+group = "before"
 category = "하의"
+expected = "스웨트팬츠"
 query = "그레이 스웨트 조거 팬츠. 허리는 고무 밴드와 끈이고 발목이 리브로 조여진다. 기모 안감."
 
 # ─── 3차 추가 (검색 문장 수정의 일반화 확인용) ───
@@ -478,3 +484,66 @@ group = "after"
 category = "하의"
 expected = "와이드 슬랙스"
 query = "블랙 와이드 팬츠. 바지통이 넓고 앞에 다림질 선이 있다. 허리에 벨트 고리."
+
+[[cases]]
+id = "R051"
+group = "after"
+category = "상의"
+expected = "탱크탑"
+query = "화이트 민소매 탑. 어깨 부분이 넓은 띠로 되어 있고 골지 면 소재라 몸에 붙는다. 허리 기장."
+
+[[cases]]
+id = "R052"
+group = "after"
+category = "상의"
+expected = "롱슬리브 티셔츠"
+query = "블랙 긴팔 티셔츠. 브이넥이고 얇은 저지라 몸에 붙는다. 여밈이 없고 장식이 없다."
+
+[[cases]]
+id = "R053"
+group = "after"
+category = "상의"
+expected = "셔링 저지 탑"
+query = "그레이 하이넥 탑. 얇은 저지 원단의 앞판에 잔주름이 세로로 모여 있고 몸에 딱 맞는다. 긴소매."
+
+[[cases]]
+id = "R054"
+group = "after"
+category = "하의"
+expected = "저지 원피스"
+query = "퍼플 미니 드레스. 늘어나는 저지 원단이고 옆선에 주름이 잡혀 몸을 따라 흐른다. 지퍼가 없다."
+
+[[cases]]
+id = "R055"
+group = "after"
+category = "하의"
+expected = "쇼츠"
+query = "블랙 하이웨이스트 쇼츠. 허리는 넓은 밴드이고 허벅지 위에서 끝나는 짧은 기장이다."
+
+[[cases]]
+id = "R056"
+group = "after"
+category = "하의"
+expected = "와이드 데님 팬츠"
+query = "그레이 워싱의 와이드 핏 청바지. 허벅지부터 밑단까지 넉넉하게 떨어지고 바닥에 닿을 만큼 길다."
+
+[[cases]]
+id = "R057"
+group = "after"
+category = "하의"
+expected = "부츠컷 진"
+query = "블랙 플레어 진. 허벅지는 붙고 무릎 아래부터 밑단이 넓게 퍼진다. 다섯 포켓."
+
+[[cases]]
+id = "R058"
+group = "after"
+category = "아우터"
+expected = "후드 집업"
+query = "블랙 후드 집업. 앞을 지퍼로 열고 후드에 조임끈이 있다. 소매와 밑단이 립으로 마감된 두툼한 면."
+
+[[cases]]
+id = "R059"
+group = "after"
+category = "신발"
+expected = "레이스업 앵클 부츠"
+query = "화이트 가죽 레이스업 부츠. 발목 위까지 오고 앞에 끈이 줄지어 엮여 있다. 굽이 있다."
