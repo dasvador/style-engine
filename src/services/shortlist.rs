@@ -8,7 +8,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::models::clothing::Clothing;
-use crate::models::style_vocab::{Role, Style, Weight};
+use crate::models::style_vocab::{Role, Style, StyleGenre, Weight};
 
 /// 슬롯별 shortlist 크기
 const TOP_K_TOP: usize = 12;
@@ -195,12 +195,17 @@ const MIN_AFTER_SITUATION_FILTER: usize = 2;
 /// 이하라서 출근 추천의 후보 5개가 모두 실패였다. 빌리는 수는 모자란 만큼에 여유 하나를
 /// 더한 정도로 묶는다 — 무드 옷장을 밀어내지 않기 위해서다.
 ///
-/// 상황이 없거나 캐주얼이면 아무것도 빌리지 않는다. 빌린 옷은 격식이 상황 이상적 구간에
-/// 가까운 순서로 고른다.
+/// 상황이 없거나 캐주얼이면 아무것도 빌리지 않는다.
+///
+/// 빌릴 옷은 무드와 가까운 장르의 옷부터 고른다(`mood_affinity`). 격식만 보고 골랐을 때
+/// 미니멀 출근에 에스닉 자수 블라우스가 들어갔다 — 격식은 맞지만 무드와 멀다. 같은
+/// 가까움이면 상황 점수(`score_item`) 순서다.
 pub fn borrow_for_situation(
     mood_pool: &[Clothing],
     wardrobe: &[Clothing],
     ctx: &ShortlistContext,
+    mood: Option<StyleGenre>,
+    genres: &HashMap<String, Vec<String>>,
 ) -> Vec<Clothing> {
     if !matches!(ctx.situation, Some("출근" | "비즈니스" | "데이트")) {
         return Vec::new();
@@ -223,10 +228,47 @@ pub fn borrow_for_situation(
             .iter()
             .filter(|c| c.category == category && !have.contains(c.id.as_str()) && ok(c))
             .collect();
-        extra.sort_by_key(|c| std::cmp::Reverse(score_item(c, ctx)));
+        extra.sort_by_key(|c| {
+            let affinity = mood.map_or(0, |m| mood_affinity(m, genres.get(&c.id)));
+            std::cmp::Reverse((affinity, score_item(c, ctx)))
+        });
         borrowed.extend(extra.into_iter().take(want).cloned());
     }
     borrowed
+}
+
+/// 무드에서 가까운 장르. 앞에 있을수록 가깝다. 무드 밖에서 옷을 빌릴 때 이 순서로 고른다.
+///
+/// 장르 설명(`StyleGenre`)과 옷장의 장르 겹침에서 정했다 — 예를 들어 미니멀과 클래식은
+/// 셔츠·트렌치를 공유하고, 스트리트와 스포티 캐주얼은 후디·트랙 재킷을 공유한다.
+fn mood_neighbors(mood: StyleGenre) -> &'static [StyleGenre] {
+    use StyleGenre::*;
+    match mood {
+        Minimal => &[Classic, ModernChic, Mannish],
+        Classic => &[Minimal, Preppy, Mannish, ModernChic],
+        ModernChic => &[Minimal, Classic, Mannish],
+        Mannish => &[Classic, ModernChic, Minimal],
+        Street => &[SportyCasual, Amekaji, Minimal],
+        SportyCasual => &[Street, OutdoorCasual, Minimal],
+        Amekaji => &[Workwear, Preppy, Street, Classic],
+        Preppy => &[Classic, Amekaji, Minimal],
+        Workwear => &[Amekaji, OutdoorCasual],
+        OutdoorCasual => &[Workwear, SportyCasual],
+        Romantic => &[Classic, Bohemian, Minimal],
+        Bohemian => &[Romantic, Amekaji],
+    }
+}
+
+/// 옷의 장르가 무드에 얼마나 가까운가. 가까운 이웃 장르를 가질수록 크다. 무드에서 먼
+/// 장르(이웃 목록에 없는 것)만 가진 옷은 0 이다.
+fn mood_affinity(mood: StyleGenre, item_genres: Option<&Vec<String>>) -> i32 {
+    let neighbors = mood_neighbors(mood);
+    let Some(gs) = item_genres else { return 0 };
+    gs.iter()
+        .filter_map(|g| g.parse::<StyleGenre>().ok())
+        .filter_map(|g| neighbors.iter().position(|n| *n == g))
+        .map(|rank| (neighbors.len() - rank) as i32)
+        .sum()
 }
 
 /// 슬롯별 shortlist를 생성.
@@ -475,13 +517,53 @@ mod tests {
             recent_item_ids: &recent,
         };
 
-        let mut got: Vec<String> = borrow_for_situation(&mood, &wardrobe, &ctx(Some("출근")))
-            .into_iter()
-            .map(|c| c.id)
-            .collect();
+        let none = HashMap::new();
+        let mut got: Vec<String> =
+            borrow_for_situation(&mood, &wardrobe, &ctx(Some("출근")), None, &none)
+                .into_iter()
+                .map(|c| c.id)
+                .collect();
         got.sort();
         assert_eq!(got, vec!["더비", "로퍼"]); // 신발만, 상의는 이미 두 벌
-        assert!(borrow_for_situation(&mood, &wardrobe, &ctx(Some("캐주얼"))).is_empty());
+        assert!(
+            borrow_for_situation(&mood, &wardrobe, &ctx(Some("캐주얼")), None, &none).is_empty()
+        );
+    }
+
+    /// 미니멀 출근에 상의가 모자라면, 격식이 더 높아도 무드에서 먼 자수 블라우스보다
+    /// 클래식 셔츠를 먼저 빌린다.
+    #[test]
+    fn borrowing_prefers_garments_near_the_mood() {
+        let mood = vec![item("크롭 티", "상의", Style::Basic, 1)];
+        let mut wardrobe = mood.clone();
+        wardrobe.push(item("자수 블라우스", "상의", Style::Basic, 3));
+        wardrobe.push(item("옥스퍼드 셔츠", "상의", Style::Basic, 2));
+        wardrobe.push(item("코튼 블라우스", "상의", Style::Basic, 3));
+        let genres: HashMap<String, Vec<String>> = [
+            ("자수 블라우스", vec!["romantic", "bohemian"]),
+            ("옥스퍼드 셔츠", vec!["classic", "preppy"]),
+            ("코튼 블라우스", vec!["romantic", "classic"]),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.into_iter().map(String::from).collect()))
+        .collect();
+        let recent = HashSet::new();
+        let ctx = ShortlistContext {
+            temperature: 18.0,
+            situation: Some("출근"),
+            current_season: None,
+            recent_item_ids: &recent,
+        };
+
+        let got: Vec<String> =
+            borrow_for_situation(&mood, &wardrobe, &ctx, Some(StyleGenre::Minimal), &genres)
+                .into_iter()
+                .map(|c| c.id)
+                .collect();
+        // 두 벌 모자라 세 벌까지 빌린다. 자수 블라우스는 장르가 미니멀과 멀어 맨 뒤다
+        // (격식은 셋 중 가장 높아도). 앞의 둘은 둘 다 클래식이라 격식 점수 순서다.
+        assert_eq!(got.len(), 3);
+        assert_eq!(got[2], "자수 블라우스");
     }
 
     /// 빼고 나서 두 벌이 안 남으면 빼지 않는다 — 빈 후보로는 조합을 못 만든다.

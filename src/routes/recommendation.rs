@@ -276,6 +276,7 @@ async fn get_multi_recommendation(
         let wardrobe =
             clothing_repo::list_clothing_filtered(&state.db, body.gender.as_deref(), None).await?;
         let no_recent = std::collections::HashSet::new();
+        let genres = clothing_repo::get_all_style_genres(&state.db).await?;
         let borrowed = crate::services::shortlist::borrow_for_situation(
             &clothes,
             &wardrobe,
@@ -285,6 +286,8 @@ async fn get_multi_recommendation(
                 current_season: None,
                 recent_item_ids: &no_recent,
             },
+            mood,
+            &genres,
         );
         if !borrowed.is_empty() {
             tracing::info!(
