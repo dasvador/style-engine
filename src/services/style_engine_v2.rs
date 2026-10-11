@@ -440,6 +440,23 @@ fn score_balance(ctx: &OutfitContext) -> i32 {
     s.clamp(0, AXIS_MAX)
 }
 
+/// 테일러링은 아우터에만, 스웻은 상의에만 있는가 — 블레이저나 트위드 자켓을 맨투맨
+/// 위에 걸친 레이어드. `score_coherence` 의 sweat+tailoring 감점 예외 조건이다.
+fn is_tailored_layer_over_sweat_top(ctx: &OutfitContext) -> bool {
+    let has_world = |s: &OutfitSlot, w: &str| s.texture_worlds.iter().any(|x| x == w);
+    let tailoring_only_outer = ctx
+        .slots
+        .iter()
+        .filter(|s| has_world(s, "tailoring"))
+        .all(|s| s.slot == SlotKind::Outer);
+    let sweat_only_top = ctx
+        .slots
+        .iter()
+        .filter(|s| has_world(s, "sweat"))
+        .all(|s| s.slot == SlotKind::Top);
+    tailoring_only_outer && sweat_only_top
+}
+
 /// 해당 슬롯의 실루엣 볼륨. 슬롯이 없거나 값이 없으면 `None`.
 fn slot_silhouette(ctx: &OutfitContext, slot: SlotKind) -> Option<Silhouette> {
     ctx.slots
@@ -459,7 +476,14 @@ fn score_coherence(ctx: &OutfitContext) -> i32 {
         .collect();
 
     // sweat+tailoring — 현 hard filter에 미포함(사용자 지시로 hard 유지) → soft 강 감점
-    if worlds.contains(&"sweat") && worlds.contains(&"tailoring") {
+    //
+    // 예외(2026-10-11 사용자 결정): 테일러링 아우터를 스웻 상의 위에 걸친 경우.
+    // 트위드 자켓 + 맨투맨(RW09)은 "보완" 으로 판단받았다. 테일러링이 하의에 있거나
+    // 스웻이 하의·아우터에 있으면(맨투맨 + 울 슬랙스, 블레이저 + 스웻팬츠) 그대로 감점한다.
+    if worlds.contains(&"sweat")
+        && worlds.contains(&"tailoring")
+        && !is_tailored_layer_over_sweat_top(ctx)
+    {
         s -= 12;
     }
     // outdoor+tailoring 미세 충돌
@@ -745,6 +769,35 @@ mod tests {
             ],
             situation: None,
         })
+    }
+
+    fn coherence_of(pieces: &[(SlotKind, &str)]) -> i32 {
+        score_coherence(&OutfitContext {
+            slots: pieces
+                .iter()
+                .map(|(slot, world)| {
+                    let mut g = garment(*slot, None);
+                    g.texture_worlds = vec![world.to_string()];
+                    g
+                })
+                .collect(),
+            situation: None,
+        })
+    }
+
+    /// 테일러링 아우터를 스웻 상의 위에 걸친 레이어드(트위드 자켓 + 맨투맨, RW09)는
+    /// sweat+tailoring 감점에서 뺀다. 다른 배치는 그대로 감점한다.
+    #[test]
+    fn a_tailored_jacket_over_a_sweatshirt_is_not_a_clash() {
+        use SlotKind::{Bottom, Outer, Top};
+        let layered = coherence_of(&[(Outer, "tailoring"), (Top, "sweat"), (Bottom, "denim")]);
+        let slacks_with_sweatshirt = coherence_of(&[(Top, "sweat"), (Bottom, "tailoring")]);
+        let blazer_over_sweatpants =
+            coherence_of(&[(Outer, "tailoring"), (Top, "minimal"), (Bottom, "sweat")]);
+
+        assert_eq!(layered, AXIS_MAX);
+        assert_eq!(slacks_with_sweatshirt, AXIS_MAX - 12);
+        assert_eq!(blazer_over_sweatpants, AXIS_MAX - 12);
     }
 
     /// 위아래가 같이 커지면 실루엣이 뭉개지고, 같이 좁으면 경직된다.
