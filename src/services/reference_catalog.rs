@@ -46,7 +46,11 @@ struct CatalogEntry {
     #[serde(default)]
     source_note: Option<String>,
     /// 검색용 축약 표현. 관찰 가능한 형태·소재·디테일만 담는다.
-    embedding_text: String,
+    ///
+    /// 없으면 `description` 전체를 임베딩한다. 기존 시드 13개가 그렇다 — 그 13개에
+    /// 쓴 검색 문장은 검수 전이라 적용하지 않았다(카탈로그의 해당 절 주석 참고).
+    #[serde(default)]
+    embedding_text: Option<String>,
     /// Pass 2 가 읽는 설명.
     description: String,
 }
@@ -87,7 +91,12 @@ fn parse_catalog(raw: &str) -> anyhow::Result<Vec<CatalogEntry>> {
                 anyhow::bail!("'{}': 알 수 없는 장르 '{}'", e.name, g);
             }
         }
-        if e.embedding_text.trim().is_empty() {
+        // 없는 것은 허용하지만 빈 것은 막는다. 빈 문자열을 임베딩하면 모든 질의에
+        // 비슷한 유사도로 걸려서 검색 결과를 흐린다.
+        if e.embedding_text
+            .as_deref()
+            .is_some_and(|t| t.trim().is_empty())
+        {
             anyhow::bail!("'{}': embedding_text 가 비어 있다", e.name);
         }
         // 이름은 DB 의 유니크 키다. 파일 안에서 겹치면 뒤의 것이 앞의 것을 덮어쓰고,
@@ -122,7 +131,7 @@ pub async fn sync_catalog(pool: &MySqlPool) -> anyhow::Result<usize> {
                 era: e.era.as_deref(),
                 style: e.style.as_deref(),
                 description: e.description.trim(),
-                embedding_text: Some(e.embedding_text.trim()),
+                embedding_text: e.embedding_text.as_deref().map(str::trim),
                 review_status: &e.review_status,
                 source_note: e.source_note.as_deref(),
                 genres: &e.genres,
@@ -215,6 +224,34 @@ description = "설명"
 "#;
         let err = parse_catalog(raw).unwrap_err().to_string();
         assert!(err.contains("이름이 중복"), "{err}");
+    }
+
+    /// 기존 시드는 검색 문장 없이 설명 전체를 임베딩한다.
+    #[test]
+    fn a_missing_search_text_is_allowed() {
+        let raw = r#"
+[[references]]
+name = "테스트"
+category = "상의"
+review_status = "approved"
+description = "설명"
+"#;
+        let entries = parse_catalog(raw).expect("검색 문장이 없어도 통과해야 한다");
+        assert!(entries[0].embedding_text.is_none());
+    }
+
+    #[test]
+    fn a_blank_search_text_is_rejected() {
+        let raw = r#"
+[[references]]
+name = "테스트"
+category = "상의"
+review_status = "draft"
+embedding_text = "   "
+description = "설명"
+"#;
+        let err = parse_catalog(raw).unwrap_err().to_string();
+        assert!(err.contains("embedding_text 가 비어"), "{err}");
     }
 
     #[test]
