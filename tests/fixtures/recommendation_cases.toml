@@ -1253,6 +1253,7 @@ tags = ["temperature", "too_cold"]
 # 라벨은 이 케이스를 추가한 작업자가 붙인 것이고 사용자 검수를 받지 않았다.
 # ───────────────────────────────────────────────────────────────
 
+# LY 묶음 라벨은 2026-10-12 사람이 확인했다(tools/world-review/ly_sv_labels.toml).
 [[cases]]
 case_id = "LY001"
 situation = "캐주얼"
@@ -1491,6 +1492,7 @@ tags = ["real_data", "work_neutral_bridge"]
 # 뭉개지고 같이 좁으면 경직된다는 일반적인 스타일링 판단이다.
 # ═══════════════════════════════════════════════════════════════
 
+# SV 묶음 라벨은 2026-10-12 사람이 확인했다(tools/world-review/ly_sv_labels.toml).
 [[cases]]
 case_id = "SV001"
 situation = "출근"

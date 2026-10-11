@@ -8,6 +8,7 @@
   보여 주려고 로컬 DB 를 한 번 읽는다(`.env` 의 DATABASE_URL, mysql 클라이언트 필요).
 - `[[role]]`   아우터 역할 (outer_roles.toml). 역할별 점수 영향(`impact`)을 함께 보여 준다.
 - `[[style]]`  스타일 (female_styles.toml). `[[role]]` 과 같은 형식.
+- `[[label]]`  평가 케이스 라벨 확인 (ly_sv_labels.toml). 선택지는 항목마다 `options`.
 - `[[ab]]`     두 코디 중 어느 쪽이 나은지 (shadow_ab.toml). 블라인드 — 어느 엔진의
   코디인지(`a_is`)는 페이지에 싣지 않는다.
 
@@ -66,8 +67,8 @@ def main(out: str, files: list[pathlib.Path]) -> None:
     payload = json.dumps({"items": items}, ensure_ascii=False)
     html = TEMPLATE.read_text(encoding="utf-8").replace("__DATA__", payload.replace("</", "<\\/"))
     pathlib.Path(out).write_text(html, encoding="utf-8")
-    n = {k: sum(i["kind"] == k for i in items) for k in ("ab", "style", "role", "assign", "combo")}
-    print(f"코디 비교 {n['ab']}건, 스타일 {n['style']}건, 아우터 역할 {n['role']}건, "
+    n = {k: sum(i["kind"] == k for i in items) for k in ("label", "ab", "style", "role", "assign", "combo")}
+    print(f"라벨 확인 {n['label']}건, 코디 비교 {n['ab']}건, 스타일 {n['style']}건, 아우터 역할 {n['role']}건, "
           f"월드 배정 {n['assign']}건, 조합 판단 {n['combo']}건 → {out}")
 
 
@@ -82,6 +83,10 @@ def load_items(cases: pathlib.Path) -> list[dict]:
         for r in data.get(kind, []):
             items.append({"key": key(kind, round_, r["name"]), "kind": kind, "name": r["name"],
                           "proposal": r["proposal"], "why": r.get("why", ""), "impact": r.get("impact", {})})
+    for c in data.get("label", []):
+        items.append({"key": key("label", round_, c["name"]), "kind": "label", "name": c["name"],
+                      "question": c["question"], "pieces": c["items"], "options": c["options"],
+                      "proposal": c["proposal"], "why": c.get("why", "")})
     for c in data.get("ab", []):
         items.append({"key": key("ab", round_, c["id"]), "kind": "ab", "name": c["id"],
                       "context": c["context"], "a": c["a"], "b": c["b"]})

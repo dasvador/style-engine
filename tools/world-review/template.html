@@ -94,6 +94,7 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
   </header>
   <div id="status" class="banner" hidden></div>
   <section class="stats" aria-label="진행 현황">
+    <div class="stat"><span class="k">라벨 확인</span><span class="v" id="s-label"></span></div>
     <div class="stat"><span class="k">코디 비교</span><span class="v" id="s-ab"></span></div>
     <div class="stat"><span class="k">스타일</span><span class="v" id="s-style"></span></div>
     <div class="stat"><span class="k">아우터 역할</span><span class="v" id="s-role"></span></div>
@@ -102,6 +103,7 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
   </section>
   <div class="toolbar">
     <div class="row tabs" role="group" aria-label="목록">
+      <button id="tab-label" aria-pressed="false">라벨 확인</button>
       <button id="tab-ab" aria-pressed="false">코디 비교</button>
       <button id="tab-style" aria-pressed="false">스타일</button>
       <button id="tab-role" aria-pressed="false">아우터 역할</button>
@@ -130,8 +132,9 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
     assign: [['romantic','romantic'],['bohemian','bohemian'],['tailoring','tailoring'],['minimal','minimal'],['none','월드 없음']],
     combo:  [['conflict','충돌 (감점)'],['complement','보완 (가점)'],['neutral','상관없음']],
   };
-  const KINDS = ['ab','style','role','assign','combo'];
+  const KINDS = ['label','ab','style','role','assign','combo'];
   const LEDE = {
+    label:  '평가 케이스의 정답(라벨)을 Claude 가 써 둔 것입니다. 사람이 보기에도 맞는지 골라 주세요. 지금 라벨에는 "제안" 표시가 붙어 있습니다.',
     ab:     '같은 추천 요청에서 두 엔진이 1위로 고른 코디입니다. 어느 엔진의 코디인지는 숨겼습니다. 오늘 실제로 입는다면 어느 쪽이 나은지 골라 주세요.',
     style:  '스타일 값이 비어 있는 여성 옷입니다. 베이직 / 포멀 / 워크 / 밀리터리 / 스포츠 중 하나를 골라 주세요. 카드 아래 숫자는 그 스타일을 붙였을 때 이 옷이 들어간 착장의 추천 점수가 어떻게 바뀌는지 미리 잰 값입니다.',
     role:   '역할이 비어 있는 여성 아우터입니다. 각 옷의 역할(구조템 / 연결템 / 약한포인트 / 포인트)을 정해 주세요. 카드 아래 숫자는 그 역할을 붙였을 때 이 옷이 들어간 착장의 추천 점수가 어떻게 바뀌는지 미리 잰 값입니다.',
@@ -139,6 +142,7 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
     combo:  '두 옷이 만났을 때 어색한지(충돌) 잘 어울리는지(보완) 상관없는지 정해 주세요.',
   };
   const LEGEND = {
+    label:  '이 라벨로 추천 엔진의 정확도를 잽니다. 틀린 라벨은 엔진이 맞게 판단해도 틀렸다고 셉니다.',
     ab:     '제목 옆은 요청 조건(성별 · 무드 · 상황)입니다. 이유가 있으면 메모에 적어 주세요.',
     style:  '스타일이 비어 있으면 추천 엔진은 베이직과 똑같이 봅니다. 점수는 상황을 정하지 않고 쟀습니다 — 포멀은 출근 상황에서는 오히려 오를 수 있습니다.',
     role:   '역할이 비어 있으면 추천 엔진은 구조템·연결템과 똑같이 봅니다. 그래서 그 둘은 점수가 바뀌지 않고, 약한포인트·포인트만 감점이 생깁니다. 포인트는 가방 같은 다른 포인트와 겹쳐 거의 모든 착장에서 크게 깎입니다.',
@@ -156,6 +160,10 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
     return c;
   }
   function renderStats(){
+    const lb = items.filter(i=>i.kind==='label');
+    const lbDone = lb.filter(i=>state[i.key]?.decision).length;
+    const lbChanged = lb.filter(i=>state[i.key]?.decision && state[i.key].decision!==i.proposal).length;
+    document.getElementById('s-label').innerHTML = `정함 <b>${lbDone}</b> / ${lb.length} · 바뀜 <b>${lbChanged}</b>`;
     const abc = counts('ab');
     document.getElementById('s-ab').innerHTML = `A <b>${abc.A}</b> · B <b>${abc.B}</b> · 비슷 <b>${abc.same}</b> · 미정 <b>${abc.none}</b>`;
     const sy = counts('style');
@@ -194,7 +202,12 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
     const st = state[item.key] || {};
     const c = el('article',{class:'card','data-key':item.key,'data-done':st.decision?'1':''});
     const head = el('div',{class:'head'});
-    if (item.kind==='ab'){
+    if (item.kind==='label'){
+      head.append(el('div',{class:'title'}, el('h2',{text:item.name}), el('span',{class:'pair',text:item.question})));
+      c.append(head);
+      c.append(el('ul',{class:'pieces'}, item.pieces.map(p=>el('li',{}, el('span',{class:'nm',text:p})))));
+      c.append(el('div',{class:'why',style:'padding:0 16px 10px'}, '지금 라벨: ', el('strong',{text:item.proposal}), ' — '+item.why));
+    } else if (item.kind==='ab'){
       head.append(el('div',{class:'title'}, el('h2',{text:item.name}), el('span',{class:'pair',text:item.context})));
       c.append(head);
       const side = (lbl, xs) => el('div',{class:'ab'}, el('h3',{text:lbl}), el('ul',{}, xs.map(x=>el('li',{text:x}))));
@@ -227,9 +240,10 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
     const decide = el('div',{class:'decide'});
     const seg = el('div',{class:'seg',role:'group','aria-label':'결정'});
     const savedEl = el('div',{class:'saved','aria-live':'polite'});
-    OPTS[item.kind].forEach(([v,t])=>{
+    const opts = item.kind==='label' ? item.options.map(o=>[o,o]) : OPTS[item.kind];
+    opts.forEach(([v,t])=>{
       const b = el('button',{'data-v':v,'aria-pressed':String(st.decision===v)}, t);
-      if ((item.kind==='assign' || item.kind==='role' || item.kind==='style') && v===item.proposal) b.append(el('span',{class:'mark',text:'제안'}));
+      if ((item.kind==='assign' || item.kind==='role' || item.kind==='style' || item.kind==='label') && v===item.proposal) b.append(el('span',{class:'mark',text:'제안'}));
       if (!db || !canWrite) b.disabled = true;
       b.onclick=()=>{ const next = state[item.key]?.decision===v ? null : v; seg.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed', String(x.dataset.v===next))); save(item,{decision:next},savedEl); };
       seg.append(b);

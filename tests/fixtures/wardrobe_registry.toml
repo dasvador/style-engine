@@ -1267,7 +1267,7 @@ formality_level = 2
 texture_worlds = ["military", "outdoor"]
 
 [items.beige_gat]
-name = "베이지 갓"
+name = "베이지 독일군 스니커"
 category = "신발"
 style = "밀리터리"
 role = "연결템"
