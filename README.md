@@ -56,6 +56,39 @@ Wardrobe Edit은 사용자의 옷장과 그날의 상황을 바탕으로 코디�
 </p>
 </details>
 
+### 옷 등록
+
+사진을 올리면 Vision 분석이 이름과 색감, 톤, 격식, 역할 같은 스타일 속성을 채워 옷장에 등록합니다. 분석이 제안한 성별과 장르는 저장하기 전에 사용자가 확인하고 고칠 수 있습니다.
+
+<table>
+  <tr>
+    <td align="center" valign="top" width="33%">
+      <img src="docs/images/upload-photo.png" alt="옷 등록 패널의 사진 분석 탭에 스니커 사진을 올린 화면" width="100%"><br>
+      <sub>1. 사진을 올립니다</sub>
+    </td>
+    <td align="center" valign="top" width="33%">
+      <img src="docs/images/upload-confirm.png" alt="분석된 이름과 함께 성별과 어울리는 장르(스트리트, 스포티 캐주얼)를 확인하는 화면" width="100%"><br>
+      <sub>2. 분석이 제안한 성별과 장르를 확인합니다</sub>
+    </td>
+    <td align="center" valign="top" width="33%">
+      <img src="docs/images/upload-detail.png" alt="등록된 아이템의 기본 정보와 스타일 분석: 역할, 톤, 채도, 색온도, 활용도, 존재감, 격식, 스타일, 무게감, 텍스처" width="100%"><br>
+      <sub>3. 분석된 스타일 속성이 아이템에 저장됩니다</sub>
+    </td>
+  </tr>
+</table>
+
+<details>
+<summary>등록 과정 전체 화면 보기</summary>
+<br>
+<table>
+  <tr>
+    <td align="center" valign="top" width="33%"><img src="docs/images/upload-photo-full.png" alt="옷장 화면에서 등록 패널을 연 전체 화면" width="100%"></td>
+    <td align="center" valign="top" width="33%"><img src="docs/images/upload-confirm-full.png" alt="장르 확인 패널과 그 아래 등록된 스니커와 봄버 자켓" width="100%"></td>
+    <td align="center" valign="top" width="33%"><img src="docs/images/upload-detail-full.png" alt="등록된 스니커의 상세 화면 전체" width="100%"></td>
+  </tr>
+</table>
+</details>
+
 ## 기술 요약
 
 개인 프로젝트이지만, LLM을 쓰는 제품에서 반복되는 세 가지 문제를 실제로 다뤘습니다 — 모델을 용도별로 나누는 일, 추천 품질이 나빠졌는지 알아내는 일, 생성 비용을 통제하는 일.
