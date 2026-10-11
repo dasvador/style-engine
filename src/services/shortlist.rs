@@ -187,6 +187,48 @@ fn fails_situation(item: &Clothing, situation: Option<&str>) -> bool {
 /// `unfit_gate` 가 거른다.
 const MIN_AFTER_SITUATION_FILTER: usize = 2;
 
+/// 무드로 걸러 낸 옷장에 이 상황에 맞는 옷이 슬롯당 두 벌보다 적으면, 같은 성별의
+/// 전체 옷장에서 맞는 옷을 빌려 온다(2026-10-11 사용자 결정 — 무드보다 입을 수 있는
+/// 코디가 먼저다).
+///
+/// 여성 미니멀은 격식 2 이상 신발이 한 켤레, 여성 스트리트는 상의·신발이 전부 격식 1
+/// 이하라서 출근 추천의 후보 5개가 모두 실패였다. 빌리는 수는 모자란 만큼에 여유 하나를
+/// 더한 정도로 묶는다 — 무드 옷장을 밀어내지 않기 위해서다.
+///
+/// 상황이 없거나 캐주얼이면 아무것도 빌리지 않는다. 빌린 옷은 격식이 상황 이상적 구간에
+/// 가까운 순서로 고른다.
+pub fn borrow_for_situation(
+    mood_pool: &[Clothing],
+    wardrobe: &[Clothing],
+    ctx: &ShortlistContext,
+) -> Vec<Clothing> {
+    if !matches!(ctx.situation, Some("출근" | "비즈니스" | "데이트")) {
+        return Vec::new();
+    }
+    let ok = |c: &Clothing| {
+        is_temp_appropriate(c, ctx.temperature) && !fails_situation(c, ctx.situation)
+    };
+    let have: HashSet<&str> = mood_pool.iter().map(|c| c.id.as_str()).collect();
+    let mut borrowed = Vec::new();
+    for category in ["상의", "하의", "신발", "가방"] {
+        let fitting = mood_pool
+            .iter()
+            .filter(|c| c.category == category && ok(c))
+            .count();
+        if fitting >= MIN_AFTER_SITUATION_FILTER {
+            continue;
+        }
+        let want = MIN_AFTER_SITUATION_FILTER - fitting + 1;
+        let mut extra: Vec<&Clothing> = wardrobe
+            .iter()
+            .filter(|c| c.category == category && !have.contains(c.id.as_str()) && ok(c))
+            .collect();
+        extra.sort_by_key(|c| std::cmp::Reverse(score_item(c, ctx)));
+        borrowed.extend(extra.into_iter().take(want).cloned());
+    }
+    borrowed
+}
+
 /// 슬롯별 shortlist를 생성.
 /// 단순 top-k가 아니라 role bucket을 섞어 다양성을 확보.
 pub fn build_shortlist<'a>(
@@ -410,6 +452,36 @@ mod tests {
             ids(&clothes, "신발", Some("캐주얼")),
             vec!["더비", "러닝화", "로퍼"]
         );
+    }
+
+    /// 무드 옷장에 출근용 신발이 모자라면 전체 옷장에서 빌려 온다. 충분하면 빌리지 않는다.
+    #[test]
+    fn office_borrows_only_for_short_slots() {
+        let mood = vec![
+            item("러닝화", "신발", Style::Sport, 1),
+            item("캔버스", "신발", Style::Basic, 1),
+            item("셔츠", "상의", Style::Basic, 3),
+            item("니트", "상의", Style::Basic, 2),
+        ];
+        let mut wardrobe = mood.clone();
+        wardrobe.push(item("로퍼", "신발", Style::Basic, 3));
+        wardrobe.push(item("더비", "신발", Style::Formal, 4));
+        wardrobe.push(item("블라우스", "상의", Style::Basic, 3));
+        let recent = HashSet::new();
+        let ctx = |sit| ShortlistContext {
+            temperature: 18.0,
+            situation: sit,
+            current_season: None,
+            recent_item_ids: &recent,
+        };
+
+        let mut got: Vec<String> = borrow_for_situation(&mood, &wardrobe, &ctx(Some("출근")))
+            .into_iter()
+            .map(|c| c.id)
+            .collect();
+        got.sort();
+        assert_eq!(got, vec!["더비", "로퍼"]); // 신발만, 상의는 이미 두 벌
+        assert!(borrow_for_situation(&mood, &wardrobe, &ctx(Some("캐주얼"))).is_empty());
     }
 
     /// 빼고 나서 두 벌이 안 남으면 빼지 않는다 — 빈 후보로는 조합을 못 만든다.

@@ -263,16 +263,37 @@ async fn get_multi_recommendation(
     .await
     .map_err(AppError::Internal)?;
 
-    let clothes = if body.gender.is_some() || body.style_mood.is_some() {
-        clothing_repo::list_clothing_filtered(
-            &state.db,
-            body.gender.as_deref(),
-            crate::routes::parse_genre(body.style_mood.as_deref())?,
-        )
-        .await?
+    let mood = crate::routes::parse_genre(body.style_mood.as_deref())?;
+    let mut clothes = if body.gender.is_some() || body.style_mood.is_some() {
+        clothing_repo::list_clothing_filtered(&state.db, body.gender.as_deref(), mood).await?
     } else {
         clothing_repo::list_clothing(&state.db).await?
     };
+
+    // 무드 옷장에 이 상황(출근·데이트)에 맞는 옷이 모자란 슬롯은 같은 성별 전체 옷장에서
+    // 빌려 온다. 무드가 없으면 이미 전체 옷장이라 빌릴 것이 없다.
+    if mood.is_some() {
+        let wardrobe =
+            clothing_repo::list_clothing_filtered(&state.db, body.gender.as_deref(), None).await?;
+        let no_recent = std::collections::HashSet::new();
+        let borrowed = crate::services::shortlist::borrow_for_situation(
+            &clothes,
+            &wardrobe,
+            &crate::services::shortlist::ShortlistContext {
+                temperature: weather.temperature,
+                situation: body.occasion.as_deref(),
+                current_season: None,
+                recent_item_ids: &no_recent,
+            },
+        );
+        if !borrowed.is_empty() {
+            tracing::info!(
+                borrowed = ?borrowed.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+                "무드 옷장에 상황에 맞는 옷이 모자라 전체 옷장에서 빌렸다"
+            );
+            clothes.extend(borrowed);
+        }
+    }
 
     let recent_hint = build_recent_hint(&state.db, &clothes, user_id).await;
     let current_season = current_season_label();
