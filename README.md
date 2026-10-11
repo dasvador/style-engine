@@ -14,7 +14,9 @@ Wardrobe Edit은 사용자의 옷장과 그날의 상황을 바탕으로 코디�
 
 ## 화면
 
-홈 화면에서 날씨와 스타일 무드를 고르면 오늘의 코디를 추천하고, 그 착장을 룩북 이미지로 보여줍니다.
+### 홈
+
+날씨와 스타일 무드를 고르면 오늘의 코디를 추천하고, 그 착장을 룩북 이미지로 보여줍니다.
 
 <table>
   <tr>
@@ -34,6 +36,31 @@ Wardrobe Edit은 사용자의 옷장과 그날의 상황을 바탕으로 코디�
 <br>
 <p align="center">
   <img src="docs/images/home-full.png" alt="홈 화면 전체: 날씨, 무드 선택, 내 옷장 요약, 오늘의 룩북, 착장 구성, 하단 탭" width="420">
+</p>
+</details>
+
+### 스타일 상담
+
+옷장에 있는 아이템을 하나 정해 물으면, 그 아이템을 중심으로 착장을 구성해 룩북 카드로 답합니다. 아래는 "블랙 미디 새틴 롱스커트로 출근 코디 짜줘. 너무 차려입은 느낌은 싫어" 에 대한 답입니다.
+
+<table>
+  <tr>
+    <td align="center" valign="top" width="50%">
+      <img src="docs/images/chat-lookbook.png" alt="상담 질문과 답변 룩북: 화이트 티셔츠, 블랙 새틴 롱스커트, 화이트 스니커즈, 베이지 버킷백 착장 이미지" width="100%"><br>
+      <sub>질문한 아이템을 중심으로 착장을 구성합니다</sub>
+    </td>
+    <td align="center" valign="top" width="50%">
+      <img src="docs/images/chat-note.png" alt="착장 구성(상의·하의·신발·가방)과 스타일 노트, 소재 태그, 좋아요·아쉬워요 버튼" width="100%"><br>
+      <sub>구성 아이템과 조합 이유를 함께 보여줍니다</sub>
+    </td>
+  </tr>
+</table>
+
+<details>
+<summary>상담 화면 전체 보기</summary>
+<br>
+<p align="center">
+  <img src="docs/images/chat-full.png" alt="스타일 상담 화면 전체: 현재 무드, 질문, 룩북 카드, 스타일 노트, 입력창" width="420">
 </p>
 </details>
 
