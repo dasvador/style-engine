@@ -22,6 +22,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use common::*;
+use style_engine::models::outfit::{OutfitContext, SlotKind};
 use style_engine::services::style_engine_v2::{self, TodayFitLevel};
 
 /// 지표가 이 값(%p)보다 더 떨어지면 회귀로 본다.
@@ -37,6 +38,100 @@ struct Scorecard {
     today_fit: TodayFitMetrics,
     preference: PreferenceMetrics,
     combined_accuracy_pct: f64,
+    /// 사람이 두 코디 중 고른 쪽을 엔진도 높게 매기는가 (`preference_pairs.toml`).
+    #[serde(default)]
+    human_pairs: HumanPairMetrics,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+struct HumanPairMetrics {
+    pairs: usize,
+    /// 운영 엔진(style_engine) 점수로 사람이 고른 쪽이 더 높은 비율(동점 0.5).
+    production_agree_pct: f64,
+    /// shadow 엔진(style_engine_v2 스타일 점수 + 상황 보정)으로 같은 비율.
+    shadow_agree_pct: f64,
+}
+
+#[derive(Debug, Deserialize)]
+struct PairFile {
+    pairs: Vec<HumanPair>,
+}
+
+#[derive(Debug, Deserialize)]
+struct HumanPair {
+    #[allow(dead_code)]
+    id: String,
+    situation: Option<String>,
+    better: PairOutfit,
+    worse: PairOutfit,
+}
+
+#[derive(Debug, Deserialize)]
+struct PairOutfit {
+    #[serde(default)]
+    top: String,
+    #[serde(default)]
+    bottom: String,
+    #[serde(default)]
+    outer: String,
+    #[serde(default)]
+    shoes: String,
+    #[serde(default)]
+    bag: String,
+}
+
+fn pair_context(o: &PairOutfit, situation: &Option<String>, registry: &Registry) -> OutfitContext {
+    let slots = [
+        (&o.top, SlotKind::Top),
+        (&o.bottom, SlotKind::Bottom),
+        (&o.outer, SlotKind::Outer),
+        (&o.shoes, SlotKind::Shoes),
+        (&o.bag, SlotKind::Bag),
+    ]
+    .iter()
+    .filter_map(|(id, kind)| registry_to_outfit_slot(id, *kind, registry))
+    .collect();
+    OutfitContext {
+        slots,
+        situation: situation.clone(),
+    }
+}
+
+/// 사람이 고른 쌍에서 두 엔진이 같은 쪽을 높게 매기는 비율.
+///
+/// 블라인드 비교에서 사람은 운영 9 : shadow 6 으로 골랐는데, 위의 라벨 지표로는 shadow
+/// 엔진이 더 좋아 보였다. 라벨이 실제 취향을 다 담지 못한다는 뜻이라, 취향 판단을 직접
+/// 재는 이 지표를 따로 둔다.
+fn compute_human_pairs(registry: &Registry) -> HumanPairMetrics {
+    let raw = std::fs::read_to_string(fixture_path("preference_pairs.toml"))
+        .expect("preference_pairs.toml 을 읽지 못했다");
+    let file: PairFile = toml::from_str(&raw).expect("preference_pairs.toml 파싱 실패");
+    let (mut prod, mut shadow) = (0.0, 0.0);
+    let agree = |better: i32, worse: i32| match better.cmp(&worse) {
+        std::cmp::Ordering::Greater => 1.0,
+        std::cmp::Ordering::Equal => 0.5,
+        std::cmp::Ordering::Less => 0.0,
+    };
+    let shadow_score = |ctx: &OutfitContext| {
+        let sub = style_engine_v2::compute_subscores(ctx, None);
+        style_engine_v2::compute_style_score(&sub)
+            + style_engine::services::serving_ranker::compute_serving_adjustment(ctx).0
+    };
+    for p in &file.pairs {
+        let b = pair_context(&p.better, &p.situation, registry);
+        let w = pair_context(&p.worse, &p.situation, registry);
+        prod += agree(
+            style_engine::services::style_engine::evaluate(&b, None).score,
+            style_engine::services::style_engine::evaluate(&w, None).score,
+        );
+        shadow += agree(shadow_score(&b), shadow_score(&w));
+    }
+    let n = file.pairs.len();
+    HumanPairMetrics {
+        pairs: n,
+        production_agree_pct: round1(100.0 * prod / n as f64),
+        shadow_agree_pct: round1(100.0 * shadow / n as f64),
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -215,6 +310,7 @@ fn compute_scorecard() -> Scorecard {
             separation: round1(accept_mean - reject_mean),
         },
         combined_accuracy_pct: pct(combined_agree, total),
+        human_pairs: compute_human_pairs(&registry),
     }
 }
 
@@ -264,8 +360,12 @@ fn render_markdown(s: &Scorecard) -> String {
         s.preference.accept_mean_score, s.preference.reject_mean_score, s.preference.separation
     ));
     out.push_str(&format!(
-        "| Hard + fit 동시 일치 | **{:.1}%** |\n\n",
+        "| Hard + fit 동시 일치 | **{:.1}%** |\n",
         s.combined_accuracy_pct
+    ));
+    out.push_str(&format!(
+        "| 사람이 고른 쌍과 일치 — 운영 / shadow ({}쌍, `preference_pairs.toml`) | **{:.1}%** / **{:.1}%** |\n\n",
+        s.human_pairs.pairs, s.human_pairs.production_agree_pct, s.human_pairs.shadow_agree_pct
     ));
 
     if !s.hard_filter.fp_by_reason.is_empty() {
@@ -299,7 +399,17 @@ fn render_markdown(s: &Scorecard) -> String {
 
 /// 기준선 대비 하락한 지표를 모아 돌려준다.
 fn regressions(baseline: &Scorecard, current: &Scorecard) -> Vec<String> {
-    let checks: [(&str, f64, f64); 5] = [
+    let checks: [(&str, f64, f64); 7] = [
+        (
+            "human_pairs.production_agree_pct",
+            baseline.human_pairs.production_agree_pct,
+            current.human_pairs.production_agree_pct,
+        ),
+        (
+            "human_pairs.shadow_agree_pct",
+            baseline.human_pairs.shadow_agree_pct,
+            current.human_pairs.shadow_agree_pct,
+        ),
         (
             "hard_filter.accuracy_pct",
             baseline.hard_filter.accuracy_pct,
@@ -476,6 +586,7 @@ mod gate_tests {
                 separation: 20.0,
             },
             combined_accuracy_pct: 75.0,
+            human_pairs: HumanPairMetrics::default(),
         }
     }
 

@@ -1,0 +1,127 @@
+# 사람이 두 코디 중 더 나은 쪽을 고른 쌍. tests/eval_scorecard.rs 가 엔진도 같은 쪽을 높게
+# 매기는지 잰다.
+#
+# 출처: 2026-10-11 실제 추천 요청 23개 중 운영·shadow 엔진의 1위가 달랐던 15개를 블라인드로
+# 보여 주고 고른 결과(tools/world-review/shadow_ab.toml). 운영 9 · shadow 6.
+# `source` 는 이긴 쪽이 어느 엔진의 코디였는지다.
+version = 1
+
+[[pairs]]
+id = "AB01"
+context = "여성 · minimal · 출근"
+situation = "출근"
+source = "shadow"
+better = { top = "pw_35", bottom = "pw_16", shoes = "pw_02", bag = "fw_13" }
+worse = { top = "pw_30", bottom = "pw_18", shoes = "pw_04", bag = "fw_51" }
+
+[[pairs]]
+id = "AB02"
+context = "여성 · romantic · 캐주얼"
+situation = "캐주얼"
+source = "production"
+better = { top = "fw_04", bottom = "fw_09", shoes = "fw_38", bag = "pw_25" }
+worse = { top = "fw_49", bottom = "fw_46", shoes = "fw_50", bag = "fw_24" }
+
+[[pairs]]
+id = "AB03"
+context = "여성 · modern_chic · 캐주얼"
+situation = "캐주얼"
+source = "production"
+better = { top = "pw_33", bottom = "pw_13", shoes = "pw_08", bag = "fw_43" }
+worse = { top = "pw_19", bottom = "pw_06", shoes = "pw_08", bag = "fw_43" }
+
+[[pairs]]
+id = "AB04"
+context = "여성 · modern_chic · 출근"
+situation = "출근"
+source = "shadow"
+better = { top = "pw_19", bottom = "pw_07", shoes = "pw_08", bag = "fw_43" }
+worse = { top = "pw_33", bottom = "pw_07", shoes = "pw_08", bag = "fw_43" }
+
+[[pairs]]
+id = "AB05"
+context = "여성 · bohemian · 출근"
+situation = "출근"
+source = "production"
+better = { top = "fw_26", bottom = "pw_24", shoes = "pw_10", bag = "fw_03" }
+worse = { top = "pw_26", bottom = "pw_24", outer = "pw_29", shoes = "fw_42", bag = "pw_12" }
+
+[[pairs]]
+id = "AB06"
+context = "여성 · street · 캐주얼"
+situation = "캐주얼"
+source = "shadow"
+better = { top = "pw_32", bottom = "pw_23", shoes = "pw_17", bag = "pw_20" }
+worse = { top = "pw_14", bottom = "pw_22", shoes = "fw_52", bag = "pw_20" }
+
+[[pairs]]
+id = "AB07"
+context = "여성 · classic · 캐주얼"
+situation = "캐주얼"
+source = "production"
+better = { top = "pw_33", bottom = "fw_05", outer = "fw_36", shoes = "pw_28", bag = "pw_11" }
+worse = { top = "pw_01", bottom = "pw_09", shoes = "pw_15", bag = "pw_05" }
+
+[[pairs]]
+id = "AB08"
+context = "여성 · classic · 출근"
+situation = "출근"
+source = "shadow"
+better = { top = "pw_34", bottom = "pw_09", shoes = "fw_16", bag = "pw_11" }
+worse = { top = "pw_34", bottom = "fw_20", shoes = "fw_16", bag = "fw_02" }
+
+[[pairs]]
+id = "AB09"
+context = "여성 · romantic · 데이트"
+situation = "데이트"
+source = "production"
+better = { top = "fw_28", bottom = "fw_07", outer = "fw_27", shoes = "pw_03", bag = "fw_24" }
+worse = { top = "fw_39", bottom = "fw_46", shoes = "fw_38", bag = "fw_23" }
+
+[[pairs]]
+id = "AB10"
+context = "여성 · minimal · 데이트"
+situation = "데이트"
+source = "production"
+better = { top = "pw_30", bottom = "pw_27", shoes = "pw_31", bag = "fw_51" }
+worse = { top = "fw_53", bottom = "pw_21", shoes = "pw_04", bag = "fw_11" }
+
+[[pairs]]
+id = "AB11"
+context = "여성 · modern_chic · 데이트"
+situation = "데이트"
+source = "shadow"
+better = { top = "pw_19", bottom = "pw_07", shoes = "pw_08", bag = "fw_43" }
+worse = { top = "pw_33", bottom = "pw_06", shoes = "pw_08", bag = "fw_43" }
+
+[[pairs]]
+id = "AB12"
+context = "남성 · amekaji · 캐주얼"
+situation = "캐주얼"
+source = "production"
+better = { top = "pw_39", bottom = "pw_53", shoes = "pw_56", bag = "pw_50" }
+worse = { top = "pw_42", bottom = "pw_58", shoes = "pw_64", bag = "pw_41" }
+
+[[pairs]]
+id = "AB13"
+context = "남성 · workwear · 출근"
+situation = "출근"
+source = "production"
+better = { top = "pw_38", bottom = "pw_60", outer = "pw_62", shoes = "pw_49", bag = "pw_47" }
+worse = { top = "pw_61", bottom = "pw_59", outer = "pw_57", shoes = "pw_46", bag = "pw_65" }
+
+[[pairs]]
+id = "AB14"
+context = "남성 · minimal · 캐주얼"
+situation = "캐주얼"
+source = "shadow"
+better = { top = "pw_44", bottom = "pw_63", outer = "pw_51", shoes = "pw_56", bag = "pw_37" }
+worse = { top = "pw_54", bottom = "pw_59", shoes = "pw_40", bag = "pw_52" }
+
+[[pairs]]
+id = "AB15"
+context = "남성 · street · 캐주얼"
+situation = "캐주얼"
+source = "production"
+better = { top = "pw_54", bottom = "pw_45", outer = "pw_51", shoes = "pw_48", bag = "pw_52" }
+worse = { top = "pw_66", bottom = "pw_55", outer = "pw_43", shoes = "pw_36", bag = "pw_41" }
