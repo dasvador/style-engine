@@ -228,7 +228,7 @@ async fn upload_clothing_image(
     }
 
     let name = analysis
-        .name
+        .name_or_fallback()
         .ok_or_else(|| AppError::BadRequest("AI가 의류 이름을 인식하지 못했습니다.".to_string()))?;
     let category = analysis
         .category

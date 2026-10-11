@@ -283,11 +283,38 @@ pub async fn get_outfit_candidates(
 
 // ─── 2) analyze_clothing_image (fallback, no RAG) ───
 
+/// 옷장의 카테고리 규칙. 세 Vision 프롬프트(일반 분석, 1차, 2차)가 같은 문장을 쓴다.
+///
+/// 옷장 데이터는 원피스를 `하의`, 가디건·후드집업을 `아우터` 로 둔다. 프롬프트에 이
+/// 규칙이 없을 때 실사진 25장 평가에서 원피스 3장과 가디건·볼레로가 `상의` 로 나왔다.
+/// 그러면 저장된 분류가 옷장 관례와 어긋나고, 1차 분석의 카테고리로 레퍼런스를 좁히는
+/// 검색도 원피스를 상의 레퍼런스(스웻셔츠, 캐미솔)와 비교한다.
+///
+/// 매크로인 이유: 리터럴이어야 `concat!` 과 `format!` 의 형식 문자열에 함께 넣을 수 있다.
+macro_rules! category_rule {
+    () => {
+        "카테고리는 이 서비스의 옷장 규칙을 따릅니다. 원피스는 '하의' 입니다. \
+가디건, 볼레로, 후드집업처럼 다른 옷 위에 걸쳐 입는 앞트임 옷은 '아우터' 입니다."
+    };
+}
+
+/// 이름 규칙. 빈 문자열도 null 과 같이 금지한다.
+///
+/// "null 금지" 만 적었을 때 신발·가방 사진 3장에서 빈 문자열이 돌아왔다. 브랜드를
+/// 확신하지 못하면 이름을 아예 비우는 것으로 보여, 그때 쓸 형식을 함께 준다.
+macro_rules! name_rule {
+    () => {
+        "name 은 null 도 빈 문자열도 안 됩니다. 브랜드나 모델명을 모르면 \
+\"색상 + 생김새 + 아이템명\" 으로 쓰세요 (예: \"베이지 웨스턴 부츠\", \"스트라이프 패브릭 숄더백\")."
+    };
+}
+
 pub async fn analyze_clothing_image(
     llm: &LlmClient,
     image_data_url: &str,
 ) -> anyhow::Result<VisionAnalysisResult> {
-    let system_prompt = r#"당신은 캐주얼, 클래식, 스트리트, 워크웨어, 아웃도어 및 스포츠웨어에 익숙한 의류 분석 AI입니다.
+    let system_prompt = concat!(
+        r#"당신은 캐주얼, 클래식, 스트리트, 워크웨어, 아웃도어 및 스포츠웨어에 익숙한 의류 분석 AI입니다.
 사용자가 업로드한 이미지에서 의류/신발/가방/모자/벨트 등 패션 아이템을 분석하여 구조화된 정보를 추출하세요.
 
 가장 중요한 원칙:
@@ -334,7 +361,9 @@ name 작성 원칙:
 }
 
 추가 규칙:
-- is_clothing이 true이면 name은 null이면 안 됩니다.
+- "#,
+        name_rule!(),
+        r#"
 - gender 는 이 옷이 주로 어느 쪽 옷장에 들어갈지입니다. 어느 쪽이든 입을 수 있으면 unisex.
 - style_genres 는 이 옷이 어울리는 장르를 **모두** 고릅니다. 한 벌이 여러 장르에
   들어갈 수 있습니다 — 옥스퍼드 셔츠는 classic 이면서 amekaji 이고 preppy 입니다.
@@ -348,7 +377,9 @@ name 작성 원칙:
   추천이 전부 어긋납니다.
 - is_clothing이 false이면 name/category/color/thickness/seasons는 null, rejection_reason을 작성하세요.
 - texture_worlds는 workwear, military, tailoring, sweat, outdoor, minimal 중 복수 선택 가능.
-- category는 상의, 하의, 아우터, 신발, 액세서리, 가방, 모자, 벨트 중 하나입니다."#;
+- category는 상의, 하의, 아우터, 신발, 액세서리, 가방, 모자, 벨트 중 하나입니다. "#,
+        category_rule!()
+    );
 
     Ok(llm
         .chat_json::<VisionAnalysisResult>(
@@ -369,7 +400,8 @@ pub async fn analyze_clothing_pass1(
     llm: &LlmClient,
     image_data_url: &str,
 ) -> anyhow::Result<Pass1Result> {
-    let system_prompt = r#"당신은 캐주얼, 클래식, 스트리트, 워크웨어, 아웃도어 및 스포츠웨어에 익숙한 의류 감정사 AI입니다.
+    let system_prompt = concat!(
+        r#"당신은 캐주얼, 클래식, 스트리트, 워크웨어, 아웃도어 및 스포츠웨어에 익숙한 의류 감정사 AI입니다.
 이미지에 보이는 아이템의 외관적 특징을 검색/비교 가능한 형태로 서술하세요.
 
 중요 원칙:
@@ -415,7 +447,10 @@ pub async fn analyze_clothing_pass1(
 {"category": "상의/하의/아우터/신발/가방/액세서리/모자/벨트 중 하나", "description": "한국어로 작성한 상세 서술. 180~300자 내외 권장, 단 식별 가능한 특징을 우선"}
 
 category 는 레퍼런스를 같은 종류끼리만 비교하기 위한 것입니다. 보이는 그대로
-고르세요. 애매하면 가장 가까운 것을 고르고, 목록에 없으면 빈 문자열로 두세요."#;
+고르세요. 애매하면 가장 가까운 것을 고르고, 목록에 없으면 빈 문자열로 두세요.
+"#,
+        category_rule!()
+    );
 
     Ok(llm
         .chat_json::<Pass1Result>(
@@ -455,7 +490,8 @@ pub async fn analyze_clothing_pass2(
         .join("\n\n");
 
     let system_prompt = format!(
-        r#"당신은 캐주얼, 클래식, 스트리트, 워크웨어, 아웃도어 및 스포츠웨어에 익숙한 의류 감정사 AI입니다.
+        concat!(
+            r#"당신은 캐주얼, 클래식, 스트리트, 워크웨어, 아웃도어 및 스포츠웨어에 익숙한 의류 감정사 AI입니다.
 
 ## 후보 레퍼런스 (유사도 순)
 {ref_context}
@@ -477,7 +513,9 @@ name 작성 원칙:
 - 가장 우선은 정확성
 - 형식: "색상 + 소재/스타일 + 아이템명"
 - 확실할 때만 브랜드/모델명 포함
-- name은 절대 null 금지
+- "#,
+            name_rule!(),
+            r#"
 
 예시:
 - 강하게 일치: "올리브 백사틴 M-43 필드 자켓"
@@ -521,7 +559,12 @@ name 작성 원칙:
   preppy(아이비리그), workwear(작업복), outdoor_casual(기능성 아웃도어).
   확신이 서는 것만 고르고, 애매하면 비워 두세요 — 틀린 장르에 들어가면 그 장르의
   추천이 전부 어긋납니다.
-- is_clothing이 false이면 name/category/color/thickness/seasons는 null, rejection_reason을 작성하세요."#
+- is_clothing이 false이면 name/category/color/thickness/seasons는 null, rejection_reason을 작성하세요.
+- "#,
+            category_rule!()
+        ),
+        // concat! 으로 만든 형식 문자열은 변수를 이름으로 자동 캡처하지 못해 명시한다.
+        ref_context = ref_context,
     );
 
     Ok(llm

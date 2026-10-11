@@ -35,6 +35,9 @@ struct Entry {
 struct Analysis {
     is_clothing: bool,
     name: Option<String>,
+    /// 등록 경로가 실제로 저장할 이름 — 모델이 이름을 비우면 임시 이름이 들어간다.
+    #[serde(default)]
+    saved_name: Option<String>,
     category: Option<String>,
     style_genres: Vec<String>,
 }
@@ -44,6 +47,7 @@ impl From<&VisionAnalysisResult> for Analysis {
         Self {
             is_clothing: r.is_clothing,
             name: r.name.clone(),
+            saved_name: r.name_or_fallback(),
             category: r.category.clone(),
             style_genres: r.style_genres.clone(),
         }

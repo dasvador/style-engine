@@ -1,5 +1,5 @@
 use chrono::NaiveDateTime;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use validator::Validate;
 
 use crate::models::style_vocab::{
@@ -87,6 +87,43 @@ pub struct UpdateClothingRequest {
     pub texture_worlds: Option<Vec<String>>,
 }
 
+/// Vision 응답의 어휘 필드를 너그럽게 읽는다. 어휘 밖의 값은 비우고 로그를 남긴다.
+///
+/// 어휘 타입(`Style`, `Tone` …)은 원래 엄격하다 — 표준 밖의 값이 DB 에 섞이면 어느
+/// 규칙에도 걸리지 않으면서 조용히 살아남기 때문이다. 그 엄격함을 LLM 응답에 그대로
+/// 적용하면 필드 하나 때문에 응답 전체가 거부된다. 2026-10-11 여성복 실사진 25장 평가에서
+/// 모델이 스타일을 `모던` 으로 답해 4장이 재시도 끝에 등록 자체가 실패했다.
+///
+/// 그래서 경계에서만 푼다. 모르는 값은 `None` 이 되어 DB 에는 표준 값만 들어가고,
+/// 나머지 분석은 살아서 등록된다.
+fn lenient_vocab<'de, D, T>(d: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: std::str::FromStr,
+{
+    let raw: Option<serde_json::Value> = Option::deserialize(d)?;
+    let text = match raw {
+        Some(serde_json::Value::String(s)) => s,
+        Some(serde_json::Value::Null) | None => return Ok(None),
+        Some(other) => other.to_string(),
+    };
+    let text = text.trim();
+    if text.is_empty() {
+        return Ok(None);
+    }
+    match text.parse::<T>() {
+        Ok(v) => Ok(Some(v)),
+        Err(_) => {
+            tracing::warn!(
+                field = std::any::type_name::<T>(),
+                value = text,
+                "Vision 이 어휘 밖의 값을 돌려줘 비워 둔다"
+            );
+            Ok(None)
+        }
+    }
+}
+
 /// Response from OpenAI Vision API clothing analysis
 #[derive(Debug, Deserialize)]
 pub struct VisionAnalysisResult {
@@ -94,13 +131,19 @@ pub struct VisionAnalysisResult {
     pub name: Option<String>,
     pub category: Option<String>,
     pub color: Option<String>,
+    #[serde(default, deserialize_with = "lenient_vocab")]
     pub thickness: Option<Thickness>,
     pub seasons: Option<Vec<String>>,
     pub rejection_reason: Option<String>,
+    #[serde(default, deserialize_with = "lenient_vocab")]
     pub tone: Option<Tone>,
+    #[serde(default, deserialize_with = "lenient_vocab")]
     pub saturation: Option<Saturation>,
+    #[serde(default, deserialize_with = "lenient_vocab")]
     pub style: Option<Style>,
+    #[serde(default, deserialize_with = "lenient_vocab")]
     pub weight: Option<Weight>,
+    #[serde(default, deserialize_with = "lenient_vocab")]
     pub role: Option<Role>,
     pub color_temperature: Option<String>,
     pub versatility: Option<String>,
@@ -113,6 +156,41 @@ pub struct VisionAnalysisResult {
     /// 옥스퍼드 셔츠는 클래식이면서 아메카지이고 프레피다.
     #[serde(default)]
     pub style_genres: Vec<String>,
+}
+
+impl VisionAnalysisResult {
+    /// 저장할 이름. 비어 있으면 색상과 카테고리로 만든 임시 이름을 쓴다.
+    ///
+    /// 프롬프트가 이름을 비우지 말라고 해도, 신발·가방 사진에서 빈 문자열이 돌아왔다
+    /// (2026-10-11 평가 25장 중 3장). `Option` 검사만으로는 빈 문자열이 통과해서 이름
+    /// 없는 옷이 저장됐다. 등록을 실패시키기보다 고칠 수 있는 이름으로 남긴다 — 나머지
+    /// 분석은 멀쩡하고, 이름은 상세 화면에서 바꿀 수 있다.
+    pub fn name_or_fallback(&self) -> Option<String> {
+        if let Some(n) = self
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+        {
+            return Some(n.to_string());
+        }
+        let category = self
+            .category
+            .as_deref()
+            .map(str::trim)
+            .filter(|c| !c.is_empty())?;
+        Some(
+            match self
+                .color
+                .as_deref()
+                .map(str::trim)
+                .filter(|c| !c.is_empty())
+            {
+                Some(color) => format!("{color} {category}"),
+                None => category.to_string(),
+            },
+        )
+    }
 }
 
 /// Request body for image-based clothing upload
@@ -216,5 +294,63 @@ mod pass1_tests {
         assert_eq!(pass1(Some("원피스")).search_category(), None);
         assert_eq!(pass1(Some("")).search_category(), None);
         assert_eq!(pass1(None).search_category(), None);
+    }
+}
+
+#[cfg(test)]
+mod vision_result_tests {
+    use super::*;
+
+    fn parse(json: &str) -> VisionAnalysisResult {
+        serde_json::from_str(json).expect("파싱 실패")
+    }
+
+    /// 어휘 밖의 스타일 하나 때문에 응답 전체가 거부되면 등록이 실패한다.
+    #[test]
+    fn an_unknown_style_is_dropped_instead_of_failing() {
+        let r = parse(
+            r#"{"is_clothing": true, "name": "블랙 드레이프 스커트", "style": "모던", "tone": "어두움"}"#,
+        );
+        assert_eq!(r.style, None);
+        assert_eq!(r.tone, Some(Tone::Dark));
+    }
+
+    #[test]
+    fn known_vocabulary_still_parses() {
+        let r = parse(
+            r#"{"is_clothing": true, "style": "포멀", "thickness": "thick", "role": "베이스"}"#,
+        );
+        assert_eq!(r.style, Some(Style::Formal));
+        assert_eq!(r.thickness, Some(Thickness::Thick));
+        assert_eq!(r.role, Some(Role::Base));
+    }
+
+    #[test]
+    fn missing_null_and_blank_vocabulary_are_none() {
+        let r = parse(r#"{"is_clothing": true, "style": null, "tone": ""}"#);
+        assert_eq!(r.style, None);
+        assert_eq!(r.tone, None);
+        assert_eq!(r.weight, None);
+    }
+
+    #[test]
+    fn a_blank_name_falls_back_to_colour_and_category() {
+        let r =
+            parse(r#"{"is_clothing": true, "name": "  ", "category": "신발", "color": "베이지"}"#);
+        assert_eq!(r.name_or_fallback().as_deref(), Some("베이지 신발"));
+        let r = parse(r#"{"is_clothing": true, "name": "", "category": "가방"}"#);
+        assert_eq!(r.name_or_fallback().as_deref(), Some("가방"));
+    }
+
+    #[test]
+    fn a_real_name_is_kept() {
+        let r = parse(r#"{"is_clothing": true, "name": " 그레이 롱 코트 ", "category": "아우터"}"#);
+        assert_eq!(r.name_or_fallback().as_deref(), Some("그레이 롱 코트"));
+    }
+
+    #[test]
+    fn no_name_and_no_category_gives_nothing() {
+        let r = parse(r#"{"is_clothing": true, "name": ""}"#);
+        assert_eq!(r.name_or_fallback(), None);
     }
 }
