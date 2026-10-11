@@ -1,10 +1,14 @@
-"""텍스처 월드 검수 페이지를 만든다.
+"""옷장 속성 검수 페이지를 만든다.
 
-`cases.toml` 의 배정 제안(assign)과 조합(combo)을 `template.html` 에 넣어 한 장짜리
-HTML 을 쓴다. 조합 카드에 각 옷의 지금 월드를 보여 주려고 로컬 DB 를 한 번 읽는다
-(`.env` 의 DATABASE_URL, mysql 클라이언트 필요).
+검수 파일 하나를 `template.html` 에 넣어 한 장짜리 HTML 을 쓴다. 파일에 들어갈 수
+있는 항목은 세 가지다.
 
-    python3 tools/world-review/build.py /tmp/world-review.html
+- `[[assign]]` 텍스처 월드 배정 (cases.toml)
+- `[[combo]]`  조합 판단 — 충돌/보완/상관없음 (cases.toml). 각 옷의 지금 월드를
+  보여 주려고 로컬 DB 를 한 번 읽는다(`.env` 의 DATABASE_URL, mysql 클라이언트 필요).
+- `[[role]]`   아우터 역할 (outer_roles.toml). 역할별 점수 영향(`impact`)을 함께 보여 준다.
+
+    python3 tools/world-review/build.py /tmp/review.html [검수 파일, 기본 cases.toml]
 
 Claude 가 db 기능이 있는 아티팩트로 게시하고, 결정은 `decisions` 컬렉션에
 `{kind, name, decision, note}` 로 쌓인다. 문서 id 는 회차와 이름의 해시다.
@@ -50,17 +54,20 @@ def current_worlds() -> dict[str, list[str]]:
     return worlds
 
 
-def main(out: str) -> None:
-    data = tomllib.loads(CASES.read_text(encoding="utf-8"))
+def main(out: str, cases: pathlib.Path = CASES) -> None:
+    data = tomllib.loads(cases.read_text(encoding="utf-8"))
     round_ = data["round"]
-    worlds = current_worlds()
-    proposed = {a["name"]: a["proposal"] for a in data["assign"]}
+    worlds = current_worlds() if data.get("combo") else {}
+    proposed = {a["name"]: a["proposal"] for a in data.get("assign", [])}
 
     items = []
-    for a in data["assign"]:
+    for r in data.get("role", []):
+        items.append({"key": key("role", round_, r["name"]), "kind": "role", "name": r["name"],
+                      "proposal": r["proposal"], "why": r.get("why", ""), "impact": r.get("impact", {})})
+    for a in data.get("assign", []):
         items.append({"key": key("assign", round_, a["name"]), "kind": "assign", "name": a["name"],
                       "proposal": a["proposal"], "why": a.get("why", "")})
-    for c in data["combo"]:
+    for c in data.get("combo", []):
         pieces = []
         for n in c["items"]:
             if n not in worlds:
@@ -72,9 +79,10 @@ def main(out: str) -> None:
     payload = json.dumps({"round": round_, "items": items}, ensure_ascii=False)
     html = TEMPLATE.read_text(encoding="utf-8").replace("__DATA__", payload.replace("</", "<\\/"))
     pathlib.Path(out).write_text(html, encoding="utf-8")
-    n = {k: sum(i["kind"] == k for i in items) for k in ("assign", "combo")}
-    print(f"월드 배정 {n['assign']}건, 조합 판단 {n['combo']}건 → {out}")
+    n = {k: sum(i["kind"] == k for i in items) for k in ("role", "assign", "combo")}
+    print(f"아우터 역할 {n['role']}건, 월드 배정 {n['assign']}건, 조합 판단 {n['combo']}건 → {out}")
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "world-review.html")
+    main(sys.argv[1] if len(sys.argv) > 1 else "world-review.html",
+         pathlib.Path(sys.argv[2]) if len(sys.argv) > 2 else CASES)

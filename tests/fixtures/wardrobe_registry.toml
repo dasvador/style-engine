@@ -1822,6 +1822,7 @@ texture_worlds = ["bohemian"]
 [items.fw_10]
 name = "블랙 나일론 봄버자켓"
 category = "아우터"
+role = "구조템"
 thickness = "medium"
 tone = "어두움"
 saturation = "낮음"
@@ -1938,6 +1939,7 @@ texture_worlds = ["leather", "minimal"]
 [items.fw_19]
 name = "블랙 싱글 테일러드 자켓"
 category = "아우터"
+role = "구조템"
 thickness = "medium"
 style = "베이직"
 tone = "어두움"
@@ -2042,6 +2044,7 @@ texture_worlds = ["bohemian"]
 [items.fw_27]
 name = "아이보리 트위드 자켓"
 category = "아우터"
+role = "구조템"
 thickness = "medium"
 tone = "밝음"
 saturation = "낮음"
@@ -2079,6 +2082,7 @@ texture_worlds = ["canvas"]
 [items.fw_30]
 name = "올리브 오버핏 윈드브레이커"
 category = "아우터"
+role = "연결템"
 thickness = "thin"
 tone = "어두움"
 saturation = "중간"
@@ -2091,6 +2095,7 @@ texture_worlds = ["nylon", "outdoor"]
 [items.fw_31]
 name = "올리브 코튼 필드자켓"
 category = "아우터"
+role = "연결템"
 thickness = "thick"
 style = "밀리터리"
 tone = "어두움"
@@ -2211,6 +2216,7 @@ texture_worlds = ["romantic"]
 [items.fw_40]
 name = "크림 크로셰 니트 가디건"
 category = "아우터"
+role = "약한포인트"
 thickness = "medium"
 tone = "밝음"
 saturation = "낮음"

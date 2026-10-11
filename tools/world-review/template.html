@@ -1,4 +1,4 @@
-<title>텍스처 월드 검수</title>
+<title>옷장 속성 검수</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -75,6 +75,9 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
 textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid var(--line);border-radius:6px;padding:8px 10px;background:var(--surface);color:var(--ink);resize:vertical}
 .label{font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .saved{font-size:12px;color:var(--muted);min-height:1em}
+.impact{font-size:13px;display:grid;grid-template-columns:auto 1fr;gap:2px 12px;padding:0 16px 10px;font-variant-numeric:tabular-nums}
+.impact .r{font-weight:600}
+.impact .bad{color:var(--no)} .impact .mild{color:var(--warn)} .impact .zero{color:var(--muted)}
 .legend{font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px 14px}
 .empty{color:var(--muted);text-align:center;padding:32px 0}
 @media (prefers-reduced-motion:no-preference){.card{transition:border-color .15s}}
@@ -82,17 +85,19 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
 
 <div class="wrap">
   <header>
-    <h1>텍스처 월드 검수</h1>
-    <p class="lede">월드가 없는 여성 옷 33벌을 어느 월드에 넣을지, 그리고 로맨틱·보헤미안 옷이 다른 월드와 만났을 때 어색한지(충돌) 잘 어울리는지(보완) 상관없는지 정해 주세요. 결정은 바로 저장되고, Claude 가 읽어서 데이터와 라벨 케이스에 반영합니다.</p>
+    <h1>옷장 속성 검수</h1>
+    <p class="lede" id="lede"></p>
   </header>
   <div id="status" class="banner" hidden></div>
   <section class="stats" aria-label="진행 현황">
+    <div class="stat"><span class="k">아우터 역할</span><span class="v" id="s-role"></span></div>
     <div class="stat"><span class="k">월드 배정</span><span class="v" id="s-assign"></span></div>
     <div class="stat"><span class="k">조합 판단</span><span class="v" id="s-combo"></span></div>
   </section>
   <div class="toolbar">
     <div class="row tabs" role="group" aria-label="목록">
-      <button id="tab-assign" aria-pressed="true">월드 배정</button>
+      <button id="tab-role" aria-pressed="false">아우터 역할</button>
+      <button id="tab-assign" aria-pressed="false">월드 배정</button>
       <button id="tab-combo" aria-pressed="false">조합 판단</button>
     </div>
     <div class="row" id="filters" role="group" aria-label="필터"></div>
@@ -111,10 +116,18 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
   let db = null, canWrite = true;
 
   const OPTS = {
+    role:   [['구조템','구조템'],['연결템','연결템'],['약한포인트','약한포인트'],['포인트','포인트']],
     assign: [['romantic','romantic'],['bohemian','bohemian'],['tailoring','tailoring'],['minimal','minimal'],['none','월드 없음']],
     combo:  [['conflict','충돌 (감점)'],['complement','보완 (가점)'],['neutral','상관없음']],
   };
+  const KINDS = ['role','assign','combo'];
+  const LEDE = {
+    role:   '역할이 비어 있는 여성 아우터입니다. 각 옷의 역할(구조템 / 연결템 / 약한포인트 / 포인트)을 정해 주세요. 카드 아래 숫자는 그 역할을 붙였을 때 이 옷이 들어간 착장의 추천 점수가 어떻게 바뀌는지 미리 잰 값입니다.',
+    assign: '월드가 없는 여성 옷을 어느 텍스처 월드에 넣을지 정해 주세요.',
+    combo:  '두 옷이 만났을 때 어색한지(충돌) 잘 어울리는지(보완) 상관없는지 정해 주세요.',
+  };
   const LEGEND = {
+    role:   '역할이 비어 있으면 추천 엔진은 구조템·연결템과 똑같이 봅니다. 그래서 그 둘은 점수가 바뀌지 않고, 약한포인트·포인트만 감점이 생깁니다. 포인트는 가방 같은 다른 포인트와 겹쳐 거의 모든 착장에서 크게 깎입니다.',
     assign: '점선 테두리 태그가 제안입니다. 버튼에 “제안” 표시가 붙어 있고, 다른 것을 고르면 그쪽으로 저장됩니다. romantic·bohemian 은 새로 만드는 월드입니다.',
     combo:  '각 옷 옆 태그는 지금 월드입니다. 점선 태그는 월드 배정 탭에서 제안한 월드입니다. 같은 조합의 다른 옷은 무난한 것으로 골랐습니다.',
   };
@@ -129,6 +142,8 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
     return c;
   }
   function renderStats(){
+    const ro = counts('role');
+    document.getElementById('s-role').innerHTML = `정함 <b>${ro.total-ro.none}</b> / ${ro.total}`;
     const a = counts('assign'), c = counts('combo');
     document.getElementById('s-assign').innerHTML = `정함 <b>${a.total-a.none}</b> / ${a.total}`;
     document.getElementById('s-combo').innerHTML = `충돌 <b>${c.conflict}</b> · 보완 <b>${c.complement}</b> · 상관없음 <b>${c.neutral}</b> · 미정 <b>${c.none}</b>`;
@@ -137,6 +152,7 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
     const box = document.getElementById('filters'); box.replaceChildren();
     [['all','전부'],['open','미정만']].forEach(([v,t])=>{ const b=el('button',{class:'chip','aria-pressed':String(ui.only===v),text:t}); b.onclick=()=>{ui.only=v; renderFilters(); renderList();}; box.append(b); });
     document.getElementById('legend').textContent = LEGEND[ui.tab];
+    document.getElementById('lede').textContent = LEDE[ui.tab] + ' 결정은 바로 저장되고, Claude 가 읽어서 데이터에 반영합니다.';
   }
 
   const pending = {}, timers = {};
@@ -160,7 +176,20 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
     const st = state[item.key] || {};
     const c = el('article',{class:'card','data-key':item.key,'data-done':st.decision?'1':''});
     const head = el('div',{class:'head'});
-    if (item.kind==='assign'){
+    if (item.kind==='role'){
+      head.append(el('div',{class:'title'}, el('h2',{text:item.name}), el('span',{class:'w prop','data-w':'other',text:item.proposal+' (제안)'})));
+      if (item.why) head.append(el('div',{class:'why',text:item.why}));
+      c.append(head);
+      const box = el('div',{class:'impact','aria-label':'역할별 점수 영향'});
+      OPTS.role.forEach(([r])=>{
+        const x = item.impact[r]; if (!x) return;
+        const cls = x.avg <= -10 ? 'bad' : (x.avg < 0 ? 'mild' : 'zero');
+        const txt = x.avg === 0 && !x.down && !x.up ? '변화 없음' :
+          `착장 ${x.n}개 중 ${x.down}개 감점, 평균 ${x.avg>0?'+':''}${x.avg}점` + (x.hard ? ` · 거절 판정 ${x.hard}건 바뀜` : '');
+        box.append(el('span',{class:'r',text:r}), el('span',{class:cls,text:txt}));
+      });
+      c.append(box);
+    } else if (item.kind==='assign'){
       head.append(el('div',{class:'title'}, el('h2',{text:item.name}), wtag(item.proposal==='none'?'월드 없음':item.proposal, true)));
       if (item.why) head.append(el('div',{class:'why',text:item.why}));
       c.append(head);
@@ -177,13 +206,13 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
     const savedEl = el('div',{class:'saved','aria-live':'polite'});
     OPTS[item.kind].forEach(([v,t])=>{
       const b = el('button',{'data-v':v,'aria-pressed':String(st.decision===v)}, t);
-      if (item.kind==='assign' && v===item.proposal) b.append(el('span',{class:'mark',text:'제안'}));
+      if ((item.kind==='assign' || item.kind==='role') && v===item.proposal) b.append(el('span',{class:'mark',text:'제안'}));
       if (!db || !canWrite) b.disabled = true;
       b.onclick=()=>{ const next = state[item.key]?.decision===v ? null : v; seg.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed', String(x.dataset.v===next))); save(item,{decision:next},savedEl); };
       seg.append(b);
     });
     const taId = 'note-'+item.key;
-    const ta = el('textarea',{id:taId,placeholder:'이유나 조건 (선택) — 예: 아우터가 크면 충돌'});
+    const ta = el('textarea',{id:taId,placeholder:'이유나 조건 (선택)'});
     ta.value = st.note || '';
     if (!db || !canWrite) ta.disabled = true;
     ta.addEventListener('input',()=>{ clearTimeout(timers[item.key]); timers[item.key]=setTimeout(()=>{ if ((state[item.key]?.note||'')!==ta.value) save(item,{note:ta.value},savedEl); },900); });
@@ -199,10 +228,15 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
   }
   function showStatus(msg,tone){ const s=document.getElementById('status'); s.textContent=msg; s.dataset.tone=tone||''; s.hidden=!msg; }
   function setTab(t){ ui.tab=t; ui.only='all';
-    ['assign','combo'].forEach(x=>document.getElementById('tab-'+x).setAttribute('aria-pressed',String(x===t)));
+    KINDS.forEach(x=>document.getElementById('tab-'+x).setAttribute('aria-pressed',String(x===t)));
     renderFilters(); renderList(); }
-  document.getElementById('tab-assign').onclick=()=>setTab('assign');
-  document.getElementById('tab-combo').onclick=()=>setTab('combo');
+  // 항목이 없는 종류는 탭과 현황 칸을 숨기고, 첫 탭은 항목이 있는 것으로 고른다
+  KINDS.forEach(k=>{
+    document.getElementById('tab-'+k).onclick=()=>setTab(k);
+    if (!items.some(i=>i.kind===k)){ document.getElementById('tab-'+k).hidden=true; document.getElementById('s-'+k).parentElement.hidden=true; }
+  });
+  ui.tab = KINDS.find(k=>items.some(i=>i.kind===k)) || 'assign';
+  KINDS.forEach(x=>document.getElementById('tab-'+x).setAttribute('aria-pressed',String(x===ui.tab)));
 
   renderStats(); renderFilters(); renderList();
   showStatus('저장소에 연결하는 중입니다…');

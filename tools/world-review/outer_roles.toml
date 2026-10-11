@@ -1,0 +1,222 @@
+# 역할이 빈 여성 아우터 24벌의 역할 검수. build.py 가 이 파일로 검수 페이지를 만든다.
+#
+# impact 는 2026-10-11 측정: 그 아우터가 들어간 착장(상의×하의 전부, 신발·가방은 돌려 가며)에
+# 역할을 붙였을 때 운영 엔진(v1) 점수 변화와 shadow 하드필터 판정이 바뀐 수.
+# 역할이 비어 있으면 운영 엔진은 구조템·연결템과 똑같이 본다.
+round = "2026-10-11-roles"
+
+[[role]]
+name = "네이비 더블 브레스티드 블레이저"
+proposal = "구조템"
+why = "형태가 잡힌 아우터. 남성 데이터의 블레이저·코트·MA-1·짙은 데님 자켓이 구조템이다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -4.8, up = 0, down = 1539, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.4, up = 0, down = 1581, hard = 14 }
+
+[[role]]
+name = "라이트베이지 오버핏 블레이저"
+proposal = "구조템"
+why = "형태가 잡힌 아우터. 남성 데이터의 블레이저·코트·MA-1·짙은 데님 자켓이 구조템이다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -5.1, up = 0, down = 1571, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.6, up = 0, down = 1581, hard = 25 }
+
+[[role]]
+name = "네이비 코튼 트렌치코트"
+proposal = "구조템"
+why = "형태가 잡힌 아우터. 남성 데이터의 블레이저·코트·MA-1·짙은 데님 자켓이 구조템이다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -5.1, up = 0, down = 1571, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.6, up = 0, down = 1581, hard = 25 }
+
+[[role]]
+name = "베이지 오버사이즈 울 코트"
+proposal = "구조템"
+why = "형태가 잡힌 아우터. 남성 데이터의 블레이저·코트·MA-1·짙은 데님 자켓이 구조템이다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -5.1, up = 0, down = 1571, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.6, up = 0, down = 1581, hard = 25 }
+
+[[role]]
+name = "블랙 싱글 테일러드 자켓"
+proposal = "구조템"
+why = "형태가 잡힌 아우터. 남성 데이터의 블레이저·코트·MA-1·짙은 데님 자켓이 구조템이다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -5.1, up = 0, down = 1571, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.6, up = 0, down = 1581, hard = 25 }
+
+[[role]]
+name = "카멜 싱글 버튼 테일러드 자켓"
+proposal = "구조템"
+why = "형태가 잡힌 아우터. 남성 데이터의 블레이저·코트·MA-1·짙은 데님 자켓이 구조템이다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -4.8, up = 0, down = 1539, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.4, up = 0, down = 1581, hard = 14 }
+
+[[role]]
+name = "크림 울혼방 롱 코트"
+proposal = "구조템"
+why = "형태가 잡힌 아우터. 남성 데이터의 블레이저·코트·MA-1·짙은 데님 자켓이 구조템이다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -4.8, up = 0, down = 1539, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.4, up = 0, down = 1581, hard = 14 }
+
+[[role]]
+name = "크림 숏 트렌치코트"
+proposal = "구조템"
+why = "형태가 잡힌 아우터. 남성 데이터의 블레이저·코트·MA-1·짙은 데님 자켓이 구조템이다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -5.1, up = 0, down = 1571, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.6, up = 0, down = 1581, hard = 25 }
+
+[[role]]
+name = "블랙 나일론 봄버자켓"
+proposal = "구조템"
+why = "형태가 잡힌 아우터. 남성 데이터의 블레이저·코트·MA-1·짙은 데님 자켓이 구조템이다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -5.1, up = 0, down = 1571, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.6, up = 0, down = 1581, hard = 25 }
+
+[[role]]
+name = "워시드 블랙 크롭 데님자켓"
+proposal = "구조템"
+why = "형태가 잡힌 아우터. 남성 데이터의 블레이저·코트·MA-1·짙은 데님 자켓이 구조템이다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -5.1, up = 0, down = 1571, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.6, up = 0, down = 1581, hard = 25 }
+
+[[role]]
+name = "아이보리 트위드 자켓"
+proposal = "구조템"
+why = "형태가 잡힌 아우터. 남성 데이터의 블레이저·코트·MA-1·짙은 데님 자켓이 구조템이다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -5.1, up = 0, down = 1571, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.6, up = 0, down = 1581, hard = 25 }
+
+[[role]]
+name = "블랙 나일론 윈드브레이커"
+proposal = "구조템"
+why = "형태가 잡힌 아우터. 남성 데이터의 블레이저·코트·MA-1·짙은 데님 자켓이 구조템이다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -5.1, up = 0, down = 1571, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.7, up = 0, down = 1581, hard = 23 }
+
+[[role]]
+name = "워시드 라이트블루 데님자켓"
+proposal = "연결템"
+why = "가볍게 걸치는 캐주얼 아우터. 남성 데이터의 블루종·오버셔츠·필드 자켓·후드집업이 연결템이다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -5.1, up = 0, down = 1571, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.6, up = 0, down = 1581, hard = 25 }
+
+[[role]]
+name = "베이지 코듀로이 트러커자켓"
+proposal = "연결템"
+why = "가볍게 걸치는 캐주얼 아우터. 남성 데이터의 블루종·오버셔츠·필드 자켓·후드집업이 연결템이다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -5.1, up = 0, down = 1571, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.6, up = 0, down = 1581, hard = 25 }
+
+[[role]]
+name = "올리브 오버사이즈 린넨 셔츠자켓"
+proposal = "연결템"
+why = "가볍게 걸치는 캐주얼 아우터. 남성 데이터의 블루종·오버셔츠·필드 자켓·후드집업이 연결템이다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -5.1, up = 0, down = 1571, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.6, up = 0, down = 1581, hard = 25 }
+
+[[role]]
+name = "올리브 코튼 필드자켓"
+proposal = "연결템"
+why = "가볍게 걸치는 캐주얼 아우터. 남성 데이터의 블루종·오버셔츠·필드 자켓·후드집업이 연결템이다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -4.9, up = 0, down = 1560, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.5, up = 0, down = 1581, hard = 25 }
+
+[[role]]
+name = "올리브 오버핏 윈드브레이커"
+proposal = "연결템"
+why = "가볍게 걸치는 캐주얼 아우터. 남성 데이터의 블루종·오버셔츠·필드 자켓·후드집업이 연결템이다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -5.1, up = 0, down = 1571, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.6, up = 0, down = 1581, hard = 25 }
+
+[[role]]
+name = "라이트그레이 코튼 크롭 후드집업"
+proposal = "연결템"
+why = "가볍게 걸치는 캐주얼 아우터. 남성 데이터의 블루종·오버셔츠·필드 자켓·후드집업이 연결템이다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -5.1, up = 0, down = 1571, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.7, up = 0, down = 1581, hard = 23 }
+
+[[role]]
+name = "라이트핑크 울혼방 숏 자켓"
+proposal = "약한포인트"
+why = "색·무늬·질감이 눈에 띄는 아우터. 포인트는 감점이 커서(아래 수치) 약한포인트로 제안한다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -5.1, up = 0, down = 1571, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.6, up = 0, down = 1581, hard = 25 }
+
+[[role]]
+name = "라이트핑크 코튼 트렌치코트"
+proposal = "약한포인트"
+why = "색·무늬·질감이 눈에 띄는 아우터. 포인트는 감점이 커서(아래 수치) 약한포인트로 제안한다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -5.1, up = 0, down = 1571, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.6, up = 0, down = 1581, hard = 25 }
+
+[[role]]
+name = "민트 체크 패턴 트렌치 코트"
+proposal = "약한포인트"
+why = "색·무늬·질감이 눈에 띄는 아우터. 포인트는 감점이 커서(아래 수치) 약한포인트로 제안한다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -5.1, up = 0, down = 1571, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.6, up = 0, down = 1581, hard = 25 }
+
+[[role]]
+name = "탄 스웨이드 프린지 크롭 자켓"
+proposal = "약한포인트"
+why = "색·무늬·질감이 눈에 띄는 아우터. 포인트는 감점이 커서(아래 수치) 약한포인트로 제안한다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -5.1, up = 0, down = 1571, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.6, up = 0, down = 1581, hard = 25 }
+
+[[role]]
+name = "크림 크로셰 니트 가디건"
+proposal = "약한포인트"
+why = "색·무늬·질감이 눈에 띄는 아우터. 포인트는 감점이 커서(아래 수치) 약한포인트로 제안한다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -5.1, up = 0, down = 1571, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.6, up = 0, down = 1581, hard = 25 }
+
+[[role]]
+name = "크림 메쉬 패널 트랙재킷"
+proposal = "약한포인트"
+why = "색·무늬·질감이 눈에 띄는 아우터. 포인트는 감점이 커서(아래 수치) 약한포인트로 제안한다."
+impact."구조템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."약한포인트" = { n = 1824, avg = -5.1, up = 0, down = 1571, hard = 0 }
+impact."연결템" = { n = 1824, avg = 0.0, up = 0, down = 0, hard = 0 }
+impact."포인트" = { n = 1824, avg = -22.7, up = 0, down = 1581, hard = 23 }
