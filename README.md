@@ -12,6 +12,31 @@ Wardrobe Edit은 사용자의 옷장과 그날의 상황을 바탕으로 코디�
 
 > 이 프로젝트는 현재 개발 중인 개인 프로젝트입니다. 추천 결과는 스타일 선택을 돕기 위한 참고 정보이며, 사용자의 취향을 대신해 정답을 제시하는 것을 목표로 하지 않습니다.
 
+## 화면
+
+홈 화면에서 날씨와 스타일 무드를 고르면 오늘의 코디를 추천하고, 그 착장을 룩북 이미지로 보여줍니다.
+
+<table>
+  <tr>
+    <td align="center" valign="top" width="50%">
+      <img src="docs/images/home-mood.png" alt="홈 상단: 서울 날씨, 성별 선택, 스타일 무드 칩, 코디 더 만들기 버튼" width="100%"><br>
+      <sub>날씨와 스타일 무드를 고르고 추천을 받습니다</sub>
+    </td>
+    <td align="center" valign="top" width="50%">
+      <img src="docs/images/home-lookbook.png" alt="오늘의 룩북: 니트와 미디 스커트 착장 이미지, 상의·하의·신발·가방 구성과 추천 이유" width="100%"><br>
+      <sub>추천 착장을 룩북 이미지와 아이템 구성으로 보여줍니다</sub>
+    </td>
+  </tr>
+</table>
+
+<details>
+<summary>홈 화면 전체 보기</summary>
+<br>
+<p align="center">
+  <img src="docs/images/home-full.png" alt="홈 화면 전체: 날씨, 무드 선택, 내 옷장 요약, 오늘의 룩북, 착장 구성, 하단 탭" width="420">
+</p>
+</details>
+
 ## 기술 요약
 
 개인 프로젝트이지만, LLM을 쓰는 제품에서 반복되는 세 가지 문제를 실제로 다뤘습니다 — 모델을 용도별로 나누는 일, 추천 품질이 나빠졌는지 알아내는 일, 생성 비용을 통제하는 일.
