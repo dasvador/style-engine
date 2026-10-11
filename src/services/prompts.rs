@@ -322,9 +322,12 @@ macro_rules! fashion_item_rule {
 /// romantic·bohemian 은 2026-10-11 에 생겼다 — 그 전에는 레이스 블라우스나 크로셰
 /// 가디건이 들어갈 월드가 없어 비어 있었다. 두 프롬프트(일반 분석, RAG 2차)가 같은
 /// 목록을 쓰도록 한 곳에 둔다.
+///
+/// 셔링 설명은 생김새로 적는다. 이름만 적었을 때 셔링 탑 2장이 "버튼 장식 긴팔 탑" 으로
+/// 읽혀 minimal 이 됐다(2026-10-11, 실사진 12장).
 macro_rules! texture_world_rule {
     () => {
-        "- texture_worlds는 workwear, military, tailoring, sweat, outdoor, minimal, romantic, bohemian 중 복수 선택 가능.\n  romantic: 레이스·셔링·스모킹·퍼프 소매·리본·새틴·쉬폰·오간자처럼 여성스러운 장식이나 광택이 있는 옷.\n  bohemian: 크로셰·에스닉 자수·티어드 맥시·구김 면처럼 자연스럽고 느슨한 옷.\n"
+        "- texture_worlds는 workwear, military, tailoring, sweat, outdoor, minimal, romantic, bohemian 중 복수 선택 가능.\n  romantic: 레이스·셔링·스모킹·퍼프 소매·리본·새틴·쉬폰·오간자처럼 여성스러운 장식이나 광택이 있는 옷.\n  셔링은 원단을 잡아당겨 생긴 잔주름이다 — 앞판·옆선·소매에 오그라든 주름이 모여 있으면(단추가 함께 달려 있어도) 셔링이다.\n  오프숄더·카울넥처럼 어깨를 드러내거나 목선이 흘러내리는 탑도 romantic 이다.\n  bohemian: 크로셰·에스닉 자수·티어드 맥시·구김 면처럼 자연스럽고 느슨한 옷.\n"
     };
 }
 
