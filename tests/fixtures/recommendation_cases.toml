@@ -1233,6 +1233,20 @@ expected_preference = "Borderline"
 notes = "같은 룩이라도 두께/weight가 가벼움이면 경계."
 tags = ["temperature", "metadata_sensitive"]
 
+[[cases]]
+case_id = "TG011"
+situation = "캐주얼"
+temperature_c = 15.0
+top = "white_tee"
+bottom = "stone_beige_pants"
+shoes = "beige_gat"
+bag = "brown_tote"
+expected_hard_pass = true
+expected_today_fit = "Fail"
+expected_preference = "Reject"
+notes = "15도에 얇은 반팔 단독은 실패(2026-10-11 사용자 판단). 라벨이 없던 구간이라 판단을 고정한다. 18도는 경계(TG010), 10도는 실패(TG001)."
+tags = ["temperature", "too_cold"]
+
 # ───────────────────────────────────────────────────────────────
 # 레이어링 — 보온을 상의 한 장이 아니라 조합 전체로 보는 케이스.
 # 하의/신발/가방을 TG 케이스와 동일하게 고정해, 달라지는 축이 레이어링뿐이게 둔다.
