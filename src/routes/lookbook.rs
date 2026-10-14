@@ -57,7 +57,7 @@ pub struct MarkRequest {
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_looks).post(save_look))
-        .route("/{id}", patch(mark_look))
+        .route("/{id}", patch(mark_look).delete(delete_look))
 }
 
 /// 최근에 만든 코디부터. 화면이 한 번에 들고 있을 만큼만 준다.
@@ -173,5 +173,28 @@ async fn mark_look(
     .await
     .map_err(|e| AppError::Internal(e.into()))?;
 
+    Ok(Json(SaveResponse { id }))
+}
+
+/// 룩북에서 코디 한 장을 지운다. 내 것만 지워진다.
+///
+/// 그림(`outfit_image`)은 지우지 않는다 — 다른 룩이나 같은 코디의 다음 요청이 같은
+/// 캐시를 쓰고, 다시 만들면 돈이 든다.
+async fn delete_look(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<SaveResponse>, AppError> {
+    let done = sqlx::query("DELETE FROM lookbook_look WHERE id = ? AND user_id = ?")
+        .bind(&id)
+        .bind(&auth.user_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| AppError::Internal(e.into()))?;
+    if done.rows_affected() == 0 {
+        return Err(AppError::NotFound(
+            "이 코디를 찾을 수 없습니다.".to_string(),
+        ));
+    }
     Ok(Json(SaveResponse { id }))
 }

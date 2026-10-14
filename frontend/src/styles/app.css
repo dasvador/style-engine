@@ -1125,6 +1125,22 @@ button, input, select, textarea { font-family: inherit; }
 .mark-liked { background: var(--accent); border-radius: 50%; }
 .mark-worn { background: var(--olive); border-radius: 1px; }
 
+/* 삭제는 카드 아래 작은 글자 버튼으로 둔다. 누르면 그 자리에서 한 번 더 묻는다. */
+.saved-delete {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 6px;
+  font-size: 0.72rem;
+}
+.saved-delete button {
+  background: none; border: 0; padding: 4px 0; cursor: pointer; font: inherit;
+  min-height: 28px;
+}
+.saved-delete-btn, .saved-delete-no { color: var(--ink-faint); }
+.saved-delete-btn:hover, .saved-delete-no:hover { color: var(--ink-soft); }
+.saved-delete-ask { color: var(--ink-soft); }
+.saved-delete-yes { color: var(--accent); font-weight: 500; }
+.saved-delete button:disabled { opacity: 0.5; cursor: default; }
+.saved-delete-error { font-size: 0.72rem; color: var(--accent); margin-top: 2px; }
+
 @media (max-width: 380px) {
   .saved-grid { gap: 16px 10px; }
 }

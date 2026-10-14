@@ -98,6 +98,7 @@ export function LookbookPage() {
                       (prev ?? []).map((x) => (x.id === id ? { ...x, image_path } : x)),
                     )
                   }
+                  onDeleted={(id) => setLooks((prev) => (prev ?? []).filter((x) => x.id !== id))}
                 />
               ))}
             </div>
@@ -112,13 +113,31 @@ function LookCard({
   look,
   onOpen,
   onGenerated,
+  onDeleted,
 }: {
   look: SavedLook;
   onOpen: () => void;
   onGenerated: (id: string, url: string) => void;
+  onDeleted: (id: string) => void;
 }) {
   const [making, setMaking] = useState(false);
   const [failed, setFailed] = useState(false);
+  // 지우기는 되돌릴 수 없어서 한 번 더 묻는다. 브라우저 확인창 대신 카드 안에서 묻는다.
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const remove = async () => {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.lookbook.remove(look.id);
+      onDeleted(look.id);
+    } catch (err) {
+      setDeleteError(errorMessage(err));
+      setDeleting(false);
+    }
+  };
   const url = look.image_path;
 
   // 사진이 없는 코디는 생성한 적이 없거나 검증을 통과하지 못한 것이다.
@@ -167,6 +186,28 @@ function LookCard({
             .join(' · ')}
         </span>
       </button>
+      <div className="saved-delete">
+        {confirming ? (
+          <>
+            <span className="saved-delete-ask">룩북에서 지울까요?</span>
+            <button className="saved-delete-yes" disabled={deleting} onClick={() => void remove()}>
+              {deleting ? '지우는 중…' : '지우기'}
+            </button>
+            <button
+              className="saved-delete-no"
+              disabled={deleting}
+              onClick={() => setConfirming(false)}
+            >
+              취소
+            </button>
+          </>
+        ) : (
+          <button className="saved-delete-btn" onClick={() => setConfirming(true)}>
+            삭제
+          </button>
+        )}
+      </div>
+      {deleteError && <span className="saved-delete-error">{deleteError}</span>}
       {(look.liked || look.worn) && (
         <span className="saved-card-marks">
           {look.liked && <i className="mark-liked" title="마음에 들어요" />}

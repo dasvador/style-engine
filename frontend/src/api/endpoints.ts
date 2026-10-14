@@ -76,5 +76,6 @@ export const api = {
     save: (body: SaveLookBody) => apiPost<{ id: string }>('/lookbook', body),
     mark: (id: string, body: { liked?: boolean; worn?: boolean }) =>
       apiPatch<{ id: string }>(`/lookbook/${id}`, body),
+    remove: (id: string) => apiDelete<{ id: string }>(`/lookbook/${id}`),
   },
 };
