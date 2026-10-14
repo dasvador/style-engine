@@ -1074,13 +1074,69 @@ fn model_origin(hash: u64) -> &'static str {
     MODEL_ORIGINS[((hash >> 32) as usize) % MODEL_ORIGINS.len()]
 }
 
+/// 장르별 헤어스타일 후보. 착장 해시로 하나를 고른다.
+///
+/// 예전에는 네 가지를 모든 장르가 함께 써서, 스트리트 코디에 단정한 로우 번이,
+/// 클래식 코디에 부스스한 웨이브가 나왔다(2026-10-15 사용자 지적). 헤어도 옷처럼
+/// 무드를 전한다. 모자·핀처럼 추천 목록에 없는 소품은 넣지 않는다 — 공통 회피 규칙의
+/// "목록에 없는 소품 금지" 와 부딪친다.
+fn genre_hair(genre: StyleGenre) -> &'static [&'static str] {
+    use StyleGenre as G;
+    match genre {
+        G::Minimal => &[
+            "straight shoulder-length hair with a clean center part, tucked behind the ears",
+            "sleek low ponytail, smooth at the crown",
+            "chin-length blunt bob, smooth and simple",
+        ],
+        G::Classic => &[
+            "sleek low chignon with a center part",
+            "polished chin-length bob with the ends turned under",
+            "soft shoulder-length waves, one side tucked behind the ear",
+            "neat low ponytail",
+        ],
+        G::Romantic => &[
+            "soft loose curls falling past the shoulders",
+            "half-up hair with soft waves below",
+            "loose low braid with soft face-framing strands",
+        ],
+        G::ModernChic => &[
+            "long sleek straight hair with a deep side part",
+            "sharp jaw-length bob, glossy and blunt",
+            "slicked-back low bun, smooth and tight",
+        ],
+        G::Bohemian => &[
+            "long loose natural waves with a middle part",
+            "loose side braid with undone strands",
+            "tousled shag with curtain bangs",
+        ],
+        G::Street => &[
+            "sleek high ponytail pulled tight",
+            "textured wolf cut with choppy layers",
+            "half-up space buns with the rest left down",
+            "long straight hair with blunt bangs",
+        ],
+        G::Mannish => &[
+            "short textured pixie crop",
+            "slicked-back hair tucked behind the ears",
+            "jaw-length bob with a deep side part",
+        ],
+        G::SportyCasual => &[
+            "high ponytail with a few loose strands",
+            "high messy bun",
+            "two low braids",
+        ],
+        // 남성 장르의 코디를 여성 모델로 그릴 때. 특정 무드 없이 일상적인 헤어로 둔다.
+        _ => &[
+            "messy long waves with curtain bangs, effortless undone texture",
+            "chin-length blunt bob, slightly tousled",
+            "low loose bun with face-framing strands, relaxed and casual",
+            "center-part shoulder-length hair, natural air-dried texture",
+        ],
+    }
+}
+
 fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
-    let hairstyles = [
-        "messy long waves with curtain bangs, effortless undone texture",
-        "chin-length blunt bob, slightly tousled",
-        "low loose bun with face-framing strands, relaxed and casual",
-        "center-part shoulder-length hair, natural air-dried texture",
-    ];
+    let hairstyles = genre_hair(genre);
     let hair = hairstyles[(hash as usize) % hairstyles.len()];
 
     // 장소도 착장 해시로 고른다. 헤어와 같은 나머지를 쓰면 둘이 함께 움직이므로
@@ -2436,7 +2492,7 @@ mod image_prompt_tests {
 
         let seen: std::collections::HashSet<&str> = (0..200u64)
             .map(|h| {
-                let hairstyles = 4usize; // build_image_prompt 과 같은 개수
+                let hairstyles = genre_hair(StyleGenre::Minimal).len();
                 settings[(h as usize / hairstyles) % settings.len()]
             })
             .collect();
@@ -2460,6 +2516,20 @@ mod image_prompt_tests {
             );
             assert!(!light.is_empty(), "{g} 에 빛 설명이 없다");
         }
+    }
+
+    /// 모든 장르에 헤어 후보가 둘 이상 있어야 하고, 스트리트와 클래식은 서로 달라야 한다.
+    #[test]
+    fn every_genre_has_its_own_hair_choices() {
+        for &g in StyleGenre::ALL {
+            assert!(genre_hair(g).len() >= 2, "{g} 의 헤어 후보가 하나뿐");
+        }
+        let street = genre_hair(StyleGenre::Street);
+        assert!(
+            genre_hair(StyleGenre::Classic)
+                .iter()
+                .all(|h| !street.contains(h))
+        );
     }
 
     /// 모델 출신은 착장마다 갈리고, 해시를 훑으면 목록 전부에 닿으며, 한국이 절반이다.
