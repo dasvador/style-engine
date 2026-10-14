@@ -986,6 +986,48 @@ fn pick_light(genre: StyleGenre, hash: u64) -> &'static str {
     lights[((hash >> 40) & 0xFF) as usize % lights.len()]
 }
 
+/// 자세 후보. 장르마다 자세를 하나씩 박아 두었더니 시선과 몸 각도까지 비슷해져 같은
+/// 틀로 찍어 낸 사진처럼 보였다(2026-10-15 사용자 지적). 장르와 상관없이 다섯 중 하나를
+/// 고른다. 편안한 눈맞춤도 자연스러우므로 카메라를 보는 자세도 둔다 — 예전의
+/// "not posing for the photographer" 를 세게 걸면 옆을 보며 걷는 장면으로 수렴한다.
+const POSES: [&str; 5] = [
+    "a natural near-frontal stance, weight on one leg, eyes resting near the camera",
+    "body turned twenty to thirty degrees from the camera, face turned back towards it",
+    "walking slowly, caught mid-step, only her head turning slightly towards the camera",
+    "paused for a moment with her feet slightly crossed, looking off down the street",
+    "leaning lightly with one shoulder against the wall or railing beside her, the clothes \
+     neither pressed flat nor hidden",
+];
+
+/// 기대는 자세(`POSES` 의 마지막)는 기댈 것이 있는 장소에서만 고른다.
+fn has_something_to_lean_on(setting: &str) -> bool {
+    [
+        "wall",
+        "railing",
+        "door",
+        "facade",
+        "shutter",
+        "column",
+        "window",
+        "shopfront",
+        "balcony",
+        "building",
+        "arcade",
+    ]
+    .iter()
+    .any(|w| setting.contains(w))
+}
+
+/// 자세를 고른다. 해시의 48~55비트를 쓴다 — 출신·헤어·장소·빛과 따로 움직인다.
+fn pick_pose(setting: &str, hash: u64) -> &'static str {
+    let n = if has_something_to_lean_on(setting) {
+        POSES.len()
+    } else {
+        POSES.len() - 1
+    };
+    POSES[((hash >> 48) & 0xFF) as usize % n]
+}
+
 /// 무드별 장소(가중치 2)와 공통 장소(가중치 1)에서 착장 해시로 하나를 고른다.
 /// 해시의 하위 16비트를 쓴다 — 헤어(16~31비트)·출신(상위 32비트)과 묶이지 않는다.
 fn pick_setting(genre: StyleGenre, hash: u64) -> &'static str {
@@ -1275,9 +1317,11 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
     // 장소도 착장 해시로 고른다. 헤어(`pick_hair`)와 출신(`model_origin`)은 다른
     // 비트를 쓰므로, 장소는 하위 자리를 그대로 쓴다.
     let light = pick_light(genre, hash);
+    let place = pick_setting(genre, hash);
+    let pose = pick_pose(place, hash);
     let setting = format!(
         "{} — the background brings {}",
-        pick_setting(genre, hash),
+        place,
         genre_backdrop(genre)
     );
 
@@ -1321,14 +1365,16 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
          She carries herself with an easy upright posture — shoulders relaxed and open, \
          neck long, chin level — with natural weight distribution while standing or walking.";
 
-    // 자세는 장소에 맞춰 장르별로 다르게 둔다.
+    // 자세는 `POSES` 다섯 중 착장 해시로 고른다(`pick_pose`).
     //
-    // 한때 모든 arm 을 같은 보행 포즈로 통일했더니, 서로 다른 코디를 같은 자리에
-    // 세워 찍은 것처럼 보였다. 배경도 회색 보도 하나로 수렴해 옷과 장소 사이의
-    // 연결이 끊겼다. 그래서 장소와 동작은 장르로 되돌리고, 아래 규칙만 공통으로 건다.
-    let base_pose_rule = "Nothing arranged for the camera — she is not touching her hair \
-         or face, and she is not posing for the photographer. \
-         Full body visible from head to shoes.";
+    // 한때 모든 arm 을 같은 보행 포즈로 통일했더니 서로 다른 코디를 같은 자리에 세워
+    // 찍은 것처럼 보였고, 그다음엔 장르마다 자세를 하나씩 박아 두었더니 같은 장르는
+    // 시선과 몸 각도까지 똑같아졌다. 지금은 장르와 상관없이 후보에서 고르고, 아래
+    // 규칙만 공통으로 건다.
+    let base_pose_rule = "Relaxed and unforced — she is not touching her hair or face, and \
+         a calm, easy look at the camera is fine. Full body visible from head to shoes. \
+         Her arms and bag never cover the main details of the top. No exaggerated twisting, \
+         no strict profile or back view.";
 
     // 촬영 조건은 장르와 무관하게 같다. 인물을 묘사하기 전에 "어떤 카메라로 어떤
     // 상황에서 찍은 사진인지" 를 먼저 정해야 사진처럼 나온다. 그래서 카메라·구도·
@@ -1450,7 +1496,7 @@ Outfit: The female model is wearing {items} — worn with the decoration strippe
 
 Garments: {base_garments}
 
-Pose: standing still, adjusting a coat cuff, looking away from the camera. {base_pose_rule}
+Pose: {pose}. {base_pose_rule}
 
 Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
@@ -1477,7 +1523,7 @@ Outfit: The female model is wearing {items} — worn to let the soft things move
 
 Garments: {base_garments}
 
-Pose: standing near a doorway, one hand resting on her bag strap, weight on one leg. {base_pose_rule}
+Pose: {pose}. {base_pose_rule}
 
 Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
@@ -1504,7 +1550,7 @@ Outfit: The female model is wearing {items} — worn with a sharp, deliberate li
 
 Garments: {base_garments}
 
-Pose: mid-stride, walking a few steps, looking ahead. {base_pose_rule}
+Pose: {pose}. {base_pose_rule}
 
 Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
@@ -1531,7 +1577,7 @@ Outfit: The female model is wearing {items} — worn loose and layered: natural 
 
 Garments: {base_garments}
 
-Pose: standing with one hand in a pocket, hair moving slightly in the air. {base_pose_rule}
+Pose: {pose}. {base_pose_rule}
 
 Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
@@ -1561,7 +1607,7 @@ Outfit: The female model is wearing {items} — worn for movement: technical and
 
 Garments: {base_garments}
 
-Pose: mid-stride on a path, bag on one shoulder, relaxed and unhurried. {base_pose_rule}
+Pose: {pose}. {base_pose_rule}
 
 Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
@@ -1590,7 +1636,7 @@ Outfit: The female model is wearing {items} — worn oversized and off-balance: 
 
 Garments: {base_garments}
 
-Pose: leaning one shoulder against the wall, hands in pockets, chin slightly down. {base_pose_rule}
+Pose: {pose}. {base_pose_rule}
 
 Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
@@ -1617,7 +1663,7 @@ Outfit: The female model is wearing {items} — worn like borrowed tailoring: st
 
 Garments: {base_garments}
 
-Pose: standing squarely, hands in trouser pockets, looking straight down the street. {base_pose_rule}
+Pose: {pose}. {base_pose_rule}
 
 Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
@@ -1644,7 +1690,7 @@ Outfit: The female model is wearing {items} — worn with a tidy, correct fit: c
 
 Garments: {base_garments}
 
-Pose: walking with a bag in one hand, caught mid-step. {base_pose_rule}
+Pose: {pose}. {base_pose_rule}
 
 Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
@@ -1671,7 +1717,7 @@ Outfit: The female model is wearing {items} — worn tidily and brightly: neat c
 
 Garments: {base_garments}
 
-Pose: standing on stone steps, one hand resting on the railing. {base_pose_rule}
+Pose: {pose}. {base_pose_rule}
 
 Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
@@ -1698,7 +1744,7 @@ Outfit: The female model is wearing {items} — worn like clothes that get used:
 
 Garments: {base_garments}
 
-Pose: standing with sleeves pushed to the forearm, hands in jacket pockets. {base_pose_rule}
+Pose: {pose}. {base_pose_rule}
 
 Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
@@ -1725,7 +1771,7 @@ Outfit: The female model is wearing {items} — worn as real equipment: technica
 
 Garments: {base_garments}
 
-Pose: adjusting a pack strap on one shoulder, caught mid-step. {base_pose_rule}
+Pose: {pose}. {base_pose_rule}
 
 Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
@@ -1753,7 +1799,7 @@ Outfit: The female model is wearing {items} — worn in rather than new: soft wa
 
 Garments: {base_garments}
 
-Pose: standing relaxed, one hand in a pocket, looking down the alley. {base_pose_rule}
+Pose: {pose}. {base_pose_rule}
 
 Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
@@ -2668,6 +2714,28 @@ mod image_prompt_tests {
         }
         let p = build_image_prompt(StyleGenre::Minimal, "회색 티", 42);
         assert!(p.contains("the background brings generous empty space"));
+    }
+
+    /// 자세는 다섯 후보에 모두 닿고, 기대는 자세는 기댈 것이 있는 장소에서만 나온다.
+    #[test]
+    fn poses_vary_and_leaning_needs_a_wall() {
+        let hashes: Vec<u64> = (0..2000u64)
+            .map(|h| h.wrapping_mul(0x9E37_79B9_7F4A_7C15))
+            .collect();
+        let lean = POSES[POSES.len() - 1];
+        let with_wall: std::collections::HashSet<&str> = hashes
+            .iter()
+            .map(|&h| pick_pose("a pale stucco wall", h))
+            .collect();
+        assert_eq!(with_wall.len(), POSES.len());
+        assert!(
+            hashes
+                .iter()
+                .all(|&h| pick_pose("a wide open plaza with pale paving", h) != lean)
+        );
+        let p = build_image_prompt(StyleGenre::Street, "회색 후드티", 99);
+        assert!(!p.contains("not posing for the photographer"));
+        assert!(p.contains("Her arms and bag never cover the main details of the top"));
     }
 
     /// 모든 장르에 장소 후보가 둘 이상 있어야 한다. 하나뿐이면 그 장르는
