@@ -946,6 +946,46 @@ const SHARED_SETTINGS: [&str; 6] = [
     "a courtyard with a few potted plants and a rendered wall",
 ];
 
+/// 배경이 무드를 전하는 방식. 장소가 아니라 배경의 소재·색·빛·구도로 차이를 낸다
+/// (2026-10-15 사용자 제안). 경계가 가까운 무드는 여기서 갈린다 — 미니멀은 여백과
+/// 절제, 모던 시크는 선과 대비. 클래식은 정돈된 구도, 매니시는 조금 더 느슨한 장면.
+/// 로맨틱은 배경까지 달콤하게 만들지 않고, 꽃이나 곡선은 한 요소만 둔다.
+fn genre_backdrop(genre: StyleGenre) -> &'static str {
+    use StyleGenre as G;
+    match genre {
+        G::Minimal => "generous empty space, simple lines, and light and shadow doing the work",
+        G::ModernChic => "crisp lines and strong contrast, with an urban sense of space",
+        G::Classic => "materials with depth and a steady, orderly composition",
+        G::Mannish => "plain, honest textures and a relaxed, roomy scene",
+        G::Romantic => {
+            "soft light, gentle curves and quiet colour — at most one curved or floral element, \
+             never pink, flowers and blossom all at once"
+        }
+        G::Bohemian => "warm, sun-worn materials and a lived-in feel",
+        G::Street => "colour, light and a sense of space in the city, not only rough grey",
+        G::SportyCasual => "a bright, polished city day, nothing to do with training",
+        _ => "a material and colour that suit the clothes",
+    }
+}
+
+/// 모든 무드가 고르게 쓰는 빛. 무드마다 빛을 하나로 정해 두면 특정 무드만 예쁜 빛을
+/// 독점한다. 무드의 빛 하나에 이 넷을 더해, 밝은 장면·그늘진 장면·따뜻한 장면이
+/// 어느 무드에서나 나오게 한다.
+const SHARED_LIGHTS: [&str; 4] = [
+    "bright open daylight",
+    "soft open shade from the trees or a building, with even light on her face",
+    "warm late-afternoon sun from the side",
+    "soft overcast light with a clear direction",
+];
+
+/// 빛을 고른다. 해시의 40~47비트를 쓴다.
+fn pick_light(genre: StyleGenre, hash: u64) -> &'static str {
+    let (_, own) = genre_setting(genre);
+    let mut lights = vec![own];
+    lights.extend(SHARED_LIGHTS.iter().copied().filter(|l| *l != own));
+    lights[((hash >> 40) & 0xFF) as usize % lights.len()]
+}
+
 /// 무드별 장소(가중치 2)와 공통 장소(가중치 1)에서 착장 해시로 하나를 고른다.
 /// 해시의 하위 16비트를 쓴다 — 헤어(16~31비트)·출신(상위 32비트)과 묶이지 않는다.
 fn pick_setting(genre: StyleGenre, hash: u64) -> &'static str {
@@ -969,27 +1009,30 @@ fn genre_setting(genre: StyleGenre) -> (&'static [&'static str], &'static str) {
     match genre {
         G::Minimal => (
             &[
-                "a pale limestone wall with one dark window frame",
-                "the smooth concrete side of a modern building, one shadow line across it",
-                "a quiet residential street with a plain rendered wall and a single doorway",
+                "sunlit stone steps with a long clean shadow across them",
+                "a wide open plaza with pale paving",
+                "a glass facade with a single clean line of reflection",
+                "the bright exterior wall of a gallery with one doorway",
             ],
             "soft overcast light from one side",
         ),
         G::Romantic => (
             &[
-                "the ivory-painted exterior of a small cafe, green foliage at one edge",
-                "a garden entrance with an old iron gate and planting behind it",
-                "a pale stucco wall with a climbing plant running up one side",
+                "beneath a curved balcony on an ivory building",
+                "a bright terrace with a low rendered wall",
+                "a street with dappled shade from the trees",
+                "the ivory-painted exterior of a small cafe",
             ],
             "gentle warm light from the side, reaching only part of the background",
         ),
         G::ModernChic => (
             &[
-                "the dark glass and brushed metal of an office entrance",
-                "a polished stone facade with one strong vertical joint",
-                "a covered walkway with clean columns receding behind her",
+                "the exterior of a contemporary art museum with a strong horizontal line",
+                "a walkway of glass and brushed metal",
+                "a bright limestone building with crisp joints",
+                "an architectural staircase with sharp edges",
             ],
-            "cool daylight raking from the side",
+            "clear daylight raking from the side",
         ),
         G::Bohemian => (
             &[
@@ -1025,18 +1068,19 @@ fn genre_setting(genre: StyleGenre) -> (&'static [&'static str], &'static str) {
         ),
         G::Mannish => (
             &[
-                "old brick and a weathered wooden door",
-                "a painted steel shutter, half raised, on a quiet street",
-                "a plain office doorway with a stone step",
+                "a terrace in front of a brick building",
+                "a space where concrete meets warm timber",
+                "the entrance of a bookshop",
+                "a wide sunlit pavement",
             ],
             "warm afternoon light from the side",
         ),
         G::Classic => (
             &[
-                "a tree-lined pavement outside an office, a glass door catching a soft reflection",
-                "a stone building entrance with a shallow flight of steps",
+                "a stone entrance with a heavy timber door",
+                "a tree-lined avenue",
+                "in front of an old bookshop window",
                 "a covered arcade with plain columns",
-                "a crossing with worn white markings and a stone kerb",
             ],
             "soft morning light from the side",
         ),
@@ -1230,8 +1274,12 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
 
     // 장소도 착장 해시로 고른다. 헤어(`pick_hair`)와 출신(`model_origin`)은 다른
     // 비트를 쓰므로, 장소는 하위 자리를 그대로 쓴다.
-    let (_, light) = genre_setting(genre);
-    let setting = pick_setting(genre, hash);
+    let light = pick_light(genre, hash);
+    let setting = format!(
+        "{} — the background brings {}",
+        pick_setting(genre, hash),
+        genre_backdrop(genre)
+    );
 
     // 얼굴·몸을 치수로 지정하지 않는다.
     //
@@ -2602,6 +2650,24 @@ mod image_prompt_tests {
                 .iter()
                 .all(|s| !s.contains("track") && !s.contains("field"))
         );
+    }
+
+    /// 어느 무드든 밝은·그늘진·따뜻한 빛을 모두 쓴다 — 특정 무드가 좋은 빛을 독점하지 않는다.
+    #[test]
+    fn every_mood_reaches_every_shared_light() {
+        let hashes: Vec<u64> = (0..2000u64)
+            .map(|h| h.wrapping_mul(0x9E37_79B9_7F4A_7C15))
+            .collect();
+        for &g in StyleGenre::ALL {
+            let seen: std::collections::HashSet<&str> =
+                hashes.iter().map(|&h| pick_light(g, h)).collect();
+            for l in SHARED_LIGHTS {
+                assert!(seen.contains(l), "{g}: {l} 에 닿지 못한다");
+            }
+            assert!(!genre_backdrop(g).is_empty());
+        }
+        let p = build_image_prompt(StyleGenre::Minimal, "회색 티", 42);
+        assert!(p.contains("the background brings generous empty space"));
     }
 
     /// 모든 장르에 장소 후보가 둘 이상 있어야 한다. 하나뿐이면 그 장르는
