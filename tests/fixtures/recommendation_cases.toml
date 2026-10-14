@@ -1,5 +1,11 @@
 version = 1
 
+# 사람 확인 기록 (2026-10-14 기준)
+# - RW 16건·TG011: 사용자가 한 건씩 판단했다 (각 케이스 notes).
+# - LY·SV 10건: Claude 가 쓴 라벨을 사용자가 한 건씩 확인했다 (tools/world-review/ly_sv_labels.toml).
+# - HC·SG·AC·TG001-010·BV·RD 96건: Claude 가 쓴 라벨을 사용자가 검수 페이지에서 일괄 승인했다
+#   (tools/world-review/cases96_labels.toml). 한 건씩 판단한 것은 아니다.
+
 # ═══════════════════════════════════════════════════════════════
 # 1. Hard filter false positive — military/workwear 과잉
 # ═══════════════════════════════════════════════════════════════

@@ -88,7 +88,8 @@ def load_items(cases: pathlib.Path) -> list[dict]:
     for c in data.get("label", []):
         items.append({"key": key("label", round_, c["name"]), "kind": "label", "name": c["name"],
                       "question": c["question"], "pieces": c["items"], "options": c["options"],
-                      "proposal": c["proposal"], "why": c.get("why", "")})
+                      "proposal": c["proposal"], "current": c.get("current", c["proposal"]),
+                      "why": c.get("why", "")})
     for c in data.get("ab", []):
         items.append({"key": key("ab", round_, c["id"]), "kind": "ab", "name": c["id"],
                       "context": c["context"], "a": c["a"], "b": c["b"]})

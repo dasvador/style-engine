@@ -213,7 +213,7 @@ textarea{font:inherit;font-size:14px;width:100%;min-height:44px;border:1px solid
       head.append(el('div',{class:'title'}, el('h2',{text:item.name}), el('span',{class:'pair',text:item.question})));
       c.append(head);
       c.append(el('ul',{class:'pieces'}, item.pieces.map(p=>el('li',{}, el('span',{class:'nm',text:p})))));
-      c.append(el('div',{class:'why',style:'padding:0 16px 10px'}, '지금 라벨: ', el('strong',{text:item.proposal}), ' — '+item.why));
+      c.append(el('div',{class:'why',style:'padding:0 16px 10px'}, '지금 라벨: ', el('strong',{text:item.current}), item.why ? ' — '+item.why : ''));
     } else if (item.kind==='ab'){
       head.append(el('div',{class:'title'}, el('h2',{text:item.name}), el('span',{class:'pair',text:item.context})));
       c.append(head);
