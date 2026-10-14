@@ -1,0 +1,300 @@
+# 여성 가방 역할 재검수. 지금 30개 중 26개가 포인트라 포인트 아우터·상의와 겹치면 거의
+# 언제나 "포인트 과다" 감점이 난다(남성 가방 16개는 포인트 0개). build.py 가 이 파일로 검수
+# 페이지를 만든다. 확정되면 id 로 마이그레이션을 쓴다.
+#
+# impact 는 2026-10-14 측정(`cargo run --example role_effect -- female 가방 out.json`): 그 가방이
+# 들어간 착장(상의×하의 전부, 아우터 없음/있음, 신발은 돌려 가며)에서 지금 역할(포인트) 대비
+# 운영 엔진(v1) 점수 변화와 shadow 하드필터 판정이 바뀐 수.
+round = "2026-10-14-bag-roles"
+
+[meta.role]
+tab = "가방 역할"
+options = ["베이스", "연결템", "구조템", "약한포인트", "포인트"]
+lede = "지금 포인트로 되어 있는 여성 가방 26개입니다. 각 가방의 역할(베이스 / 연결템 / 구조템 / 약한포인트 / 포인트)을 정해 주세요. 카드 아래 숫자는 그 역할로 바꿨을 때 이 가방이 들어간 착장의 추천 점수가 지금(포인트)보다 얼마나 바뀌는지 미리 잰 값입니다."
+legend = "포인트가 아니면 어느 역할이든 점수가 오릅니다(구조템이 가장 많이). 점수가 아니라 가방이 실제로 눈에 띄는지로 정해 주세요. 포인트로 남은 가방은 포인트 아우터와 함께 나오면 감점됩니다."
+
+[[role]]
+id = "d892b572-546b-11f1-af43-264d116ef584"
+name = "그레이 스트럭처드 토트백"
+proposal = "구조템"
+why = "각 잡힌 가죽 토트. 남성 데이터의 블랙 레더 숄더백이 구조템이다."
+impact."베이스" = { n = 3648, avg = 5.5, up = 3384, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 6.1, up = 3384, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 7.5, up = 3384, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 2.7, up = 3384, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "4d18270c-598e-11f1-af43-264d116ef584"
+name = "내추럴 라피아 라운드 숄더백"
+proposal = "약한포인트"
+why = "라피아 짜임과 둥근 형태가 눈에 띄지만 색은 내추럴이다."
+impact."베이스" = { n = 3648, avg = 6.7, up = 3447, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 7.3, up = 3447, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 9.2, up = 3447, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.7, up = 3447, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "0ffd0800-0000-0000-0000-000000000001"
+name = "다크브라운 스웨이드 호보백"
+proposal = "연결템"
+why = "짙은 갈색 스웨이드. 남성 데이터의 다크브라운 레더 토트백이 연결템이다."
+impact."베이스" = { n = 3648, avg = 6.4, up = 3407, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 6.9, up = 3407, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 8.6, up = 3407, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.4, up = 3407, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "d892834a-546b-11f1-af43-264d116ef584"
+name = "라이트베이지 버킷백"
+proposal = "베이스"
+why = "밝은 베이지 무지 가죽 버킷백. 어느 코디에도 묻힌다."
+impact."베이스" = { n = 3648, avg = 6.7, up = 3447, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 7.3, up = 3447, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 9.2, up = 3447, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.7, up = 3447, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "d892b694-546b-11f1-af43-264d116ef584"
+name = "베이지 레더 호보백"
+proposal = "베이스"
+why = "베이지 무지 가죽 호보백."
+impact."베이스" = { n = 3648, avg = 6.7, up = 3447, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 7.3, up = 3447, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 9.2, up = 3447, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.7, up = 3447, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "be2e7efe-5985-11f1-af43-264d116ef584"
+name = "베이지 리플스탑 미니 백팩"
+proposal = "연결템"
+why = "무채색 나일론 백팩. 남성 데이터의 올리브 백팩이 연결템이다."
+impact."베이스" = { n = 3648, avg = 7.4, up = 3445, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 8.3, up = 3445, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 10.9, up = 3445, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.8, up = 3445, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "8c005202-598c-11f1-af43-264d116ef584"
+name = "베이지 미니 버킷백"
+proposal = "베이스"
+why = "베이지 무지 가죽 미니 버킷백."
+impact."베이스" = { n = 3648, avg = 6.7, up = 3447, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 7.3, up = 3447, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 9.2, up = 3447, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.7, up = 3447, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "4d18263a-598e-11f1-af43-264d116ef584"
+name = "브라운 우븐 레더 호보백"
+proposal = "약한포인트"
+why = "가죽을 엮은 질감이 은은하게 드러난다."
+impact."베이스" = { n = 3648, avg = 6.4, up = 3407, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 6.9, up = 3407, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 8.6, up = 3407, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.4, up = 3407, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "d8929b0a-546b-11f1-af43-264d116ef584"
+name = "블랙 나일론 메신저백"
+proposal = "연결템"
+why = "블랙 나일론 메신저. 남성 데이터의 네이비 나일론 크로스바디가 연결템이다."
+impact."베이스" = { n = 3648, avg = 6.4, up = 3407, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 6.9, up = 3407, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 8.6, up = 3407, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.4, up = 3407, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "be2e7be8-5985-11f1-af43-264d116ef584"
+name = "블랙 나일론 미니 크로스백"
+proposal = "연결템"
+why = "블랙 나일론 미니 크로스. 위와 같은 이유."
+impact."베이스" = { n = 3648, avg = 7.5, up = 3506, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 8.4, up = 3506, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 10.7, up = 3506, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.9, up = 3506, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "d892c710-546b-11f1-af43-264d116ef584"
+name = "블랙 나일론 크로스 슬링백"
+proposal = "연결템"
+why = "블랙 나일론 슬링. 위와 같은 이유."
+impact."베이스" = { n = 3648, avg = 7.5, up = 3506, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 8.4, up = 3506, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 10.7, up = 3506, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.9, up = 3506, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "d892b450-546b-11f1-af43-264d116ef584"
+name = "블랙 레더 미니 숄더백"
+proposal = "베이스"
+why = "블랙 무지 가죽 미니 숄더백. 같은 이름의 다른 한 벌은 지금 약한포인트다(이 결정은 지금 포인트인 한 벌에만 적용)."
+impact."베이스" = { n = 3648, avg = 6.4, up = 3407, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 6.9, up = 3407, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 8.6, up = 3407, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.4, up = 3407, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "d892c832-546b-11f1-af43-264d116ef584"
+name = "블랙 미니 체인 숄더백"
+proposal = "약한포인트"
+why = "체인 스트랩이 작은 반짝임을 준다."
+impact."베이스" = { n = 3648, avg = 6.4, up = 3407, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 6.9, up = 3407, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 8.6, up = 3407, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.4, up = 3407, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "8e2f841e-598a-11f1-af43-264d116ef584"
+name = "블랙 버클 스트랩 숄더백"
+proposal = "구조템"
+why = "격식 4의 블랙 가죽 숄더백. 형태가 잡혀 있다."
+impact."베이스" = { n = 3648, avg = 6.8, up = 3384, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 7.4, up = 3384, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 10.1, up = 3384, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.6, up = 3384, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "d89284ee-546b-11f1-af43-264d116ef584"
+name = "소프트핑크 숄더백"
+proposal = "포인트"
+why = "옷장 대부분이 무채색·베이지인데 혼자 핑크다."
+impact."베이스" = { n = 3648, avg = 6.7, up = 3447, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 7.3, up = 3447, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 9.2, up = 3447, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.7, up = 3447, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "8c00537e-598c-11f1-af43-264d116ef584"
+name = "실버 체인 미니 크로스백"
+proposal = "포인트"
+why = "메탈릭 실버. 시선을 끄는 소재다."
+impact."베이스" = { n = 3648, avg = 6.7, up = 3447, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 7.3, up = 3447, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 9.2, up = 3447, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.7, up = 3447, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "8e2f8efa-598a-11f1-af43-264d116ef584"
+name = "아이보리 레이스 트리밍 버킷백"
+proposal = "약한포인트"
+why = "레이스 트리밍 장식. 색은 아이보리라 튀지 않는다."
+impact."베이스" = { n = 3648, avg = 6.7, up = 3447, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 7.3, up = 3447, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 9.2, up = 3447, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.7, up = 3447, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "d892c94a-546b-11f1-af43-264d116ef584"
+name = "올리브 유틸리티 웨이스트백"
+proposal = "약한포인트"
+why = "올리브 유틸리티. 남성 데이터의 올리브 코듀라 백팩이 약한포인트다."
+impact."베이스" = { n = 3648, avg = 7.5, up = 3506, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 8.4, up = 3506, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 10.7, up = 3506, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.9, up = 3506, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "be2e7d78-5985-11f1-af43-264d116ef584"
+name = "올리브 코듀라 슬링백"
+proposal = "약한포인트"
+why = "위와 같은 이유."
+impact."베이스" = { n = 3648, avg = 7.5, up = 3506, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 8.4, up = 3506, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 10.7, up = 3506, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.9, up = 3506, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "d89299e8-546b-11f1-af43-264d116ef584"
+name = "카키 캔버스 토트백"
+proposal = "연결템"
+why = "카키 캔버스 토트. 남성 데이터의 올리브 캔버스 토트백이 연결템이다."
+impact."베이스" = { n = 3648, avg = 5.5, up = 3384, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 6.1, up = 3384, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 7.5, up = 3384, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 2.7, up = 3384, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "d8928200-546b-11f1-af43-264d116ef584"
+name = "크림 미니 크로스백"
+proposal = "베이스"
+why = "크림 무지 가죽 미니 크로스백."
+impact."베이스" = { n = 3648, avg = 6.7, up = 3447, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 7.3, up = 3447, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 9.2, up = 3447, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.7, up = 3447, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "d8929c2c-546b-11f1-af43-264d116ef584"
+name = "탄 레더 크로스 사첼백"
+proposal = "연결템"
+why = "탄 가죽 사첼. 남성 데이터의 탄 레더 크로스바디백이 연결템이다."
+impact."베이스" = { n = 3648, avg = 5.5, up = 3384, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 6.1, up = 3384, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 7.5, up = 3384, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 2.7, up = 3384, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "8e2f8360-598a-11f1-af43-264d116ef584"
+name = "탄 미디엄 토트백"
+proposal = "구조템"
+why = "격식 4의 탄 가죽 토트. 형태가 잡혀 있다."
+impact."베이스" = { n = 3648, avg = 6.3, up = 3389, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 6.9, up = 3389, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 9.5, up = 3389, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.2, up = 3389, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "4d182220-598e-11f1-af43-264d116ef584"
+name = "탄 스웨이드 프린지 크로스백"
+proposal = "포인트"
+why = "프린지 장식. 보헤미안 코디의 주인공이 되는 가방이다."
+impact."베이스" = { n = 3648, avg = 5.5, up = 3384, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 6.1, up = 3384, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 7.5, up = 3384, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 2.7, up = 3384, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "8e2f8fb8-598a-11f1-af43-264d116ef584"
+name = "핑크 퀼팅 미니 크로스바디백"
+proposal = "포인트"
+why = "핑크 + 퀼팅. 색과 질감 둘 다 눈에 띈다."
+impact."베이스" = { n = 3648, avg = 6.7, up = 3447, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 7.3, up = 3447, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 9.2, up = 3447, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.7, up = 3447, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }
+
+[[role]]
+id = "8c0052ca-598c-11f1-af43-264d116ef584"
+name = "화이트 캔버스 토트백"
+proposal = "베이스"
+why = "화이트 캔버스 토트. 남성 데이터의 크림 캔버스 숄더백이 베이스다."
+impact."베이스" = { n = 3648, avg = 6.7, up = 3447, down = 0, hard = 2 }
+impact."연결템" = { n = 3648, avg = 7.3, up = 3447, down = 0, hard = 2 }
+impact."구조템" = { n = 3648, avg = 9.2, up = 3447, down = 0, hard = 2 }
+impact."약한포인트" = { n = 3648, avg = 3.7, up = 3447, down = 0, hard = 2 }
+impact."포인트" = { n = 3648, avg = 0.0, up = 0, down = 0, hard = 0 }

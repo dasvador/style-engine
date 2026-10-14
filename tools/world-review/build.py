@@ -6,7 +6,7 @@
 - `[[assign]]` 텍스처 월드 배정 (cases.toml)
 - `[[combo]]`  조합 판단 — 충돌/보완/상관없음 (cases.toml). 각 옷의 지금 월드를
   보여 주려고 로컬 DB 를 한 번 읽는다(`.env` 의 DATABASE_URL, mysql 클라이언트 필요).
-- `[[role]]`   아우터 역할 (outer_roles.toml). 역할별 점수 영향(`impact`)을 함께 보여 준다.
+- `[[role]]`   역할 (outer_roles.toml, female_bag_roles.toml). 역할별 점수 영향(`impact`)을 함께 보여 준다.
 - `[[style]]`  스타일 (female_styles.toml). `[[role]]` 과 같은 형식.
 - `[[label]]`  평가 케이스 라벨 확인 (ly_sv_labels.toml). 선택지는 항목마다 `options`.
 - `[[ab]]`     두 코디 중 어느 쪽이 나은지 (shadow_ab.toml). 블라인드 — 어느 엔진의
@@ -15,6 +15,7 @@
     python3 tools/world-review/build.py /tmp/review.html [검수 파일 ...]   (기본 cases.toml)
 
 검수 파일을 여러 개 주면 한 페이지에 탭으로 모은다. 결정 키는 파일마다 자기 `round` 로 만든다.
+`[meta.<종류>]` 로 그 탭의 이름(`tab`)·선택지(`options`)·안내문(`lede`, `legend`)을 바꿀 수 있다.
 
 Claude 가 db 기능이 있는 아티팩트로 게시하고, 결정은 `decisions` 컬렉션에
 `{kind, name, decision, note}` 로 쌓인다. 문서 id 는 회차와 이름의 해시다.
@@ -61,14 +62,15 @@ def current_worlds() -> dict[str, list[str]]:
 
 
 def main(out: str, files: list[pathlib.Path]) -> None:
-    items = []
+    items, meta = [], {}
     for f in files:
         items += load_items(f)
-    payload = json.dumps({"items": items}, ensure_ascii=False)
+        meta.update(tomllib.loads(f.read_text(encoding="utf-8")).get("meta", {}))
+    payload = json.dumps({"items": items, "meta": meta}, ensure_ascii=False)
     html = TEMPLATE.read_text(encoding="utf-8").replace("__DATA__", payload.replace("</", "<\\/"))
     pathlib.Path(out).write_text(html, encoding="utf-8")
     n = {k: sum(i["kind"] == k for i in items) for k in ("label", "ab", "style", "role", "assign", "combo")}
-    print(f"라벨 확인 {n['label']}건, 코디 비교 {n['ab']}건, 스타일 {n['style']}건, 아우터 역할 {n['role']}건, "
+    print(f"라벨 확인 {n['label']}건, 코디 비교 {n['ab']}건, 스타일 {n['style']}건, 역할 {n['role']}건, "
           f"월드 배정 {n['assign']}건, 조합 판단 {n['combo']}건 → {out}")
 
 
