@@ -21,11 +21,11 @@ Wardrobe Edit은 사용자의 옷장과 그날의 상황을 바탕으로 코디�
 <table>
   <tr>
     <td align="center" valign="top" width="50%">
-      <img src="docs/images/home-mood.png" alt="홈 상단: 서울 날씨, 성별 선택, 스타일 무드 칩, 코디 더 만들기 버튼, 내 옷장 요약" width="100%"><br>
+      <img src="docs/images/home-mood-2026-10.png" alt="홈 상단: 서울 날씨, 성별 선택, 스타일 무드 칩, 코디 더 만들기 버튼, 내 옷장 요약" width="100%"><br>
       <sub>날씨와 스타일 무드를 고르고 추천을 받습니다</sub>
     </td>
     <td align="center" valign="top" width="50%">
-      <img src="docs/images/home-lookbook.png" alt="오늘의 룩북: 오프숄더 블라우스와 크로셰 가디건, 스웨이드 와이드 팬츠 착장 이미지, 상의·하의·아우터·신발·가방 구성과 추천 이유" width="100%"><br>
+      <img src="docs/images/home-lookbook-2026-10.png" alt="오늘의 룩북: 오프숄더 블라우스와 크로셰 가디건, 스웨이드 와이드 팬츠 착장 이미지, 상의·하의·아우터·신발·가방 구성과 추천 이유" width="100%"><br>
       <sub>추천 착장을 룩북 이미지와 아이템 구성으로 보여줍니다</sub>
     </td>
   </tr>
