@@ -21,7 +21,7 @@ Wardrobe Edit은 사용자의 옷장과 그날의 상황을 바탕으로 코디�
 <table>
   <tr>
     <td align="center" valign="top" width="50%">
-      <img src="docs/images/home-mood-2026-10.png" alt="홈 상단: 서울 날씨, 성별 선택, 스타일 무드 칩, 코디 더 만들기 버튼, 내 옷장 요약" width="100%"><br>
+      <img src="docs/images/home-mood-2026-10-15.png" alt="홈 상단: 서울 날씨, 성별 선택, 스타일 무드 칩, 코디 더 만들기 버튼, 내 옷장 요약" width="100%"><br>
       <sub>날씨와 스타일 무드를 고르고 추천을 받습니다</sub>
     </td>
     <td align="center" valign="top" width="50%">
