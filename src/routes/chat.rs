@@ -1036,6 +1036,44 @@ fn genre_setting(genre: StyleGenre) -> (&'static [&'static str], &'static str) {
     }
 }
 
+/// 룩북 모델의 출신. 착장 해시로 하나를 고르며, 칸 수가 비중이다(20칸 중 한국 10칸).
+///
+/// 프롬프트가 출신을 말하지 않으면 이미지 모델은 기본값으로 서양인을 그린다. 9월까지는
+/// 장소 문장의 "Hangang riverside", "Seoul" 이 그 역할을 대신해 한국인이 나왔는데,
+/// 2026-09-11 장르별 문장을 다시 쓰며 지명이 빠지자 아시아 모델이 사라졌다. 늘 한국인일
+/// 필요는 없어서(2026-10-15 사용자 판단) 한국을 절반으로 두고 나머지를 섞는다.
+///
+/// 출신만 한 단어로 적고 생김새는 적지 않는다 — 5월의 "Korean idol face" 같은 외모
+/// 묘사는 고정관념이자 인위적인 얼굴로 수렴하는 원인이었다.
+const MODEL_ORIGINS: [&str; 20] = [
+    "Korean",
+    "Korean",
+    "Korean",
+    "Korean",
+    "Korean",
+    "Korean",
+    "Korean",
+    "Korean",
+    "Korean",
+    "Korean",
+    "Japanese",
+    "Japanese",
+    "Chinese",
+    "Southeast Asian",
+    "South Asian",
+    "European",
+    "European",
+    "Black",
+    "Black",
+    "Latina",
+];
+
+/// 착장 해시로 모델 출신을 고른다. 헤어(하위 자리)·장소와 함께 움직이지 않도록 상위
+/// 32비트를 쓴다.
+fn model_origin(hash: u64) -> &'static str {
+    MODEL_ORIGINS[((hash >> 32) as usize) % MODEL_ORIGINS.len()]
+}
+
 fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
     let hairstyles = [
         "messy long waves with curtain bangs, effortless undone texture",
@@ -1070,8 +1108,8 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
     // 피부가 칙칙하게 나왔다. 두 실패가 반대 방향이므로 양쪽을 다 적는다 —
     // 모공과 비대칭은 남기되, 윤기 없고 얼룩진 피부는 명시적으로 막는다.
     let base_face = format!(
-        "a real adult woman with distinctive individual facial features and natural facial \
-         asymmetry — a particular person rather than a generic type. \
+        "a real adult {} woman in her twenties with distinctive individual facial features \
+         and natural facial asymmetry — a particular person rather than a generic type. \
          Realistic skin texture: visible pores, fine facial hair and baby hairs at the \
          hairline, small variations in skin tone, subtle imperfections. The skin is healthy \
          and well-rested — even in tone and warm in colour, never sallow, grey, blotchy or \
@@ -1079,6 +1117,7 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
          natural lips, realistic eyes with subtle reflections and a clear catchlight. \
          Her expression is relaxed and spontaneous, not posed for anyone. \
          Hairstyle: {}, individual strands and a few loose hairs visible.",
+        model_origin(hash),
         hair
     );
 
@@ -2421,6 +2460,20 @@ mod image_prompt_tests {
             );
             assert!(!light.is_empty(), "{g} 에 빛 설명이 없다");
         }
+    }
+
+    /// 모델 출신은 착장마다 갈리고, 해시를 훑으면 목록 전부에 닿으며, 한국이 절반이다.
+    #[test]
+    fn model_origin_varies_and_keeps_korean_at_half() {
+        let picks: Vec<&str> = (0..2000u64)
+            .map(|h| model_origin(h.wrapping_mul(0x9E37_79B9_7F4A_7C15)))
+            .collect();
+        let distinct: std::collections::HashSet<_> = picks.iter().collect();
+        assert_eq!(distinct.len(), 8, "닿지 못하는 출신이 있다");
+        let korean = picks.iter().filter(|o| **o == "Korean").count() as f64 / picks.len() as f64;
+        assert!((0.4..0.6).contains(&korean), "한국 비중 {korean}");
+        let p = build_image_prompt(StyleGenre::Minimal, "회색 티", 5u64 << 32);
+        assert!(p.contains(&format!("a real adult {} woman", model_origin(5u64 << 32))));
     }
 
     /// 추천된 옷이 프롬프트에 그대로 들어가고, 그대로 그리라는 조건이 붙어야 한다.
