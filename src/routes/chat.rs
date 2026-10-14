@@ -933,6 +933,37 @@ impl ImageGenMetrics {
 /// 조합이 바뀌면 장소도 바뀐다.
 ///
 /// 배경에는 재료나 건축 요소를 하나만 둔다 — 옷보다 시선을 끌면 안 된다.
+/// 모든 무드가 함께 쓰는 장소. 무드별 장소만 쓰면 보헤미안은 늘 따뜻한 벽, 스포티는
+/// 늘 운동장, 스트리트는 늘 회색 골목으로 굳는다(2026-10-15 사용자 지적). 무드는 옷이
+/// 전하고, 배경은 그 옷을 보기 좋게 보여 주는 자리라서, 밝고 공간감 있는 도심 장소를
+/// 함께 쓴다. 무드별 장소는 가중치 2, 여기는 1로 섞는다.
+const SHARED_SETTINGS: [&str; 6] = [
+    "a sunlit cafe terrace with a plain awning",
+    "bright stone steps in front of a public building",
+    "a riverside promenade with open sky",
+    "a quiet street of pale stone buildings",
+    "a sunlit plaza where light and shadow cross the paving",
+    "a courtyard with a few potted plants and a rendered wall",
+];
+
+/// 무드별 장소(가중치 2)와 공통 장소(가중치 1)에서 착장 해시로 하나를 고른다.
+/// 해시의 하위 16비트를 쓴다 — 헤어(16~31비트)·출신(상위 32비트)과 묶이지 않는다.
+fn pick_setting(genre: StyleGenre, hash: u64) -> &'static str {
+    let (own, _) = genre_setting(genre);
+    let shared: Vec<&'static str> = SHARED_SETTINGS
+        .iter()
+        .copied()
+        .filter(|s| !own.contains(s))
+        .collect();
+    let total = own.len() * 2 + shared.len();
+    let slot = (hash & 0xFFFF) as usize % total;
+    if slot < own.len() * 2 {
+        own[slot / 2]
+    } else {
+        shared[slot - own.len() * 2]
+    }
+}
+
 fn genre_setting(genre: StyleGenre) -> (&'static [&'static str], &'static str) {
     use StyleGenre as G;
     match genre {
@@ -963,26 +994,34 @@ fn genre_setting(genre: StyleGenre) -> (&'static [&'static str], &'static str) {
         G::Bohemian => (
             &[
                 "a weathered terracotta plaster wall with dried plants nearby",
-                "an old timber door in a sun-warmed stone wall",
+                "a street of pale stone houses with an old timber door",
                 "a shaded courtyard with worn tiles and a large potted plant",
+                "a bright stone building with deep window reveals",
+                "a terrace with potted plants and a low rendered wall",
             ],
             "low late-afternoon sun from the side, long soft shadows",
         ),
+        // 운동하는 곳이 아니라 운동복을 입고 하루를 보내는 곳. 트랙·운동장은 뺐다 —
+        // 배경이 운동 장소로 굳으면 화보가 아니라 운동 사진이 된다.
         G::SportyCasual => (
             &[
-                "the edge of a park path where green meets asphalt",
-                "a running track fence with the field soft behind it",
-                "concrete steps beside a river walkway",
+                "a sunlit cafe terrace with a plain awning",
+                "bright concrete steps outside a modern building",
+                "a riverside walkway with open sky behind her",
+                "the glass facade of a building reflecting soft daylight",
             ],
             "bright open daylight",
         ),
+        // 어둡고 거친 골목 하나로 굳지 않도록 색·빛·공간감이 있는 거리를 섞는다.
         G::Street => (
             &[
-                "rough concrete and a metal roller shutter in a back alley, a few small weathered posters",
-                "a graffitied service door set into a plain concrete wall",
-                "a loading bay with corrugated metal and painted floor markings",
+                "a shopfront clad in coloured tiles on a busy street",
+                "a red-brick street with shop signs receding behind her",
+                "a sunlit square where light and shadow cross the paving",
+                "pale concrete architecture with a strong geometric edge",
+                "rough concrete and a metal roller shutter, a few small weathered posters",
             ],
-            "hard side light that rakes across the texture and gives the frame depth",
+            "clear side light with crisp shadows that gives the frame depth",
         ),
         G::Mannish => (
             &[
@@ -1191,8 +1230,8 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
 
     // 장소도 착장 해시로 고른다. 헤어(`pick_hair`)와 출신(`model_origin`)은 다른
     // 비트를 쓰므로, 장소는 하위 자리를 그대로 쓴다.
-    let (settings, light) = genre_setting(genre);
-    let setting = settings[(hash as usize) % settings.len()];
+    let (_, light) = genre_setting(genre);
+    let setting = pick_setting(genre, hash);
 
     // 얼굴·몸을 치수로 지정하지 않는다.
     //
@@ -1338,6 +1377,7 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
          catalog pose, ecommerce posture, stiff standing, symmetrical front pose, \
          cropped body, cropped legs, tight framing, oversaturated colors, harsh lighting, \
          hair clips, jewellery, props or accessories that are not part of the listed outfit, \
+         balls, rackets, yoga mats, water bottles, gym or sports equipment of any kind, \
          heavy colour grading, a single colour washed over the whole frame, \
          studio backdrop, obvious set dressing, subject lit differently from the background, \
          cheap-looking materials, plastic-looking leather, low-detail fabrics, \
@@ -1364,7 +1404,7 @@ Garments: {base_garments}
 
 Pose: standing still, adjusting a coat cuff, looking away from the camera. {base_pose_rule}
 
-Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
 Lighting: {light}. {base_light}
 
@@ -1391,7 +1431,7 @@ Garments: {base_garments}
 
 Pose: standing near a doorway, one hand resting on her bag strap, weight on one leg. {base_pose_rule}
 
-Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
 Lighting: {light}. {base_light}
 
@@ -1418,7 +1458,7 @@ Garments: {base_garments}
 
 Pose: mid-stride, walking a few steps, looking ahead. {base_pose_rule}
 
-Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
 Lighting: {light}. {base_light}
 
@@ -1445,7 +1485,7 @@ Garments: {base_garments}
 
 Pose: standing with one hand in a pocket, hair moving slightly in the air. {base_pose_rule}
 
-Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
 Lighting: {light}. {base_light}
 
@@ -1475,7 +1515,7 @@ Garments: {base_garments}
 
 Pose: mid-stride on a path, bag on one shoulder, relaxed and unhurried. {base_pose_rule}
 
-Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
 Lighting: {light}. {base_light}
 
@@ -1504,7 +1544,7 @@ Garments: {base_garments}
 
 Pose: leaning one shoulder against the wall, hands in pockets, chin slightly down. {base_pose_rule}
 
-Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
 Lighting: {light}. {base_light}
 
@@ -1531,7 +1571,7 @@ Garments: {base_garments}
 
 Pose: standing squarely, hands in trouser pockets, looking straight down the street. {base_pose_rule}
 
-Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
 Lighting: {light}. {base_light}
 
@@ -1558,7 +1598,7 @@ Garments: {base_garments}
 
 Pose: walking with a bag in one hand, caught mid-step. {base_pose_rule}
 
-Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
 Lighting: {light}. {base_light}
 
@@ -1585,7 +1625,7 @@ Garments: {base_garments}
 
 Pose: standing on stone steps, one hand resting on the railing. {base_pose_rule}
 
-Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
 Lighting: {light}. {base_light}
 
@@ -1612,7 +1652,7 @@ Garments: {base_garments}
 
 Pose: standing with sleeves pushed to the forearm, hands in jacket pockets. {base_pose_rule}
 
-Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
 Lighting: {light}. {base_light}
 
@@ -1639,7 +1679,7 @@ Garments: {base_garments}
 
 Pose: adjusting a pack strap on one shoulder, caught mid-step. {base_pose_rule}
 
-Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
 Lighting: {light}. {base_light}
 
@@ -1667,7 +1707,7 @@ Garments: {base_garments}
 
 Pose: standing relaxed, one hand in a pocket, looking down the alley. {base_pose_rule}
 
-Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them.
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
 
 Lighting: {light}. {base_light}
 
@@ -2537,16 +2577,30 @@ mod image_prompt_tests {
     /// 정말 갈리는지 여기서 확인한다.
     #[test]
     fn different_outfits_reach_different_settings() {
-        let (settings, _) = genre_setting(StyleGenre::Minimal);
-        assert!(settings.len() >= 2, "장소 후보가 하나뿐이면 다양성이 없다");
-
-        let seen: std::collections::HashSet<&str> = (0..200u64)
-            .map(|h| settings[(h as usize) % settings.len()])
+        let hashes: Vec<u64> = (0..4000u64)
+            .map(|h| h.wrapping_mul(0x9E37_79B9_7F4A_7C15))
             .collect();
-        assert_eq!(
-            seen.len(),
-            settings.len(),
-            "해시를 훑어도 일부 장소에 도달하지 못한다"
+        for &g in StyleGenre::ALL {
+            let (own, _) = genre_setting(g);
+            let seen: std::collections::HashSet<&str> =
+                hashes.iter().map(|&h| pick_setting(g, h)).collect();
+            for s in own.iter().chain(SHARED_SETTINGS.iter()) {
+                assert!(seen.contains(s), "{g}: {s} 에 닿지 못한다");
+            }
+            // 무드 장소가 절반 안팎은 나온다 — 공통 장소에 묻히지 않는다.
+            let own_share = hashes
+                .iter()
+                .filter(|&&h| own.contains(&pick_setting(g, h)))
+                .count() as f64
+                / hashes.len() as f64;
+            assert!(own_share >= 0.45, "{g} 무드 장소 비중 {own_share}");
+        }
+        // 스포티 배경이 운동 장소로 굳지 않는다.
+        let (sporty, _) = genre_setting(StyleGenre::SportyCasual);
+        assert!(
+            sporty
+                .iter()
+                .all(|s| !s.contains("track") && !s.contains("field"))
         );
     }
 
