@@ -1074,75 +1074,125 @@ fn model_origin(hash: u64) -> &'static str {
     MODEL_ORIGINS[((hash >> 32) as usize) % MODEL_ORIGINS.len()]
 }
 
-/// 장르별 헤어스타일 후보. 착장 해시로 하나를 고른다.
+/// 장르별 헤어스타일 후보와 가중치. 착장 해시로 하나를 고른다.
 ///
 /// 예전에는 네 가지를 모든 장르가 함께 써서, 스트리트 코디에 단정한 로우 번이,
-/// 클래식 코디에 부스스한 웨이브가 나왔다(2026-10-15 사용자 지적). 헤어도 옷처럼
-/// 무드를 전한다. 모자·핀처럼 추천 목록에 없는 소품은 넣지 않는다 — 공통 회피 규칙의
-/// "목록에 없는 소품 금지" 와 부딪친다.
-fn genre_hair(genre: StyleGenre) -> &'static [&'static str] {
+/// 클래식 코디에 부스스한 웨이브가 나왔다(2026-10-15 사용자 지적). 그렇다고 무드마다
+/// 후보를 갈라 버리면 매니시는 늘 짧은 머리, 스트리트는 늘 튀는 머리가 되어 다시
+/// 캐릭터처럼 보인다 — 얼굴 치수를 걷어내며 줄인 과장이 헤어로 돌아오는 셈이다.
+///
+/// 그래서 생머리·단발·로우 포니테일·느슨한 번 같은 일상 헤어를 여러 무드가 함께 쓰고
+/// 높은 가중치를 준다. 무드는 같은 헤어의 정돈 정도(클래식의 단정한 번, 로맨틱의
+/// 느슨한 번)와, 픽시·투 번·울프컷·양갈래 같은 개성 강한 헤어의 낮은 빈도로만
+/// 드러낸다. 옷이 이미 무드를 전하므로 헤어까지 매번 같은 방향으로 밀 필요는 없다.
+///
+/// 모자·핀처럼 추천 목록에 없는 소품은 넣지 않는다 — 공통 회피 규칙의 "목록에 없는
+/// 소품 금지" 와 부딪친다.
+fn genre_hair(genre: StyleGenre) -> &'static [(&'static str, u32)] {
     use StyleGenre as G;
     match genre {
         G::Minimal => &[
-            "straight shoulder-length hair with a clean center part, tucked behind the ears",
-            "sleek low ponytail, smooth at the crown",
-            "chin-length blunt bob, smooth and simple",
+            (
+                "straight shoulder-length hair with a center part, tucked behind the ears",
+                3,
+            ),
+            ("low ponytail, neat but not slicked down", 3),
+            ("chin-length bob, simple and unstyled", 2),
+            ("loose low bun", 2),
         ],
         G::Classic => &[
-            "sleek low chignon with a center part",
-            "polished chin-length bob with the ends turned under",
-            "soft shoulder-length waves, one side tucked behind the ear",
-            "neat low ponytail",
+            ("neat low bun at the nape", 3),
+            (
+                "chin-length bob with the ends turned under slightly, restrained volume",
+                3,
+            ),
+            (
+                "shoulder-length soft waves, one side tucked behind the ear",
+                2,
+            ),
+            ("neat low ponytail", 2),
         ],
         G::Romantic => &[
-            "soft loose curls falling past the shoulders",
-            "half-up hair with soft waves below",
-            "loose low braid with soft face-framing strands",
+            ("long natural straight hair worn down, soft and unstyled", 3),
+            ("soft loose waves falling past the shoulders", 3),
+            ("half-up hair, loosely gathered", 2),
+            ("loose low bun with face-framing strands", 2),
+            ("loose low braid", 1),
         ],
         G::ModernChic => &[
-            "long sleek straight hair with a deep side part",
-            "sharp jaw-length bob, glossy and blunt",
-            "slicked-back low bun, smooth and tight",
+            ("long straight hair with a side part, natural shine", 3),
+            ("jaw-length bob, natural texture", 3),
+            ("smooth low bun", 2),
+            ("slicked-back hair", 1),
         ],
         G::Bohemian => &[
-            "long loose natural waves with a middle part",
-            "loose side braid with undone strands",
-            "tousled shag with curtain bangs",
+            ("long loose natural waves with a middle part", 4),
+            ("shoulder-length air-dried hair", 2),
+            ("undone low bun", 2),
+            ("loose side braid with undone strands", 1),
         ],
         G::Street => &[
-            "sleek high ponytail pulled tight",
-            "textured wolf cut with choppy layers",
-            "half-up space buns with the rest left down",
-            "long straight hair with blunt bangs",
+            ("long straight hair worn down", 3),
+            ("chin-length bob, slightly tousled", 3),
+            ("high ponytail", 2),
+            ("loose low bun", 2),
+            ("textured wolf cut", 1),
+            ("half-up space buns", 1),
         ],
         G::Mannish => &[
-            "short textured pixie crop",
-            "slicked-back hair tucked behind the ears",
-            "jaw-length bob with a deep side part",
+            ("long straight hair tucked behind the ears", 3),
+            ("loose low ponytail", 3),
+            ("jaw-length bob with a side part", 2),
+            ("slicked-back hair", 1),
+            ("short pixie crop", 1),
         ],
         G::SportyCasual => &[
-            "high ponytail with a few loose strands",
-            "high messy bun",
-            "two low braids",
+            ("high ponytail with a few loose strands", 4),
+            ("high messy bun", 3),
+            ("low ponytail", 2),
+            ("two low braids", 1),
         ],
         // 남성 장르의 코디를 여성 모델로 그릴 때. 특정 무드 없이 일상적인 헤어로 둔다.
         _ => &[
-            "messy long waves with curtain bangs, effortless undone texture",
-            "chin-length blunt bob, slightly tousled",
-            "low loose bun with face-framing strands, relaxed and casual",
-            "center-part shoulder-length hair, natural air-dried texture",
+            (
+                "messy long waves with curtain bangs, effortless undone texture",
+                1,
+            ),
+            ("chin-length blunt bob, slightly tousled", 1),
+            (
+                "low loose bun with face-framing strands, relaxed and casual",
+                1,
+            ),
+            (
+                "center-part shoulder-length hair, natural air-dried texture",
+                1,
+            ),
         ],
     }
 }
 
-fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
-    let hairstyles = genre_hair(genre);
-    let hair = hairstyles[(hash as usize) % hairstyles.len()];
+/// 가중치대로 헤어를 고른다. 장소(해시의 하위 자리)·출신(상위 32비트)과 묶이지
+/// 않도록 그 사이의 16~31비트를 쓴다.
+fn pick_hair(genre: StyleGenre, hash: u64) -> &'static str {
+    let choices = genre_hair(genre);
+    let total: u32 = choices.iter().map(|(_, w)| w).sum();
+    let mut slot = ((hash >> 16) & 0xFFFF) as u32 % total;
+    for (hair, w) in choices {
+        if slot < *w {
+            return hair;
+        }
+        slot -= w;
+    }
+    choices[0].0
+}
 
-    // 장소도 착장 해시로 고른다. 헤어와 같은 나머지를 쓰면 둘이 함께 움직이므로
-    // 헤어 개수로 한 번 나눈 뒤 고른다.
+fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
+    let hair = pick_hair(genre, hash);
+
+    // 장소도 착장 해시로 고른다. 헤어(`pick_hair`)와 출신(`model_origin`)은 다른
+    // 비트를 쓰므로, 장소는 하위 자리를 그대로 쓴다.
     let (settings, light) = genre_setting(genre);
-    let setting = settings[(hash as usize / hairstyles.len()) % settings.len()];
+    let setting = settings[(hash as usize) % settings.len()];
 
     // 얼굴·몸을 치수로 지정하지 않는다.
     //
@@ -2491,10 +2541,7 @@ mod image_prompt_tests {
         assert!(settings.len() >= 2, "장소 후보가 하나뿐이면 다양성이 없다");
 
         let seen: std::collections::HashSet<&str> = (0..200u64)
-            .map(|h| {
-                let hairstyles = genre_hair(StyleGenre::Minimal).len();
-                settings[(h as usize / hairstyles) % settings.len()]
-            })
+            .map(|h| settings[(h as usize) % settings.len()])
             .collect();
         assert_eq!(
             seen.len(),
@@ -2518,18 +2565,30 @@ mod image_prompt_tests {
         }
     }
 
-    /// 모든 장르에 헤어 후보가 둘 이상 있어야 하고, 스트리트와 클래식은 서로 달라야 한다.
+    /// 헤어는 가중치대로 고르되 모든 후보에 닿고, 가중치 1인 개성 강한 헤어는 가끔만
+    /// 나온다. 매니시의 긴 머리처럼 무드와 반대로 보이는 일상 헤어가 실제로 나와야 한다.
     #[test]
-    fn every_genre_has_its_own_hair_choices() {
+    fn hair_follows_weights_and_reaches_every_choice() {
+        let hashes: Vec<u64> = (0..4000u64)
+            .map(|h| h.wrapping_mul(0x9E37_79B9_7F4A_7C15))
+            .collect();
         for &g in StyleGenre::ALL {
-            assert!(genre_hair(g).len() >= 2, "{g} 의 헤어 후보가 하나뿐");
+            let choices = genre_hair(g);
+            assert!(choices.len() >= 2, "{g} 의 헤어 후보가 하나뿐");
+            let total: u32 = choices.iter().map(|(_, w)| w).sum();
+            for (hair, w) in choices {
+                let share = hashes.iter().filter(|&&h| pick_hair(g, h) == *hair).count() as f64
+                    / hashes.len() as f64;
+                let want = *w as f64 / total as f64;
+                assert!(
+                    (share - want).abs() < 0.04,
+                    "{g} {hair}: {share:.3} vs {want:.3}"
+                );
+            }
         }
-        let street = genre_hair(StyleGenre::Street);
-        assert!(
-            genre_hair(StyleGenre::Classic)
-                .iter()
-                .all(|h| !street.contains(h))
-        );
+        let mannish = genre_hair(StyleGenre::Mannish);
+        assert!(mannish.iter().any(|(h, w)| h.contains("long") && *w >= 3));
+        assert!(mannish.iter().any(|(h, w)| h.contains("pixie") && *w == 1));
     }
 
     /// 모델 출신은 착장마다 갈리고, 해시를 훑으면 목록 전부에 닿으며, 한국이 절반이다.
