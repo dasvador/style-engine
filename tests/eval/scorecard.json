@@ -29,8 +29,8 @@
   },
   "combined_accuracy_pct": 77.2,
   "human_pairs": {
-    "pairs": 38,
-    "production_agree_pct": 53.9,
-    "shadow_agree_pct": 47.4
+    "pairs": 16,
+    "production_agree_pct": 68.8,
+    "shadow_agree_pct": 50.0
   }
 }
