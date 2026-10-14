@@ -3362,3 +3362,44 @@ formality_level = 1
 silhouette = "regular"
 seasons = ["가을", "봄", "여름"]
 texture_worlds = ["minimal", "sweat"]
+
+[items.pw_67]
+name = "라이트베이지 와이드 코튼팬츠"
+category = "하의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+silhouette = "oversized"
+seasons = ["가을", "봄"]
+texture_worlds = ["minimal"]
+
+[items.pw_68]
+name = "민트 체크 패턴 트렌치 코트"
+category = "아우터"
+thickness = "medium"
+style = "베이직"
+role = "약한포인트"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+silhouette = "relaxed"
+seasons = ["가을", "봄"]
+texture_worlds = ["minimal"]
+
+[items.pw_69]
+name = "라이트베이지 버킷백"
+category = "가방"
+thickness = "medium"
+style = "베이직"
+role = "포인트"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 2
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather"]

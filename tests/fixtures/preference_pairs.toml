@@ -125,3 +125,13 @@ situation = "캐주얼"
 source = "production"
 better = { top = "pw_54", bottom = "pw_45", outer = "pw_51", shoes = "pw_48", bag = "pw_52" }
 worse = { top = "pw_66", bottom = "pw_55", outer = "pw_43", shoes = "pw_36", bag = "pw_41" }
+
+# 2026-10-14 실루엣 점수 shadow 실험에서 운영 1위와 실루엣 반영 1위가 갈린 유일한 요청.
+# 블라인드로 보여 주고 사람이 운영 쪽을 골랐다.
+[[pairs]]
+id = "AB16"
+context = "여성 · romantic · 캐주얼"
+situation = "캐주얼"
+source = "production"
+better = { top = "fw_04", bottom = "fw_46", outer = "pw_68", shoes = "fw_38", bag = "pw_69" }
+worse = { top = "fw_49", bottom = "pw_67", outer = "fw_27", shoes = "fw_50", bag = "pw_25" }

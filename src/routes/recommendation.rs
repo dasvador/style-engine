@@ -424,8 +424,9 @@ async fn get_multi_recommendation(
     // 오늘 입기에 "실패" 인 후보는 세 추천 자리 모두에서 뺀다. 후보가 전부 실패면
     // 그대로 둔다(빈 추천을 내지 않는다). 아래 shadow 로그는 거르기 전 목록으로 남긴다.
     let mut unfit = Vec::with_capacity(reranked.len());
+    let mut silhouette_delta = Vec::with_capacity(reranked.len());
     for c in &reranked {
-        let fail = match crate::services::candidate_pipeline::rebuild_context(
+        let (fail, silhouette) = match crate::services::candidate_pipeline::rebuild_context(
             c,
             &clothes,
             &state.db,
@@ -433,13 +434,15 @@ async fn get_multi_recommendation(
         )
         .await
         {
-            Some(ctx) => {
+            Some(ctx) => (
                 crate::services::serving_ranker::compute_today_fit(&ctx, weather.temperature)
-                    == crate::services::style_engine_v2::TodayFitLevel::Fail
-            }
-            None => false,
+                    == crate::services::style_engine_v2::TodayFitLevel::Fail,
+                crate::services::style_engine_v2::silhouette_balance(&ctx),
+            ),
+            None => (false, 0),
         };
         unfit.push((c.ai_candidate_index, fail));
+        silhouette_delta.push((c.ai_candidate_index, silhouette));
     }
     let (servable, dropped) = unfit_gate::keep_wearable(reranked.clone(), |c| {
         unfit
@@ -455,6 +458,42 @@ async fn get_multi_recommendation(
     // Step 1: 오늘의 추천 — 최고 점수
     let todays =
         recommendation_service::select_todays_pick(&servable, weather.temperature, &clothes);
+
+    // shadow: 실루엣 점수(상하의 부피 관계)를 운영 점수에 더했을 때의 1위. 응답에는 쓰지
+    // 않고 로그로만 남긴다 — 사람이 고른 15쌍에서는 일치율이 73.3% → 86.7% 로 올랐지만,
+    // 실제 요청에서 1위가 얼마나 바뀌는지 보고 나서 운영에 넣는다.
+    let with_silhouette: Vec<_> = servable
+        .iter()
+        .cloned()
+        .map(|mut c| {
+            let d = silhouette_delta
+                .iter()
+                .find(|(i, _)| *i == c.ai_candidate_index)
+                .map_or(0, |(_, d)| *d);
+            c.style_score += d;
+            c.final_score += d;
+            c
+        })
+        .collect();
+    let silhouette_pick =
+        recommendation_service::select_todays_pick(&with_silhouette, weather.temperature, &clothes);
+    let ids = |c: &crate::models::recommendation::OutfitCandidate| {
+        [&c.top_id, &c.bottom_id, &c.outer_id, &c.shoes_id, &c.bag_id]
+            .iter()
+            .filter_map(|id| id.as_ref())
+            .filter_map(|id| clothes.iter().find(|x| &x.id == id).map(|x| x.name.clone()))
+            .collect::<Vec<_>>()
+    };
+    tracing::info!(
+        "silhouette_shadow={}",
+        serde_json::json!({
+            "production_idx": todays.as_ref().map(|t| t.candidate.ai_candidate_index),
+            "silhouette_idx": silhouette_pick.as_ref().map(|t| t.candidate.ai_candidate_index),
+            "deltas": silhouette_delta,
+            "production_items": todays.as_ref().map(|t| ids(&t.candidate)),
+            "silhouette_items": silhouette_pick.as_ref().map(|t| ids(&t.candidate)),
+        })
+    );
 
     // Step 2: 다른 조합 — Today와 상의+하의가 다른 후보
     let variation = match &todays {

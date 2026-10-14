@@ -411,20 +411,7 @@ fn score_balance(ctx: &OutfitContext) -> i32 {
     // 가점은 이 축이 이미 최대값에서 시작하므로 다른 규칙이 깎아 둔 만큼만 드러난다
     // (아래 밝기 대비 보너스도 같다). 중립 착장과 비율이 또렷한 착장의 점수가 같게
     // 보이는 것은 clamp 때문이고, 버그가 아니다.
-    let upper_volume =
-        slot_silhouette(ctx, SlotKind::Outer).or(slot_silhouette(ctx, SlotKind::Top));
-    let lower_volume = slot_silhouette(ctx, SlotKind::Bottom);
-    if let (Some(upper), Some(lower)) = (upper_volume, lower_volume) {
-        use Silhouette::{Oversized, Regular, Slim};
-        s += match (upper, lower) {
-            (Oversized, Oversized) => -6,
-            (Slim, Slim) => -3,
-            (Oversized, Slim | Regular) | (Slim | Regular, Oversized) => 2,
-            // Regular/Relaxed 조합은 중립이다. 여기를 감점하면 실루엣이 아직 일괄
-            // regular 인 남성 옷장 전체가 이유 없이 깎인다.
-            _ => 0,
-        };
-    }
+    s += silhouette_balance(ctx);
 
     // 자연톤 과다 soft — warm 3+ 이지만 구조 또는 어두움 anchor로 hard를 피한 경우만
     let temps: Vec<&str> = ctx
@@ -455,6 +442,26 @@ fn is_tailored_layer_over_sweat_top(ctx: &OutfitContext) -> bool {
         .filter(|s| has_world(s, "sweat"))
         .all(|s| s.slot == SlotKind::Top);
     tailoring_only_outer && sweat_only_top
+}
+
+/// 상하의 부피 관계의 점수 조정. 운영 엔진 실험(`examples/silhouette_effect.rs`)이 같은 값을
+/// 빌려 쓴다.
+pub fn silhouette_balance(ctx: &OutfitContext) -> i32 {
+    let upper_volume =
+        slot_silhouette(ctx, SlotKind::Outer).or(slot_silhouette(ctx, SlotKind::Top));
+    let lower_volume = slot_silhouette(ctx, SlotKind::Bottom);
+    let (Some(upper), Some(lower)) = (upper_volume, lower_volume) else {
+        return 0;
+    };
+    use Silhouette::{Oversized, Regular, Slim};
+    match (upper, lower) {
+        (Oversized, Oversized) => -6,
+        (Slim, Slim) => -3,
+        (Oversized, Slim | Regular) | (Slim | Regular, Oversized) => 2,
+        // Regular/Relaxed 조합은 중립이다. 여기를 감점하면 실루엣이 아직 일괄
+        // regular 인 남성 옷장 전체가 이유 없이 깎인다.
+        _ => 0,
+    }
 }
 
 /// 해당 슬롯의 실루엣 볼륨. 슬롯이 없거나 값이 없으면 `None`.
