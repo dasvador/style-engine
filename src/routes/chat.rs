@@ -209,6 +209,13 @@ async fn chat(
     ];
 
     let has_previous = !body.previous_items.is_empty();
+    // 부분 수정은 유저가 콕 집어 말한 것을 찾는 일이라, 무드 안에 없으면 같은 성별의
+    // 옷장 전체에서 찾는다 ("카멜 신발" 이 미니멀 무드에 없다고 흰 스니커를 주면 안 된다).
+    let wide_clothes = if has_previous && body.style_mood.is_some() {
+        clothing_repo::list_clothing_filtered(&state.db, body.gender.as_deref(), None).await?
+    } else {
+        Vec::new()
+    };
     let mut tools = tools;
     if has_previous {
         tools.push(ToolDef::new(
@@ -386,8 +393,15 @@ async fn chat(
                             .iter()
                             .find(|i| i.category == category)
                             .map(|i| i.name.clone());
-                        match tool_swap_item(&base, category, query, &clothes, &state.embedding)
-                            .await
+                        match tool_swap_item(
+                            &base,
+                            category,
+                            query,
+                            &clothes,
+                            &wide_clothes,
+                            &state.embedding,
+                        )
+                        .await
                         {
                             Some((items, ids)) => {
                                 swapped = true;
@@ -409,7 +423,10 @@ async fn chat(
                                 })
                                 .to_string()
                             }
-                            None => json!({"error": "바꿀 아이템을 옷장에서 찾지 못했다"}).to_string(),
+                            None => json!({
+                                "error": "옷장에 유저가 말한 아이템이 없다. 바꾸지 말고, 없다는 것을 유저에게 한 문장으로 알려라."
+                            })
+                            .to_string(),
                         }
                     }
                     "evaluate_outfit" => {
@@ -2478,6 +2495,7 @@ async fn tool_swap_item(
     category: &str,
     query: &str,
     clothes: &[Clothing],
+    wide_clothes: &[Clothing],
     embedding: &std::sync::Arc<crate::services::embedding::EmbeddingService>,
 ) -> Option<(Vec<ChatItem>, Vec<String>)> {
     let slot = match category {
@@ -2489,11 +2507,13 @@ async fn tool_swap_item(
         _ => return None,
     };
     let current = base.iter().find(|i| i.slot == slot).map(|i| i.name.as_str());
-    let candidates: Vec<Clothing> = clothes
-        .iter()
-        .filter(|c| c.category == category && Some(c.name.as_str()) != current)
-        .cloned()
-        .collect();
+    let pool = |from: &[Clothing]| -> Vec<Clothing> {
+        from.iter()
+            .filter(|c| c.category == category && Some(c.name.as_str()) != current)
+            .cloned()
+            .collect()
+    };
+    let mut candidates = pool(clothes);
 
     let kept: Vec<&Clothing> = base
         .iter()
@@ -2501,15 +2521,35 @@ async fn tool_swap_item(
         .filter_map(|i| clothes.iter().find(|c| c.name == i.name))
         .collect();
 
+    // 유저가 색을 말했으면 그 색 계열 이름만 후보로 둔다. 임베딩 검색은 무조건 1등을
+    // 돌려주므로, 색이 없는 후보 중 1등(흰 스니커)이 "카멜색" 의 답이 돼 버린다.
+    let colors = color_family(query);
+    if !colors.is_empty() {
+        let by_color = |v: Vec<Clothing>| -> Vec<Clothing> {
+            v.into_iter()
+                .filter(|c| colors.iter().any(|w| c.name.contains(w)))
+                .collect()
+        };
+        candidates = by_color(candidates);
+        if candidates.is_empty() {
+            candidates = by_color(pool(wide_clothes));
+        }
+        if candidates.is_empty() {
+            return None;
+        }
+    }
+
     let picked = if query.is_empty() {
         None
     } else {
-        embedding
+        let found = embedding
             .search_wardrobe(query, &candidates, 1)
             .await
             .ok()
             .and_then(|m| m.into_iter().next())
-            .and_then(|m| candidates.iter().find(|c| c.name == m.name))
+            .and_then(|m| candidates.iter().find(|c| c.name == m.name));
+        // 색을 말했으면 이미 색으로 걸렀으므로 검색이 실패해도 첫 후보가 답이다.
+        found.or_else(|| (!colors.is_empty()).then(|| &candidates[0]))
     };
     let picked = picked.or_else(|| {
         candidates.iter().max_by_key(|c| {
@@ -2538,10 +2578,53 @@ async fn tool_swap_item(
     let ids = items
         .iter()
         .filter(|i| i.owned)
-        .filter_map(|i| clothes.iter().find(|c| c.name == i.name).map(|c| c.id.clone()))
+        .filter_map(|i| {
+            clothes
+                .iter()
+                .chain(wide_clothes)
+                .find(|c| c.name == i.name)
+                .map(|c| c.id.clone())
+        })
         .collect();
     tracing::info!(category, query, picked = %picked.name, "swap_item");
     Some((items, ids))
+}
+
+/// 유저가 말한 색 표현을 옷장 이름에 쓰는 색 단어들로 넓힌다. 색을 말하지 않았으면 빈 목록.
+///
+/// 옷장 이름은 "탄 스웨이드 로퍼", "다크브라운 스웨이드 스니커" 처럼 영어 색 이름을
+/// 한글로 쓴다. 유저는 "카멜", "갈색", "검은" 처럼 말한다.
+fn color_family(query: &str) -> Vec<&'static str> {
+    const FAMILIES: &[(&[&str], &[&str])] = &[
+        (&["카멜", "탄", "코냑"], &["카멜", "탄 ", "코냑"]),
+        (&["브라운", "갈색"], &["브라운", "카멜", "탄 ", "코냑", "초콜릿", "모카"]),
+        (&["블랙", "검은", "검정", "까만"], &["블랙"]),
+        (&["화이트", "흰", "하얀"], &["화이트"]),
+        (&["아이보리", "크림", "에크루"], &["아이보리", "크림", "에크루"]),
+        (&["베이지"], &["베이지"]),
+        (&["네이비", "남색"], &["네이비"]),
+        (&["그레이", "회색"], &["그레이", "차콜"]),
+        (&["차콜"], &["차콜"]),
+        (&["레드", "빨간", "빨강"], &["레드", "버건디"]),
+        (&["버건디", "와인"], &["버건디", "와인"]),
+        (&["올리브", "카키"], &["올리브", "카키"]),
+        (&["실버", "은색"], &["실버"]),
+        (&["골드", "금색"], &["골드"]),
+        (&["핑크", "분홍"], &["핑크"]),
+        (&["블루", "파란", "하늘"], &["블루", "스카이"]),
+        (&["그린", "초록"], &["그린", "민트"]),
+    ];
+    let mut out: Vec<&'static str> = Vec::new();
+    for (said, names) in FAMILIES {
+        if said.iter().any(|w| query.contains(w)) {
+            for n in names.iter() {
+                if !out.contains(n) {
+                    out.push(n);
+                }
+            }
+        }
+    }
+    out
 }
 
 fn tool_evaluate_outfit(
@@ -3086,6 +3169,15 @@ mod image_prompt_tests {
     }
 
     /// 자세는 다섯 후보에 모두 닿고, 기대는 자세는 기댈 것이 있는 장소에서만 나온다.
+    #[test]
+    fn color_words_widen_to_wardrobe_names() {
+        assert!(color_family("카멜색").contains(&"탄 "));
+        assert!(color_family("검은 로퍼").contains(&"블랙"));
+        assert!(color_family("로퍼").is_empty());
+        // "탄" 은 "탄탄한" 같은 말에도 들어가므로 이름 쪽은 띄어쓰기까지 본다.
+        assert!(!"탄탄한 스니커즈".contains(color_family("카멜")[1]));
+    }
+
     #[test]
     fn edit_diff_splits_outside_material_brackets() {
         let base = "top/inner: 화이트 티셔츠 (cotton jersey, oversized), pants: 블랙 슬랙스 (polyester, wide leg), shoes: 화이트 스니커즈 (leather, clean low top)";
