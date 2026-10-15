@@ -4,6 +4,7 @@ import { errorMessage } from '../api/client';
 import type { ChatHistoryRow, ChatItem, Gender, StyleMood, WeatherResponse } from '../types/api';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { LookbookCard } from '../components/LookbookCard';
+import { MoodChips } from '../components/MoodChips';
 
 /**
  * 대화 한 줄.
@@ -31,6 +32,7 @@ interface Props {
   gender: Gender;
   moods: StyleMood[];
   selectedMood: string | null;
+  onMoodChange: (key: string) => void;
 }
 
 /** 서버에 남은 한 줄을 화면의 한 줄로. id 는 서버 값을 음수로 써서 새 메시지와 겹치지 않게 한다. */
@@ -50,11 +52,12 @@ function fromHistory(row: ChatHistoryRow): Message {
   return { kind: 'ai-text', id, text: row.text || '추천 결과가 없습니다.' };
 }
 
-export function ChatPage({ weather, gender, moods, selectedMood }: Props) {
+export function ChatPage({ weather, gender, moods, selectedMood, onMoodChange }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [confirmingClear, setConfirmingClear] = useState(false);
+  const [pickingMood, setPickingMood] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(1);
 
@@ -148,7 +151,15 @@ export function ChatPage({ weather, gender, moods, selectedMood }: Props) {
 
       <div className="chat-mood-line">
         <span>현재 무드</span>
-        <span className="chat-mood-value">{moodLabel}</span>
+        {/* 무드를 바꾸면 다음 질문부터 그 무드로 답한다. 이미 받은 카드는 만들 때의 무드로
+            그대로 그린다 — 사진을 다시 만들지 않는다. */}
+        <button
+          className="chat-mood-value chat-mood-toggle"
+          aria-expanded={pickingMood}
+          onClick={() => setPickingMood((v) => !v)}
+        >
+          {moodLabel} <span aria-hidden="true">{pickingMood ? '▴' : '▾'}</span>
+        </button>
         {messages.length > 0 && (
           <span className="saved-delete chat-clear">
             {confirmingClear ? (
@@ -169,6 +180,18 @@ export function ChatPage({ weather, gender, moods, selectedMood }: Props) {
           </span>
         )}
       </div>
+      {pickingMood && (
+        <div className="chat-mood-picker">
+          <MoodChips
+            moods={moods}
+            selectedMood={selectedMood}
+            onMoodChange={(key) => {
+              onMoodChange(key);
+              setPickingMood(false);
+            }}
+          />
+        </div>
+      )}
 
       <div className="chat-container" ref={containerRef}>
         <div className="chat-bubble chat-ai">

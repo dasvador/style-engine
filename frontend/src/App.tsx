@@ -85,7 +85,13 @@ export function App() {
           <Route
             path="chat"
             element={
-              <ChatPage weather={weather.data} gender={gender} moods={moods} selectedMood={selectedMood} />
+              <ChatPage
+                weather={weather.data}
+                gender={gender}
+                moods={moods}
+                selectedMood={selectedMood}
+                onMoodChange={setSelectedMood}
+              />
             }
           />
           <Route path="evaluate" element={<EvaluatePage clothes={clothes.items} />} />

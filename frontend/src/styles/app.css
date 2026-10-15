@@ -760,6 +760,11 @@ button, input, select, textarea { font-family: inherit; }
   padding: 0 0 14px; font-size: 0.78rem; color: var(--ink-faint);
 }
 .chat-mood-value { color: var(--accent); font-weight: 600; }
+/* 무드 이름을 누르면 칩이 펼쳐진다. 버튼처럼 보이지 않게 글자만 둔다. */
+.chat-mood-toggle {
+  background: none; border: 0; padding: 4px 0; cursor: pointer; font: inherit; min-height: 28px;
+}
+.chat-mood-picker { padding: 0 0 14px; }
 /* 룩북에 담기는 피드백 줄 아래 따로 둔다 — 취향 표시와 보관은 다른 일이다. */
 .lookbook-keep { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 10px; }
 /* 대화 지우기는 무드 줄 오른쪽 끝에 작게 둔다. */

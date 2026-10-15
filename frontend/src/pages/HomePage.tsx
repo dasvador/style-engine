@@ -7,6 +7,7 @@ import { WeatherBar } from '../components/WeatherBar';
 import { RegionBar } from '../components/RegionBar';
 import { LookbookStack } from '../components/LookbookStack';
 import { prefetchOutfitImage } from '../hooks/useOutfitImage';
+import { MoodChips } from '../components/MoodChips';
 import { buildImagePrompt } from '../lib/lookbook';
 import { outfitToImageItems } from '../lib/lookbook';
 import { ErrorMessage, Loading } from '../components/Status';
@@ -337,18 +338,7 @@ export function HomePage({
 
         <div className="pick-group">
           <span className="eyebrow">Style</span>
-          <div className="mood-chips" role="group" aria-label="스타일 장르 선택">
-            {moods.map((m) => (
-              <button
-                key={m.mood_key}
-                className={`mood-chip-btn${selectedMood === m.mood_key ? ' active' : ''}`}
-                aria-pressed={selectedMood === m.mood_key}
-                onClick={() => onMoodChange(m.mood_key)}
-              >
-                {m.mood_label}
-              </button>
-            ))}
-          </div>
+          <MoodChips moods={moods} selectedMood={selectedMood} onMoodChange={onMoodChange} />
           {/* 이름만으로는 장르 간 차이를 알기 어렵다. 고른 장르의 설명을 한 줄 보여준다.
               문구는 DB(style_mood.description)에 있어 배포 없이 고칠 수 있다. */}
           {selectedMoodDescription && <p className="mood-note">{selectedMoodDescription}</p>}
