@@ -147,6 +147,31 @@ struct ChatItem {
     material: Option<String>,
 }
 
+/// 옷장 카테고리 → 상담 카드의 슬롯 이름. 화면(`lib/lookbook.ts` 의 `CATEGORY_TO_SLOT`)과 같다.
+fn slot_for_category(category: &str) -> Option<&'static str> {
+    match category {
+        "상의" => Some("inner"),
+        "아우터" => Some("outer"),
+        "하의" => Some("bottom"),
+        "신발" => Some("shoes"),
+        "가방" => Some("bag"),
+        _ => None,
+    }
+}
+
+impl ChatItem {
+    /// 옷장 아이템 하나를 카드 한 칸으로. 슬롯이 없는 카테고리면 `None`.
+    fn from_clothing(c: &Clothing, owned: bool) -> Option<Self> {
+        Some(Self {
+            slot: slot_for_category(&c.category)?.to_string(),
+            category: c.category.clone(),
+            name: c.name.clone(),
+            owned,
+            material: c.image_material(),
+        })
+    }
+}
+
 async fn chat(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -288,6 +313,20 @@ async fn chat(
     ];
 
     let has_previous = !body.previous_items.is_empty();
+
+    // 옷 자체를 고쳐 달라는 말("맨투맨에 스누피 그래픽 추가해줘")은 옷장 아이템을 바꾸는
+    // 이 기능으로 할 수 없다. 모델에 맡기면 비슷한 옷으로 바꾸거나 다른 칸까지 손대서,
+    // 사진은 그대로인데 착장만 엉뚱하게 바뀐다. 모델을 부르지 않고 바로 알린다.
+    if has_previous && asks_to_modify_item(&body.message) {
+        let reply = "지금은 옷장에 있는 다른 옷으로 바꾸는 것만 할 수 있어요. 그래픽이나 자수처럼 옷 자체를 고치는 건 아직 못 해요.".to_string();
+        save_exchange(&state.db, user_id, &body, &reply, &[]).await;
+        return Ok(Json(ChatResponse {
+            reply,
+            items: Vec::new(),
+        }));
+    }
+    // 유저가 말한 카테고리. 비어 있으면("좀 더 화사하게") 어느 칸이든 바꿀 수 있다.
+    let asked_categories = mentioned_categories(&body.message);
     // 부분 수정은 유저가 콕 집어 말한 것을 찾는 일이라, 무드 안에 없으면 같은 성별의
     // 옷장 전체에서 찾는다 ("카멜 신발" 이 미니멀 무드에 없다고 흰 스니커를 주면 안 된다).
     let wide_clothes = if has_previous && body.style_mood.is_some() {
@@ -299,7 +338,7 @@ async fn chat(
     if has_previous {
         tools.push(ToolDef::new(
             "swap_item",
-            "직전에 보여 준 코디에서 한 카테고리만 바꾼다. 나머지 아이템은 그대로 둔다. 유저가 원하는 것이 있으면 query 로 넘긴다(예: 로퍼, 검은 신발). 없으면 비워 두면 서버가 나머지와 가장 잘 맞는 것을 고른다.",
+            "직전에 보여 준 코디에서 한 카테고리를 옷장의 다른 아이템으로 바꾼다. 나머지 아이템은 그대로 둔다. 유저가 원하는 것이 있으면 query 로 넘긴다(예: 로퍼, 검은 신발). 없으면 비워 두면 서버가 나머지와 가장 잘 맞는 것을 고른다. 지금 입은 옷에 그래픽·무늬·자수·로고를 더하거나 핏·기장을 고치는 '옷 자체의 수정'은 이 도구로 할 수 없다 — 그런 요청이면 호출하지 말고, 옷장에 있는 다른 옷으로 바꾸는 것만 된다고 한 문장으로 알려라.",
             json!({
                 "type": "object",
                 "properties": {
@@ -365,6 +404,10 @@ async fn chat(
     let mut anchor_category: Option<String> = None;
     // 이번 요청에서 swap_item 으로 일부를 바꿨는지. 그 뒤로는 전체 재구성을 막는다.
     let mut swapped = false;
+    // 유저 요청으로 바꾼 카테고리. 평가가 나온 뒤에는 이 밖의 카테고리를 바꾸지 못한다 —
+    // 평가가 "하체가 가볍다" 고 하면 모델이 묻지도 않은 신발을 바꾼다 (2026-10-15).
+    let mut swapped_categories: Vec<String> = Vec::new();
+    let mut evaluated = false;
 
     for _turn in 0..8 {
         let resp = state
@@ -441,14 +484,7 @@ async fn chat(
                         if let Some(ref uq) = first_search_query {
                             let is_in_db = clothes.iter().any(|c| c.name == *uq);
                             if !is_in_db && let Some(ref cat) = anchor_category {
-                                let sk = match cat.as_str() {
-                                    "신발" => "shoes",
-                                    "아우터" => "outer",
-                                    "하의" => "bottom",
-                                    "가방" => "bag",
-                                    "상의" => "inner",
-                                    _ => "",
-                                };
+                                let sk = slot_for_category(cat).unwrap_or("");
                                 if let Some(item) = items.iter_mut().find(|i| i.slot == sk) {
                                     item.name = uq.clone();
                                     item.owned = false;
@@ -458,6 +494,19 @@ async fn chat(
                         final_items = items;
                         final_item_ids = chosen_ids;
                         outfit_json
+                    }
+                    "swap_item"
+                        if !swap_allowed(
+                            fn_args["category"].as_str().unwrap_or(""),
+                            &asked_categories,
+                            &swapped_categories,
+                            evaluated,
+                        ) =>
+                    {
+                        json!({
+                            "error": "유저가 바꾸라고 하지 않은 카테고리다. 바꾸지 말고, 지금 착장을 설명하라."
+                        })
+                        .to_string()
                     }
                     "swap_item" => {
                         let category = fn_args["category"].as_str().unwrap_or("");
@@ -484,6 +533,9 @@ async fn chat(
                         {
                             Some((items, ids)) => {
                                 swapped = true;
+                                if !swapped_categories.iter().any(|c| c == category) {
+                                    swapped_categories.push(category.to_string());
+                                }
                                 let to = items
                                     .iter()
                                     .find(|i| i.category == category)
@@ -509,6 +561,7 @@ async fn chat(
                         }
                     }
                     "evaluate_outfit" => {
+                        evaluated = true;
                         let names: Vec<String> = fn_args["item_names"]
                             .as_array()
                             .map(|a| {
@@ -2547,14 +2600,7 @@ async fn tool_get_outfit(
         Some((_desc, mut items, chosen_ids)) => {
             // anchor 슬롯을 유저 원문으로 교체 (DB에 없어도 원문 유지)
             let anchor_slot = display_anchor_cat;
-            let slot_key = match anchor_slot {
-                "상의" => "inner",
-                "아우터" => "outer",
-                "하의" => "bottom",
-                "신발" => "shoes",
-                "가방" => "bag",
-                _ => "shoes",
-            };
+            let slot_key = slot_for_category(anchor_slot).unwrap_or("shoes");
 
             // proxy anchor가 있으면 해당 슬롯의 아이템을 유저 원문으로 덮어쓰기
             if let Some(item) = items.iter_mut().find(|i| i.slot == slot_key) {
@@ -2605,14 +2651,7 @@ async fn tool_swap_item(
     wide_clothes: &[Clothing],
     embedding: &std::sync::Arc<crate::services::embedding::EmbeddingService>,
 ) -> Option<(Vec<ChatItem>, Vec<String>)> {
-    let slot = match category {
-        "상의" => "inner",
-        "아우터" => "outer",
-        "하의" => "bottom",
-        "신발" => "shoes",
-        "가방" => "bag",
-        _ => return None,
-    };
+    let slot = slot_for_category(category)?;
     let current = base
         .iter()
         .find(|i| i.slot == slot)
@@ -2633,16 +2672,19 @@ async fn tool_swap_item(
 
     // 유저가 색을 말했으면 그 색 계열 이름만 후보로 둔다. 임베딩 검색은 무조건 1등을
     // 돌려주므로, 색이 없는 후보 중 1등(흰 스니커)이 "카멜색" 의 답이 돼 버린다.
+    // 종류("로퍼", "부츠")도 같다 — 무드 안에 로퍼가 없으면 흰 스니커가 1등으로 온다.
     let colors = color_family(query);
-    if !colors.is_empty() {
-        let by_color = |v: Vec<Clothing>| -> Vec<Clothing> {
-            v.into_iter()
-                .filter(|c| colors.iter().any(|w| c.name.contains(w)))
-                .collect()
+    let kinds = kind_family(query);
+    if !colors.is_empty() || !kinds.is_empty() {
+        let fits = |c: &Clothing| {
+            (colors.is_empty() || colors.iter().any(|w| c.name.contains(w)))
+                && (kinds.is_empty() || kinds.iter().any(|w| c.name.contains(w)))
         };
-        candidates = by_color(candidates);
+        let by_words =
+            |v: Vec<Clothing>| -> Vec<Clothing> { v.into_iter().filter(|c| fits(c)).collect() };
+        candidates = by_words(candidates);
         if candidates.is_empty() {
-            candidates = by_color(pool(wide_clothes));
+            candidates = by_words(pool(wide_clothes));
         }
         if candidates.is_empty() {
             return None;
@@ -2658,8 +2700,8 @@ async fn tool_swap_item(
             .ok()
             .and_then(|m| m.into_iter().next())
             .and_then(|m| candidates.iter().find(|c| c.name == m.name));
-        // 색을 말했으면 이미 색으로 걸렀으므로 검색이 실패해도 첫 후보가 답이다.
-        found.or_else(|| (!colors.is_empty()).then(|| &candidates[0]))
+        // 색이나 종류를 말했으면 이미 걸렀으므로 검색이 실패해도 첫 후보가 답이다.
+        found.or_else(|| (!colors.is_empty() || !kinds.is_empty()).then(|| &candidates[0]))
     };
     let picked = picked.or_else(|| {
         candidates.iter().max_by_key(|c| {
@@ -2669,16 +2711,7 @@ async fn tool_swap_item(
         })
     })?;
 
-    let new_item = ChatItem {
-        slot: slot.to_string(),
-        category: picked.category.clone(),
-        name: picked.name.clone(),
-        owned: true,
-        material: picked
-            .material_primary
-            .clone()
-            .or_else(|| picked.texture_keywords.clone()),
-    };
+    let new_item = ChatItem::from_clothing(picked, true)?;
     // 자리는 그대로 두고 그 칸만 바꾼다 — 화면과 이미지 문자열의 순서가 유지된다.
     let mut items = base.to_vec();
     match items.iter_mut().find(|i| i.slot == slot) {
@@ -2704,6 +2737,156 @@ async fn tool_swap_item(
 ///
 /// 옷장 이름은 "탄 스웨이드 로퍼", "다크브라운 스웨이드 스니커" 처럼 영어 색 이름을
 /// 한글로 쓴다. 유저는 "카멜", "갈색", "검은" 처럼 말한다.
+/// 이번 요청에서 이 카테고리를 바꿔도 되는지.
+///
+/// 유저가 카테고리를 말했으면 그것만. 말하지 않았으면 평가 전까지는 어느 칸이든,
+/// 평가 뒤에는 이미 바꾼 칸만 — 평가가 아쉬운 점을 말하면 모델이 묻지도 않은 칸을 바꾼다.
+fn swap_allowed(category: &str, asked: &[&str], swapped: &[String], evaluated: bool) -> bool {
+    if !asked.is_empty() {
+        return asked.contains(&category);
+    }
+    !evaluated || swapped.iter().any(|c| c == category)
+}
+
+/// 유저 메시지에 나온 카테고리. 아이템 이름에 흔히 쓰는 말로 찾는다.
+fn mentioned_categories(message: &str) -> Vec<&'static str> {
+    const WORDS: &[(&str, &[&str])] = &[
+        (
+            "상의",
+            &[
+                "상의",
+                "티셔츠",
+                "반팔",
+                "긴팔",
+                "셔츠",
+                "니트",
+                "맨투맨",
+                "스웨트셔츠",
+                "블라우스",
+                "후드",
+                "폴로",
+                "탑",
+            ],
+        ),
+        (
+            "하의",
+            &[
+                "하의",
+                "바지",
+                "팬츠",
+                "스커트",
+                "치마",
+                "슬랙스",
+                "청바지",
+                "레깅스",
+                "조거",
+            ],
+        ),
+        (
+            "아우터",
+            &[
+                "아우터",
+                "자켓",
+                "재킷",
+                "코트",
+                "점퍼",
+                "블루종",
+                "가디건",
+                "윈드브레이커",
+                "패딩",
+                "트렌치",
+                "베스트",
+            ],
+        ),
+        (
+            "신발",
+            &[
+                "신발",
+                "스니커",
+                "로퍼",
+                "부츠",
+                "샌들",
+                "구두",
+                "힐",
+                "플랫",
+                "슈즈",
+                "뮬",
+            ],
+        ),
+        ("가방", &["가방", "백", "토트", "크로스", "숄더", "클러치"]),
+    ];
+    // "셔츠" 는 "스웨트셔츠"·"티셔츠" 안에도 있지만 모두 상의라 문제없다. "후드" 는 후드집업
+    // (아우터)일 수도 있으나, 상담에서 후드라고 하면 대개 후드티다.
+    WORDS
+        .iter()
+        .filter(|(_, words)| words.iter().any(|w| message.contains(w)))
+        .map(|(cat, _)| *cat)
+        .collect()
+}
+
+/// 옷장의 다른 옷으로 바꾸는 게 아니라 옷 자체를 고쳐 달라는 말인지.
+///
+/// 무늬·그래픽 같은 말과 "추가·넣어" 같은 말이 함께 있을 때만 본다. "로고 티로 바꿔줘" 는
+/// 로고가 있는 다른 옷으로 바꾸라는 말이라 걸리지 않는다.
+fn asks_to_modify_item(message: &str) -> bool {
+    const DETAILS: &[&str] = &[
+        "그래픽",
+        "프린트",
+        "자수",
+        "로고",
+        "패치",
+        "레터링",
+        "캐릭터",
+        "무늬",
+        "그림",
+    ];
+    const VERBS: &[&str] = &[
+        "추가", "넣어", "넣고", "그려", "새겨", "박아", "달아", "붙여",
+    ];
+    DETAILS.iter().any(|d| message.contains(d)) && VERBS.iter().any(|v| message.contains(v))
+}
+
+/// 유저가 말한 아이템 종류를 옷장 이름에 쓰는 말로 넓힌다. 종류를 말하지 않았으면 빈 목록.
+fn kind_family(query: &str) -> Vec<&'static str> {
+    const FAMILIES: &[(&[&str], &[&str])] = &[
+        (&["로퍼"], &["로퍼"]),
+        (&["부츠"], &["부츠"]),
+        (&["샌들"], &["샌들"]),
+        (&["스니커", "운동화"], &["스니커"]),
+        (&["힐"], &["힐"]),
+        (&["플랫"], &["플랫"]),
+        (&["뮬"], &["뮬"]),
+        (&["구두"], &["로퍼", "더비", "옥스퍼드", "힐", "메리제인"]),
+        (&["토트"], &["토트"]),
+        (&["크로스"], &["크로스"]),
+        (&["숄더"], &["숄더"]),
+        (&["백팩"], &["백팩"]),
+        (&["버킷"], &["버킷"]),
+        (&["니트"], &["니트"]),
+        (&["블라우스"], &["블라우스"]),
+        (&["맨투맨"], &["맨투맨", "스웨트셔츠"]),
+        (&["후드"], &["후드"]),
+        (&["슬랙스"], &["슬랙스"]),
+        (&["청바지", "데님"], &["데님", "진"]),
+        (&["스커트", "치마"], &["스커트"]),
+        (&["코트"], &["코트"]),
+        (&["트렌치"], &["트렌치"]),
+        (&["블레이저"], &["블레이저"]),
+        (&["가디건"], &["가디건"]),
+    ];
+    let mut out: Vec<&'static str> = Vec::new();
+    for (said, names) in FAMILIES {
+        if said.iter().any(|w| query.contains(w)) {
+            for n in names.iter() {
+                if !out.contains(n) {
+                    out.push(n);
+                }
+            }
+        }
+    }
+    out
+}
+
 fn color_family(query: &str) -> Vec<&'static str> {
     const FAMILIES: &[(&[&str], &[&str])] = &[
         (&["카멜", "탄", "코냑"], &["카멜", "탄 ", "코냑"]),
@@ -2966,47 +3149,21 @@ fn build_final_outfit(
     let mut desc_parts = Vec::new();
     let mut items = Vec::new();
     for c in best_outfit.iter() {
-        let slot = match c.category.as_str() {
-            "상의" => "inner",
-            "아우터" => "outer",
-            "하의" => "bottom",
-            "신발" => "shoes",
-            "가방" => "bag",
-            _ => continue,
+        let Some(item) = ChatItem::from_clothing(c, true) else {
+            continue;
         };
-        desc_parts.push(format!("{}: {}", slot, c.name));
-        let mat = c
-            .material_primary
-            .clone()
-            .or_else(|| c.texture_keywords.clone());
-        items.push(ChatItem {
-            slot: slot.to_string(),
-            category: c.category.clone(),
-            name: c.name.clone(),
-            owned: true,
-            material: mat,
-        });
+        desc_parts.push(format!("{}: {}", item.slot, c.name));
+        items.push(item);
     }
     if !items.iter().any(|i| i.name == anchor.name) {
-        let slot = match anchor.category.as_str() {
-            "상의" => "inner",
-            "아우터" => "outer",
-            "하의" => "bottom",
-            "신발" => "shoes",
-            "가방" => "bag",
-            _ => "?",
-        };
+        let slot = slot_for_category(&anchor.category).unwrap_or("?");
         desc_parts.push(format!("{}: {}", slot, anchor.name));
-        let mat = anchor
-            .material_primary
-            .clone()
-            .or_else(|| anchor.texture_keywords.clone());
         items.push(ChatItem {
             slot: slot.to_string(),
             category: anchor.category.clone(),
             name: anchor.name.clone(),
             owned: clothes.iter().any(|c| c.name == anchor.name),
-            material: mat,
+            material: anchor.image_material(),
         });
     }
     Some((desc_parts.join("\n"), items, chosen_ids))
@@ -3286,10 +3443,36 @@ mod image_prompt_tests {
 
     /// 자세는 다섯 후보에 모두 닿고, 기대는 자세는 기댈 것이 있는 장소에서만 나온다.
     #[test]
+    fn partial_edits_stay_inside_what_was_asked() {
+        assert!(asks_to_modify_item(
+            "라이트그레이 오버사이즈 맨투맨 정면에 스누피 그래픽 추가해줘"
+        ));
+        assert!(!asks_to_modify_item("로고 티로 바꿔줘"));
+        assert!(!asks_to_modify_item("아우터 추가해줘"));
+
+        assert_eq!(mentioned_categories("신발만 로퍼로 바꿔줘"), vec!["신발"]);
+        assert_eq!(
+            mentioned_categories("신발이랑 가방 바꿔줘"),
+            vec!["신발", "가방"]
+        );
+        assert!(mentioned_categories("좀 더 화사하게 해줘").is_empty());
+
+        let shoes = ["신발"];
+        assert!(swap_allowed("신발", &shoes, &[], false));
+        assert!(!swap_allowed("하의", &shoes, &[], false));
+        // 카테고리를 말하지 않았으면 평가 뒤에는 이미 바꾼 칸만.
+        let done = ["상의".to_string()];
+        assert!(swap_allowed("상의", &[], &done, true));
+        assert!(!swap_allowed("신발", &[], &done, true));
+    }
+
+    #[test]
     fn color_words_widen_to_wardrobe_names() {
         assert!(color_family("카멜색").contains(&"탄 "));
         assert!(color_family("검은 로퍼").contains(&"블랙"));
         assert!(color_family("로퍼").is_empty());
+        assert_eq!(kind_family("로퍼로 바꿔줘"), vec!["로퍼"]);
+        assert!(kind_family("카멜색").is_empty());
         // "탄" 은 "탄탄한" 같은 말에도 들어가므로 이름 쪽은 띄어쓰기까지 본다.
         assert!(!"탄탄한 스니커즈".contains(color_family("카멜")[1]));
     }

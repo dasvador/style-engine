@@ -158,6 +158,43 @@ pub struct VisionAnalysisResult {
     pub style_genres: Vec<String>,
 }
 
+impl Clothing {
+    /// 이미지 프롬프트에 넘길 소재·구조 설명.
+    ///
+    /// `material_primary` 는 "cotton" 처럼 소재만, `texture_keywords` 는
+    /// "cotton jersey, relaxed crewneck" 처럼 짜임과 구조까지 담는다. 둘 중 하나만
+    /// 고르면 아깝다 — 워크 셔츠처럼 texture 가 "faded" 뿐인 경우도 있고, 백팩처럼
+    /// texture 가 소재를 이미 포함하는 경우도 있다. 그래서 합치되, 소재 이름이 이미
+    /// texture 안에 있으면 중복해서 넣지 않는다.
+    ///
+    /// 이미지 모델에게 아이템 이름만 주면 "가방" 수준으로 뭉개진다. 소재와 구조를
+    /// 같이 줘야 가죽 결과 재봉선이 살아난다.
+    ///
+    /// 홈 추천과 상담이 같은 것을 쓴다. 상담만 `material_primary` 하나("cotton")를 넣었을
+    /// 때는 상담 사진만 핏과 소재감이 덜 살았다.
+    pub fn image_material(&self) -> Option<String> {
+        let tex = self
+            .texture_keywords
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        let mat = self
+            .material_primary
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        match (mat, tex) {
+            (Some(m), Some(t)) if t.to_lowercase().contains(&m.to_lowercase()) => {
+                Some(t.to_string())
+            }
+            (Some(m), Some(t)) => Some(format!("{m}, {t}")),
+            (Some(m), None) => Some(m.to_string()),
+            (None, Some(t)) => Some(t.to_string()),
+            (None, None) => None,
+        }
+    }
+}
+
 impl VisionAnalysisResult {
     /// 옷장에 넣을 아이템인지. 모델의 `is_clothing` 을 그대로 믿지 않는 경우가 하나 있다.
     ///
