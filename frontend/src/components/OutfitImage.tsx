@@ -3,11 +3,17 @@ import { useOutfitImage } from "../hooks/useOutfitImage";
 interface Props {
   items: readonly { slot: string; name: string; material?: string | null }[];
   mood: string | null;
+  /** 앞 코디. 일부만 바뀌었으면 앞 사진을 편집한다. */
+  baseItems?: readonly {
+    slot: string;
+    name: string;
+    material?: string | null;
+  }[];
 }
 
 /** 룩북/추천 카드의 생성 이미지 자리. 로딩·실패 상태를 자체적으로 표시한다. */
-export function OutfitImage({ items, mood }: Props) {
-  const state = useOutfitImage(items, mood);
+export function OutfitImage({ items, mood, baseItems }: Props) {
+  const state = useOutfitImage(items, mood, baseItems);
 
   return (
     <div className="lookbook-img-wrap">

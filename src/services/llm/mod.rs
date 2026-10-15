@@ -40,7 +40,8 @@ pub use provider::ProviderId;
 // 모듈의 공개 표면. bin 타깃(main.rs)은 이 중 일부만 쓰지만, 나머지도 의도적으로 공개한다.
 #[allow(unused_imports)]
 pub use types::{
-    ChatRequest, ChatResponse, ContentPart, EmbeddingResult, ImageDetail, ImageRequest,
+    ChatRequest, ChatResponse, ContentPart, EmbeddingResult, ImageDetail, ImageEditRequest,
+    ImageRequest,
     ImageResult, Message, ResponseFormat, StopReason, ToolCall, ToolDef,
 };
 pub use usage::Usage;
@@ -256,6 +257,31 @@ impl LlmClient {
             let (provider, model) = (provider.clone(), cfg.model.clone());
             async move {
                 let r = provider.generate(&model, req).await?;
+                let usage = r.usage;
+                Ok((r, usage))
+            }
+        })
+        .await
+    }
+
+    /// 이미 만든 그림에서 일부만 바꾼다. 재시도·계측은 생성과 같다.
+    pub async fn edit_image(&self, req: &ImageEditRequest) -> Result<ImageResult, LlmError> {
+        let task = LlmTask::ImageEdit;
+        let cfg = self.config.task(task).clone();
+
+        let provider = self
+            .image_providers
+            .get(&cfg.provider)
+            .ok_or(LlmError::Unsupported {
+                provider: cfg.provider,
+                capability: "image edit",
+            })?
+            .clone();
+
+        self.run_with_retry(task, &cfg, || {
+            let (provider, model) = (provider.clone(), cfg.model.clone());
+            async move {
+                let r = provider.edit(&model, req).await?;
                 let usage = r.usage;
                 Ok((r, usage))
             }

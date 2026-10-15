@@ -20,6 +20,8 @@ interface Props {
   reply: string;
   weather: CurrentWeather | null;
   selectedMood: string | null;
+  /** 바로 앞 카드의 코디. 일부만 바뀐 코디면 앞 사진을 편집해 보여 준다. */
+  baseItems?: ChatItem[];
 }
 
 const SLOT_ORDER = ['inner', 'outer', 'bottom', 'shoes', 'bag'] as const;
@@ -37,7 +39,7 @@ type FeedbackState =
   | { phase: 'choosing'; type: FeedbackType }
   | { phase: 'done'; text: string };
 
-export function LookbookCard({ items, reply, weather, selectedMood }: Props) {
+export function LookbookCard({ items, reply, weather, selectedMood, baseItems }: Props) {
   const [feedback, setFeedback] = useState<FeedbackState>({ phase: 'idle' });
 
   const title = generateLookbookTitle(items);
@@ -96,7 +98,7 @@ export function LookbookCard({ items, reply, weather, selectedMood }: Props) {
         )}
       </div>
 
-      <OutfitImage items={items} mood={selectedMood} />
+      <OutfitImage items={items} mood={selectedMood} baseItems={baseItems} />
 
       <div className="lookbook-items">
         {SLOT_ORDER.map((slot) => {

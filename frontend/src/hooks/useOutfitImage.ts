@@ -57,7 +57,12 @@ function cacheKey(items: ImageItems, mood: string | null): string {
 }
 
 /** 캐시 → 진행 중인 요청 → 새 요청 순으로 하나의 이미지를 가져온다. */
-function loadImage(key: string, prompt: string, mood: string | null): Promise<string | null> {
+function loadImage(
+  key: string,
+  prompt: string,
+  mood: string | null,
+  basePrompt?: string,
+): Promise<string | null> {
   const hit = imageCache.get(key);
   if (hit) return Promise.resolve(hit);
 
@@ -65,7 +70,7 @@ function loadImage(key: string, prompt: string, mood: string | null): Promise<st
   if (running) return running;
 
   const task = api.chat
-    .image({ items: prompt, mood })
+    .image({ items: prompt, mood, base_items: basePrompt || undefined })
     .then((r) => {
       if (r.image_url) publish(key, r.image_url);
       return r.image_url ?? null;
@@ -103,12 +108,18 @@ export function cachedOutfitImage(items: ImageItems, mood: string | null): strin
  * 생성은 수십 초가 걸리고 실패해도 카드 나머지는 그대로 보여야 하므로 상태를 셋으로
  * 나눈다.
  */
-export function useOutfitImage(items: ImageItems, mood: string | null): ImageState {
+export function useOutfitImage(
+  items: ImageItems,
+  mood: string | null,
+  /** 앞 코디. 일부만 바뀐 코디면 앞 사진을 편집해 같은 모델·배경으로 보여 준다. */
+  baseItems?: ImageItems,
+): ImageState {
   const [state, setState] = useState<ImageState>({ status: 'loading' });
   const alive = useRef(true);
 
   const prompt = buildImagePrompt(items);
   const key = cacheKey(items, mood);
+  const basePrompt = baseItems ? buildImagePrompt(baseItems) : undefined;
 
   useEffect(() => {
     alive.current = true;
@@ -126,7 +137,7 @@ export function useOutfitImage(items: ImageItems, mood: string | null): ImageSta
     }
 
     setState({ status: 'loading' });
-    void loadImage(key, prompt, mood).then((url) => {
+    void loadImage(key, prompt, mood, basePrompt).then((url) => {
       if (!alive.current) return;
       setState(url ? { status: 'ready', url } : { status: 'failed' });
     });
@@ -134,7 +145,7 @@ export function useOutfitImage(items: ImageItems, mood: string | null): ImageSta
     return () => {
       alive.current = false;
     };
-  }, [key, prompt, mood]);
+  }, [key, prompt, mood, basePrompt]);
 
   return state;
 }

@@ -45,6 +45,8 @@ pub enum LlmTask {
     GenderVerify,
     /// 룩북 이미지 생성.
     ImageGeneration,
+    /// 이미 만든 룩 사진에서 아이템 일부만 바꾸는 편집.
+    ImageEdit,
     /// 레퍼런스/쿼리 텍스트 임베딩.
     Embedding,
 }
@@ -61,6 +63,7 @@ impl LlmTask {
         LlmTask::StyleNote,
         LlmTask::GenderVerify,
         LlmTask::ImageGeneration,
+        LlmTask::ImageEdit,
         LlmTask::Embedding,
     ];
 
@@ -77,6 +80,7 @@ impl LlmTask {
             LlmTask::StyleNote => "style_note",
             LlmTask::GenderVerify => "gender_verify",
             LlmTask::ImageGeneration => "image_generation",
+            LlmTask::ImageEdit => "image_edit",
             LlmTask::Embedding => "embedding",
         }
     }
@@ -115,6 +119,10 @@ fn default_task_config(task: LlmTask) -> TaskConfig {
         // 편집 정밀도가 중요한 작업용으로 gpt-image-2.5-sunburst 가 따로 있지만,
         // 여기 쓰임은 룩북 미리보기 한 장이라 지연이 우선이다.
         LlmTask::ImageGeneration => ("gpt-image-2.5-flare", None, 0),
+        // 편집은 바꾸라고 한 곳 말고는 아무것도 건드리지 않는 것이 전부다. 편집 정확도에
+        // 초점을 둔 sunburst 를 쓴다 (2026-10-15 시험: 신발·상의 교체 모두 나머지가
+        // 그대로였고, flare 보다 빨랐다 — 13초 대 15~19초).
+        LlmTask::ImageEdit => ("gpt-image-2.5-sunburst", None, 0),
         LlmTask::Embedding => ("text-embedding-3-small", None, 0),
     };
 
@@ -288,6 +296,7 @@ mod tests {
             (LlmTask::StyleNote, "gpt-4o-mini", Some(0.7), 300),
             (LlmTask::GenderVerify, "gpt-4o-mini", None, 5),
             (LlmTask::ImageGeneration, "gpt-image-2.5-flare", None, 0),
+            (LlmTask::ImageEdit, "gpt-image-2.5-sunburst", None, 0),
             (LlmTask::Embedding, "text-embedding-3-small", None, 0),
         ];
 

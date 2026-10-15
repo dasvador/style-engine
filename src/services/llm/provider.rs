@@ -8,7 +8,9 @@
 use async_trait::async_trait;
 
 use super::error::LlmError;
-use super::types::{ChatRequest, ChatResponse, EmbeddingResult, ImageRequest, ImageResult};
+use super::types::{
+    ChatRequest, ChatResponse, EmbeddingResult, ImageEditRequest, ImageRequest, ImageResult,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ProviderId {
@@ -62,4 +64,12 @@ pub trait ImageProvider: Send + Sync {
     fn id(&self) -> ProviderId;
 
     async fn generate(&self, model: &str, req: &ImageRequest) -> Result<ImageResult, LlmError>;
+
+    /// 편집을 못 하는 provider 는 구현하지 않는다 — 호출하면 `Unsupported` 다.
+    async fn edit(&self, _model: &str, _req: &ImageEditRequest) -> Result<ImageResult, LlmError> {
+        Err(LlmError::Unsupported {
+            provider: self.id(),
+            capability: "image edit",
+        })
+    }
 }

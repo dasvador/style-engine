@@ -6,7 +6,8 @@ use serde_json::{Value, json};
 use super::error::LlmError;
 use super::provider::{ChatProvider, EmbeddingProvider, ImageProvider, ProviderId};
 use super::types::{
-    ChatRequest, ChatResponse, ContentPart, EmbeddingResult, ImageRequest, ImageResult, Message,
+    ChatRequest, ChatResponse, ContentPart, EmbeddingResult, ImageEditRequest, ImageRequest,
+    ImageResult, Message,
     ResponseFormat, StopReason, ToolCall, ToolDef,
 };
 use super::usage::Usage;
@@ -14,6 +15,7 @@ use super::usage::Usage;
 const CHAT_URL: &str = "https://api.openai.com/v1/chat/completions";
 const EMBEDDINGS_URL: &str = "https://api.openai.com/v1/embeddings";
 const IMAGES_URL: &str = "https://api.openai.com/v1/images/generations";
+const IMAGE_EDITS_URL: &str = "https://api.openai.com/v1/images/edits";
 
 pub struct OpenAiProvider {
     http: reqwest::Client,
@@ -42,6 +44,37 @@ impl OpenAiProvider {
             .post(url)
             .bearer_auth(&self.api_key)
             .json(body)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        let text = resp.text().await?;
+
+        if !status.is_success() {
+            return Err(LlmError::Status {
+                provider: ProviderId::OpenAi,
+                status: status.as_u16(),
+                body: truncate(&text, 500),
+            });
+        }
+
+        serde_json::from_str(&text)
+            .map_err(|e| LlmError::Decode(format!("OpenAI 응답 JSON 파싱 실패: {e}")))
+    }
+
+    /// 이미지 편집은 JSON 이 아니라 multipart 로 받는다. 응답 처리는 `post` 와 같다.
+    async fn post_multipart(
+        &self,
+        url: &str,
+        form: reqwest::multipart::Form,
+    ) -> Result<Value, LlmError> {
+        self.check_key()?;
+
+        let resp = self
+            .http
+            .post(url)
+            .bearer_auth(&self.api_key)
+            .multipart(form)
             .send()
             .await?;
 
@@ -294,19 +327,40 @@ impl ImageProvider for OpenAiProvider {
         });
 
         let resp = self.post(IMAGES_URL, &body).await?;
-
-        let b64 = resp["data"][0]["b64_json"]
-            .as_str()
-            .ok_or_else(|| LlmError::Decode("이미지 응답에 b64_json이 없음".into()))?;
-
-        Ok(ImageResult {
-            b64_png: b64.to_string(),
-            usage: Usage {
-                input_tokens: resp["usage"]["input_tokens"].as_u64().unwrap_or(0) as u32,
-                output_tokens: resp["usage"]["output_tokens"].as_u64().unwrap_or(0) as u32,
-            },
-        })
+        image_result(&resp)
     }
+
+    async fn edit(&self, model: &str, req: &ImageEditRequest) -> Result<ImageResult, LlmError> {
+        let image = reqwest::multipart::Part::bytes(req.base_png.clone())
+            .file_name("base.png")
+            .mime_str("image/png")
+            .map_err(|e| LlmError::Decode(format!("편집 이미지 준비 실패: {e}")))?;
+        let form = reqwest::multipart::Form::new()
+            .text("model", model.to_string())
+            .text("prompt", req.prompt.clone())
+            .text("n", "1")
+            .text("size", req.size.clone())
+            .text("quality", req.quality.clone())
+            .part("image", image);
+
+        let resp = self.post_multipart(IMAGE_EDITS_URL, form).await?;
+        image_result(&resp)
+    }
+}
+
+/// 생성과 편집은 응답 형식이 같다.
+fn image_result(resp: &Value) -> Result<ImageResult, LlmError> {
+    let b64 = resp["data"][0]["b64_json"]
+        .as_str()
+        .ok_or_else(|| LlmError::Decode("이미지 응답에 b64_json이 없음".into()))?;
+
+    Ok(ImageResult {
+        b64_png: b64.to_string(),
+        usage: Usage {
+            input_tokens: resp["usage"]["input_tokens"].as_u64().unwrap_or(0) as u32,
+            output_tokens: resp["usage"]["output_tokens"].as_u64().unwrap_or(0) as u32,
+        },
+    })
 }
 
 fn truncate(s: &str, max: usize) -> String {

@@ -239,12 +239,16 @@ export interface ChatBody {
   message: string;
   gender?: Gender;
   style_mood?: string | null;
+  /** 바로 앞에 보여 준 코디. "신발만 바꿔줘" 같은 부분 수정의 기준이 된다. */
+  previous_items?: ChatItem[];
 }
 
 export interface OutfitImageBody {
   /** 백엔드는 문자열 하나를 받는다 (배열이 아님). */
   items: string;
   mood?: string | null;
+  /** 앞 코디의 이미지 문자열. 1~2개만 바뀌었으면 서버가 앞 사진을 편집한다. */
+  base_items?: string;
 }
 
 export interface OutfitImageResponse {

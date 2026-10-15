@@ -12,7 +12,8 @@ use crate::models::feedback::FeedbackRequest;
 use crate::AppState;
 use crate::models::style_vocab::{StyleGenre, Tone, Weight};
 use crate::services::llm::{
-    ChatRequest as LlmChatRequest, ImageDetail, ImageRequest as LlmImageRequest, LlmClient,
+    ChatRequest as LlmChatRequest, ImageDetail, ImageEditRequest as LlmImageEditRequest,
+    ImageRequest as LlmImageRequest, LlmClient,
     LlmTask, Message, ToolDef, Usage,
 };
 use crate::services::outfit_scorer;
@@ -44,6 +45,10 @@ struct ChatRequest {
     gender: Option<String>,
     #[serde(default)]
     style_mood: Option<String>,
+    /// 바로 앞에 보여 준 코디. 있으면 "신발만 바꿔줘" 같은 말을 이 코디에 대한 부분
+    /// 수정으로 다룬다. 상담은 대화를 서버에 남기지 않으므로 화면이 넘겨 준다.
+    #[serde(default)]
+    previous_items: Vec<ChatItem>,
 }
 
 #[derive(Debug, Serialize)]
@@ -52,13 +57,14 @@ struct ChatResponse {
     items: Vec<ChatItem>,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct ChatItem {
     slot: String,
     category: String,
     name: String,
+    #[serde(default)]
     owned: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     material: Option<String>,
 }
 
@@ -202,6 +208,35 @@ async fn chat(
         ),
     ];
 
+    let has_previous = !body.previous_items.is_empty();
+    let mut tools = tools;
+    if has_previous {
+        tools.push(ToolDef::new(
+            "swap_item",
+            "직전에 보여 준 코디에서 한 카테고리만 바꾼다. 나머지 아이템은 그대로 둔다. 유저가 원하는 것이 있으면 query 로 넘긴다(예: 로퍼, 검은 신발). 없으면 비워 두면 서버가 나머지와 가장 잘 맞는 것을 고른다.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "category": { "type": "string", "enum": ["상의","하의","아우터","신발","가방"], "description": "바꿀 카테고리" },
+                    "query": { "type": "string", "description": "유저가 원하는 아이템 설명. 없으면 빈 문자열" }
+                },
+                "required": ["category"]
+            }),
+        ));
+    }
+    let previous_hint = if has_previous {
+        format!(
+            "\n\n직전에 보여 준 코디:\n{}\n유저가 이 코디의 일부만 바꾸자고 하면(예: '신발만 바꿔줘', '가방 다른 걸로') get_outfit 대신 swap_item 을 바꿀 카테고리마다 한 번씩 호출하라. 새 코디를 원하면 get_outfit 을 쓴다.\nswap_item 을 쓴 뒤에는 get_outfit 을 부르지 마라 — 유저가 바꾸라고 한 곳만 바꾼다. evaluate_outfit 이 아쉬운 점을 말해도 같은 카테고리 안에서 swap_item 을 한 번 더 부르거나, 그대로 두고 그 점을 한 문장으로 알려라.\nswap_item 의 query 에는 유저가 말한 표현만 넣어라 — 유저가 말하지 않은 색이나 소재를 붙이지 마라.\n답변은 swap_item 이 돌려준 changed.to 의 실제 이름으로, 바뀐 아이템이 나머지와 어떻게 어울리는지 착장 설명 규칙대로 2문장 쓴다. 아쉬운 점은 있을 때만 마지막에 한 문장.",
+            body.previous_items
+                .iter()
+                .map(|i| format!("- {}: {}", i.category, i.name))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    } else {
+        String::new()
+    };
+
     let system_prompt = format!(
         r#"너는 프리미엄 셀렉샵 에디토리얼 스타일리스트다. AURALEE, BEAMS, HAVEN 같은 감성으로 코디를 설명한다.
 
@@ -227,7 +262,7 @@ async fn chat(
 - 예시: '블루종의 드라이한 면 질감이 상체를 부드럽게 정리하고, 린넨 셔츠가 레이어링에 가벼운 깊이를 만듭니다. 캔버스 스니커로 하체 대비를 잡았습니다.'
 
 날씨: {weather}
-답변은 한국어로."#,
+답변은 한국어로.{previous_hint}"#,
         weather = if weather_hint.is_empty() {
             "정보 없음".to_string()
         } else {
@@ -242,6 +277,8 @@ async fn chat(
     let mut final_reply = String::new();
     let mut first_search_query: Option<String> = None; // 유저 최초 검색어 (덮어쓰기 불가)
     let mut anchor_category: Option<String> = None;
+    // 이번 요청에서 swap_item 으로 일부를 바꿨는지. 그 뒤로는 전체 재구성을 막는다.
+    let mut swapped = false;
 
     for _turn in 0..8 {
         let resp = state
@@ -288,6 +325,13 @@ async fn chat(
                         );
                         result
                     }
+                    // 부분 수정 중에는 코디를 통째로 새로 짜지 않는다. 지시문으로도 막지만,
+                    // 평가가 아쉬운 점을 말하면 모델이 "검증 실패 → get_outfit 재호출" 흐름을
+                    // 따라가 버린다 (2026-10-15: '신발만 로퍼로' 가 하의·가방까지 바뀌었다).
+                    "get_outfit" if swapped => json!({
+                        "error": "유저는 일부만 바꾸길 원한다. 전체 코디를 새로 짜지 말고 swap_item 결과를 그대로 설명하라."
+                    })
+                    .to_string(),
                     "get_outfit" => {
                         let user_query = fn_args["user_query"]
                             .as_str()
@@ -328,6 +372,45 @@ async fn chat(
                         final_items = items;
                         final_item_ids = chosen_ids;
                         outfit_json
+                    }
+                    "swap_item" => {
+                        let category = fn_args["category"].as_str().unwrap_or("");
+                        let query = fn_args["query"].as_str().unwrap_or("").trim();
+                        // 두 번째 교체는 첫 번째 결과 위에 한다 — '신발이랑 가방' 처럼.
+                        let base = if final_items.is_empty() {
+                            body.previous_items.clone()
+                        } else {
+                            final_items.clone()
+                        };
+                        let from = base
+                            .iter()
+                            .find(|i| i.category == category)
+                            .map(|i| i.name.clone());
+                        match tool_swap_item(&base, category, query, &clothes, &state.embedding)
+                            .await
+                        {
+                            Some((items, ids)) => {
+                                swapped = true;
+                                let to = items
+                                    .iter()
+                                    .find(|i| i.category == category)
+                                    .map(|i| i.name.clone());
+                                let items_json: Vec<serde_json::Value> = items
+                                    .iter()
+                                    .map(|i| json!({"slot": i.slot, "name": i.name, "category": i.category}))
+                                    .collect();
+                                final_items = items;
+                                final_item_ids = ids;
+                                // 무엇이 무엇으로 바뀌었는지 따로 적는다. 목록만 주면 모델이
+                                // 자기가 검색한 말("블랙 로퍼")로 답해 실제 아이템과 어긋난다.
+                                json!({
+                                    "changed": { "category": category, "from": from, "to": to },
+                                    "items": items_json,
+                                })
+                                .to_string()
+                            }
+                            None => json!({"error": "바꿀 아이템을 옷장에서 찾지 못했다"}).to_string(),
+                        }
                     }
                     "evaluate_outfit" => {
                         let names: Vec<String> = fn_args["item_names"]
@@ -561,6 +644,10 @@ struct ImageRequest {
     items: String,
     #[serde(default)]
     mood: Option<String>,
+    /// 바로 앞에 보여 준 코디(같은 형식의 문자열). 상담에서 "신발만 바꿔줘" 처럼
+    /// 일부만 바뀐 코디라면, 앞 사진을 편집해 같은 모델·포즈·배경으로 보여 준다.
+    #[serde(default)]
+    base_items: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -686,7 +773,15 @@ async fn generate_image(
     let mut m = ImageGenMetrics::default();
     let mut outcome: Option<(Option<String>, VerificationStatus)> = None;
 
-    for attempt in 1..=MAX_IMAGE_ATTEMPTS {
+    // 앞 사진에서 1~2개만 바뀌었으면 편집부터 해 본다. 실패하면 아래에서 새로 만든다.
+    if let Some(base_items) = body.base_items.as_deref() {
+        if let Some(url) = edit_from_base(&state, genre, base_items, &body.items, &mut m).await {
+            outcome = Some((Some(url), VerificationStatus::Passed));
+        }
+    }
+    let generate_attempts = if outcome.is_some() { 0 } else { MAX_IMAGE_ATTEMPTS };
+
+    for attempt in 1..=generate_attempts {
         let started = std::time::Instant::now();
         let image = state
             .llm
@@ -797,6 +892,187 @@ async fn generate_image(
     Ok(Json(ImageResponse { image_url: url }))
 }
 
+/// 편집 입력 이미지 토큰의 단가 차이 (이미지 $8 − 단가표의 텍스트 $5, 100만 토큰당).
+const EDIT_IMAGE_INPUT_SURCHARGE_PER_MTOK: f64 = 3.0;
+
+/// 편집으로 바꿀 수 있는 아이템 수. 이보다 많이 바뀌면 사실상 다른 코디라 새로 만든다.
+const MAX_EDIT_CHANGES: usize = 2;
+
+/// 이미지용 코디 문자열(`"top/inner: 이름 (재질), shoes: 이름 (재질)"`)을 슬롯별로 나눈다.
+///
+/// 재질 괄호 안에도 쉼표가 있어서(`(leather, open back)`) 괄호 밖의 쉼표만 자른다.
+fn split_image_items(items: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut depth = 0i32;
+    let mut start = 0;
+    let mut push = |part: &str| {
+        if let Some((slot, desc)) = part.split_once(':') {
+            out.push((slot.trim().to_string(), desc.trim().to_string()));
+        }
+    };
+    for (i, ch) in items.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            ',' if depth == 0 => {
+                push(&items[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    push(&items[start..]);
+    out
+}
+
+/// 앞 코디에서 무엇이 바뀌었는지.
+#[derive(Debug, PartialEq)]
+enum ItemChange {
+    Replace { slot: String, from: String, to: String },
+    Add { slot: String, to: String },
+    Remove { slot: String, from: String },
+}
+
+fn diff_image_items(base: &str, next: &str) -> Vec<ItemChange> {
+    let base = split_image_items(base);
+    let next = split_image_items(next);
+    let mut changes = Vec::new();
+    for (slot, to) in &next {
+        match base.iter().find(|(s, _)| s == slot) {
+            Some((_, from)) if from == to => {}
+            Some((_, from)) => changes.push(ItemChange::Replace {
+                slot: slot.clone(),
+                from: from.clone(),
+                to: to.clone(),
+            }),
+            None => changes.push(ItemChange::Add { slot: slot.clone(), to: to.clone() }),
+        }
+    }
+    for (slot, from) in &base {
+        if !next.iter().any(|(s, _)| s == slot) {
+            changes.push(ItemChange::Remove { slot: slot.clone(), from: from.clone() });
+        }
+    }
+    changes
+}
+
+fn slot_noun(slot: &str) -> &str {
+    match slot {
+        "top/inner" => "top",
+        "pants" => "bottoms",
+        "outerwear" => "outer layer",
+        other => other,
+    }
+}
+
+/// 편집 지시문. 바꿀 것만 말하고, 나머지는 하나하나 그대로 두라고 못 박는다 —
+/// 편집 모델은 "자연스럽게" 하려다 얼굴이나 다른 옷의 무늬까지 손대기 쉽다.
+fn build_edit_prompt(changes: &[ItemChange]) -> String {
+    let lines: Vec<String> = changes
+        .iter()
+        .map(|c| match c {
+            ItemChange::Replace { slot, from, to } => {
+                format!("replace her {} ({from}) with {to}", slot_noun(slot))
+            }
+            ItemChange::Add { slot, to } => format!("add {to} as her {}", slot_noun(slot)),
+            ItemChange::Remove { slot, from } => format!(
+                "take off her {} ({from}) and show what she wears underneath",
+                slot_noun(slot)
+            ),
+        })
+        .collect();
+    format!(
+        "Edit this fashion photo. Change only this: {}. \
+         The new item sits naturally on her body, with the same light and shadows as the rest of the photo. \
+         Keep everything else exactly as it is: the same woman, face, hair and expression, \
+         the same pose and hands, every other garment and accessory with its colour, pattern, \
+         texture and any logo unchanged, and the same background, light and framing.",
+        lines.join("; ")
+    )
+}
+
+/// 앞 사진을 편집해 이번 코디의 사진을 만든다. 쓸 수 없으면 `None` — 새로 생성한다.
+///
+/// 편집해도 여성 검사는 다시 한다. 모델이 그대로여야 하지만, 검사를 건너뛰면 "통과하지
+/// 못한 그림은 내보내지 않는다" 는 보장이 편집 경로에서만 깨진다.
+async fn edit_from_base(
+    state: &AppState,
+    genre: StyleGenre,
+    base_items: &str,
+    items: &str,
+    m: &mut ImageGenMetrics,
+) -> Option<String> {
+    let changes = diff_image_items(base_items, items);
+    if changes.is_empty() || changes.len() > MAX_EDIT_CHANGES {
+        return None;
+    }
+
+    let (base_outfit_hash, base_prompt_hash, _, _) = image_cache_keys(base_items, genre);
+    let base_path: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT image_path FROM outfit_image \
+         WHERE outfit_hash = ? AND prompt_hash = ? AND image_path IS NOT NULL LIMIT 1",
+    )
+    .bind(&base_outfit_hash)
+    .bind(&base_prompt_hash)
+    .fetch_optional(&state.db)
+    .await
+    .ok()
+    .flatten();
+    let base_url = base_path.and_then(|r| r.0)?;
+    let base_png = std::fs::read(base_url.trim_start_matches('/')).ok()?;
+
+    let started = std::time::Instant::now();
+    let edited = state
+        .llm
+        .edit_image(&LlmImageEditRequest {
+            base_png,
+            prompt: build_edit_prompt(&changes),
+            size: "1024x1536".to_string(),
+            quality: "low".to_string(),
+        })
+        .await;
+    m.generate_elapsed += started.elapsed();
+    m.edit_calls += 1;
+    let edited = match edited {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::warn!("image edit failed — generating instead: {e}");
+            return None;
+        }
+    };
+    m.edit_usage.input_tokens += edited.usage.input_tokens;
+    m.edit_usage.output_tokens += edited.usage.output_tokens;
+
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(edited.b64_png.as_str())
+        .ok()?;
+    let filename = format!("{}.png", uuid::Uuid::new_v4());
+    let path = format!("static/images/{filename}");
+    std::fs::write(&path, &bytes).ok()?;
+
+    let started = std::time::Instant::now();
+    let (check, usage) = verify_female_model(&state.llm, &edited.b64_png).await;
+    m.verify_elapsed += started.elapsed();
+    m.verify_calls += 1;
+    m.verify_usage.input_tokens += usage.input_tokens;
+    m.verify_usage.output_tokens += usage.output_tokens;
+
+    if !matches!(next_step(check, MAX_IMAGE_ATTEMPTS), NextStep::Use) {
+        tracing::warn!("edited image failed the gender check — generating instead");
+        let _ = std::fs::remove_file(&path);
+        return None;
+    }
+
+    tracing::info!(
+        event = "outfit_image_edit",
+        base = %base_url,
+        changes = changes.len(),
+        "앞 사진을 편집해 새 코디 사진을 만들었다: {path}"
+    );
+    Some(format!("/static/images/{filename}"))
+}
+
 /// 오늘과 이번 달의 이미지 지출.
 ///
 /// 조회에 실패하면 0으로 본다. 예산 조회가 안 된다고 기능을 막으면, DB 장애가
@@ -823,8 +1099,11 @@ async fn image_spend(db: &sqlx::MySqlPool) -> ImageSpend {
 struct ImageGenMetrics {
     generate_calls: u32,
     verify_calls: u32,
+    /// 앞 사진을 편집한 횟수. 모델과 단가가 생성과 달라 따로 센다.
+    edit_calls: u32,
     generate_usage: Usage,
     verify_usage: Usage,
+    edit_usage: Usage,
     generate_elapsed: std::time::Duration,
     verify_elapsed: std::time::Duration,
 }
@@ -841,10 +1120,22 @@ impl ImageGenMetrics {
             &llm.config().task(LlmTask::GenderVerify).model,
             &self.verify_usage,
         );
-        match (g, v) {
-            (Some(g), Some(v)) => Some(g + v),
+        let e = self.edit_cost_usd(llm);
+        match (g, v, e) {
+            (Some(g), Some(v), Some(e)) => Some(g + v + e),
             _ => None,
         }
+    }
+
+    /// 편집 비용. 단가표는 이미지 입력을 텍스트 단가($5)로 셈하는데, 편집은 입력의
+    /// 대부분이 바탕 그림(이미지 단가 $8)이다. 그 차이를 더해 과소 추정을 막는다.
+    fn edit_cost_usd(&self, llm: &LlmClient) -> Option<f64> {
+        use crate::services::llm::usage::estimate_cost_usd;
+        if self.edit_calls == 0 {
+            return Some(0.0);
+        }
+        let base = estimate_cost_usd(&llm.config().task(LlmTask::ImageEdit).model, &self.edit_usage)?;
+        Some(base + self.edit_usage.input_tokens as f64 / 1_000_000.0 * EDIT_IMAGE_INPUT_SURCHARGE_PER_MTOK)
     }
 
     /// 원장에 더한다. 예산은 이 값을 보고 판단한다.
@@ -864,7 +1155,7 @@ impl ImageGenMetrics {
                verify_calls = image_daily_spend.verify_calls + new.verify_calls",
         )
         .bind(cost)
-        .bind(self.generate_calls)
+        .bind(self.generate_calls + self.edit_calls)
         .bind(self.verify_calls)
         .execute(db)
         .await;
@@ -892,6 +1183,8 @@ impl ImageGenMetrics {
             verification_status = status.as_str(),
             generate_calls = self.generate_calls,
             verify_calls = self.verify_calls,
+            edit_calls = self.edit_calls,
+            edit_cost_usd = self.edit_cost_usd(llm),
             // 이전 요청들에서 이미 태운 횟수. 이 착장이 반복해서 실패하는지 보인다.
             prior_attempts = prior_attempts,
             image_model = %image_model,
@@ -2175,6 +2468,82 @@ async fn tool_get_outfit(
     }
 }
 
+/// 앞 코디에서 한 카테고리만 바꾼다.
+///
+/// 유저가 원하는 것을 말했으면 그 카테고리 안에서 가장 비슷한 옷을, 아니면 남은
+/// 아이템들과의 궁합 점수 합이 가장 높은 옷을 고른다. 지금 입은 것은 후보에서 뺀다 —
+/// 바꿔 달라는 요청에 같은 옷이 돌아오면 안 된다.
+async fn tool_swap_item(
+    base: &[ChatItem],
+    category: &str,
+    query: &str,
+    clothes: &[Clothing],
+    embedding: &std::sync::Arc<crate::services::embedding::EmbeddingService>,
+) -> Option<(Vec<ChatItem>, Vec<String>)> {
+    let slot = match category {
+        "상의" => "inner",
+        "아우터" => "outer",
+        "하의" => "bottom",
+        "신발" => "shoes",
+        "가방" => "bag",
+        _ => return None,
+    };
+    let current = base.iter().find(|i| i.slot == slot).map(|i| i.name.as_str());
+    let candidates: Vec<Clothing> = clothes
+        .iter()
+        .filter(|c| c.category == category && Some(c.name.as_str()) != current)
+        .cloned()
+        .collect();
+
+    let kept: Vec<&Clothing> = base
+        .iter()
+        .filter(|i| i.slot != slot)
+        .filter_map(|i| clothes.iter().find(|c| c.name == i.name))
+        .collect();
+
+    let picked = if query.is_empty() {
+        None
+    } else {
+        embedding
+            .search_wardrobe(query, &candidates, 1)
+            .await
+            .ok()
+            .and_then(|m| m.into_iter().next())
+            .and_then(|m| candidates.iter().find(|c| c.name == m.name))
+    };
+    let picked = picked.or_else(|| {
+        candidates.iter().max_by_key(|c| {
+            kept.iter()
+                .map(|k| outfit_scorer::complement_score(k, c))
+                .sum::<i32>()
+        })
+    })?;
+
+    let new_item = ChatItem {
+        slot: slot.to_string(),
+        category: picked.category.clone(),
+        name: picked.name.clone(),
+        owned: true,
+        material: picked
+            .material_primary
+            .clone()
+            .or_else(|| picked.texture_keywords.clone()),
+    };
+    // 자리는 그대로 두고 그 칸만 바꾼다 — 화면과 이미지 문자열의 순서가 유지된다.
+    let mut items = base.to_vec();
+    match items.iter_mut().find(|i| i.slot == slot) {
+        Some(item) => *item = new_item,
+        None => items.push(new_item),
+    }
+    let ids = items
+        .iter()
+        .filter(|i| i.owned)
+        .filter_map(|i| clothes.iter().find(|c| c.name == i.name).map(|c| c.id.clone()))
+        .collect();
+    tracing::info!(category, query, picked = %picked.name, "swap_item");
+    Some((items, ids))
+}
+
 fn tool_evaluate_outfit(
     names: &[String],
     clothes: &[Clothing],
@@ -2717,6 +3086,34 @@ mod image_prompt_tests {
     }
 
     /// 자세는 다섯 후보에 모두 닿고, 기대는 자세는 기댈 것이 있는 장소에서만 나온다.
+    #[test]
+    fn edit_diff_splits_outside_material_brackets() {
+        let base = "top/inner: 화이트 티셔츠 (cotton jersey, oversized), pants: 블랙 슬랙스 (polyester, wide leg), shoes: 화이트 스니커즈 (leather, clean low top)";
+        let next = "top/inner: 화이트 티셔츠 (cotton jersey, oversized), pants: 블랙 슬랙스 (polyester, wide leg), shoes: 블랙 로퍼 (leather, penny)";
+        assert_eq!(split_image_items(base).len(), 3);
+        assert_eq!(
+            diff_image_items(base, next),
+            vec![ItemChange::Replace {
+                slot: "shoes".into(),
+                from: "화이트 스니커즈 (leather, clean low top)".into(),
+                to: "블랙 로퍼 (leather, penny)".into(),
+            }]
+        );
+        assert!(diff_image_items(base, base).is_empty());
+
+        let with_coat = format!("{next}, outerwear: 베이지 코트 (wool)");
+        let changes = diff_image_items(base, &with_coat);
+        assert_eq!(changes.len(), 2);
+        assert!(matches!(changes[1], ItemChange::Add { .. }));
+        assert!(matches!(
+            diff_image_items(&with_coat, next)[0],
+            ItemChange::Remove { .. }
+        ));
+        let prompt = build_edit_prompt(&changes);
+        assert!(prompt.contains("replace her shoes"));
+        assert!(prompt.contains("as her outer layer"));
+    }
+
     #[test]
     fn poses_vary_and_leaning_needs_a_wall() {
         let hashes: Vec<u64> = (0..2000u64)

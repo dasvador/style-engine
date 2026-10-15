@@ -228,6 +228,16 @@ pub struct ImageRequest {
     pub quality: String,
 }
 
+/// 이미 있는 그림을 바탕으로 일부만 바꾸는 요청.
+#[derive(Debug, Clone)]
+pub struct ImageEditRequest {
+    /// 바탕이 되는 PNG 바이트.
+    pub base_png: Vec<u8>,
+    pub prompt: String,
+    pub size: String,
+    pub quality: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct ImageResult {
     /// base64 인코딩된 PNG 바이트.

@@ -14,7 +14,7 @@ import { LookbookCard } from '../components/LookbookCard';
 type Message =
   | { kind: 'user'; id: number; text: string }
   | { kind: 'ai-text'; id: number; text: string }
-  | { kind: 'ai-lookbook'; id: number; reply: string; items: ChatItem[] }
+  | { kind: 'ai-lookbook'; id: number; reply: string; items: ChatItem[]; baseItems?: ChatItem[] }
   | { kind: 'error'; id: number; text: string };
 
 interface Props {
@@ -47,13 +47,23 @@ export function ChatPage({ weather, gender, moods, selectedMood }: Props) {
     setInput('');
     setSending(true);
 
+    // 바로 앞 코디. 상담은 대화를 서버에 남기지 않아서, "신발만 바꿔줘" 가 무엇을
+    // 바꾸라는 말인지 알려면 화면이 넘겨야 한다. 같은 코디로 앞 사진을 편집하는 데도 쓴다.
+    const previous = [...messages].reverse().find((m) => m.kind === 'ai-lookbook');
+    const previousItems = previous?.kind === 'ai-lookbook' ? previous.items : undefined;
+
     try {
-      const r = await api.chat.send({ message: text, gender, style_mood: selectedMood });
+      const r = await api.chat.send({
+        message: text,
+        gender,
+        style_mood: selectedMood,
+        previous_items: previousItems,
+      });
       const id = nextId.current++;
       setMessages((prev) => [
         ...prev,
         r.items.length > 0
-          ? { kind: 'ai-lookbook', id, reply: r.reply, items: r.items }
+          ? { kind: 'ai-lookbook', id, reply: r.reply, items: r.items, baseItems: previousItems }
           : { kind: 'ai-text', id, text: r.reply || '추천 결과가 없습니다.' },
       ]);
     } catch (err) {
@@ -105,6 +115,7 @@ export function ChatPage({ weather, gender, moods, selectedMood }: Props) {
                   reply={m.reply}
                   weather={weather?.current ?? null}
                   selectedMood={selectedMood}
+                  baseItems={m.baseItems}
                 />
               );
             case 'error':
