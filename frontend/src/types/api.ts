@@ -243,6 +243,17 @@ export interface ChatBody {
   previous_items?: ChatItem[];
 }
 
+/** 남겨 둔 상담 한 줄 (src/routes/chat.rs :: HistoryRow). */
+export interface ChatHistoryRow {
+  id: number;
+  role: 'user' | 'ai';
+  text: string;
+  items_json: ChatItem[] | null;
+  base_items_json: ChatItem[] | null;
+  mood_key: string | null;
+  created_at: string;
+}
+
 export interface OutfitImageBody {
   /** 백엔드는 문자열 하나를 받는다 (배열이 아님). */
   items: string;

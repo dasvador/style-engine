@@ -1,4 +1,8 @@
-use axum::{Json, Router, extract::State, routing::post};
+use axum::{
+    Json, Router,
+    extract::State,
+    routing::{get, post},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -36,6 +40,82 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", post(chat))
         .route("/image", post(generate_image))
+        .route("/history", get(chat_history).delete(clear_history))
+}
+
+/// 남겨 둔 상담 한 줄.
+#[derive(Debug, Serialize, sqlx::FromRow)]
+struct HistoryRow {
+    id: i64,
+    role: String,
+    text: String,
+    #[sqlx(json(nullable))]
+    items_json: Option<Vec<ChatItem>>,
+    #[sqlx(json(nullable))]
+    base_items_json: Option<Vec<ChatItem>>,
+    mood_key: Option<String>,
+    created_at: chrono::NaiveDateTime,
+}
+
+/// 최근 대화. 화면이 한 번에 들고 있을 만큼만, 오래된 것부터 돌려준다.
+async fn chat_history(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<Vec<HistoryRow>>, AppError> {
+    let mut rows = sqlx::query_as::<_, HistoryRow>(
+        "SELECT id, role, text, items_json, base_items_json, mood_key, created_at \
+         FROM chat_message WHERE user_id = ? ORDER BY id DESC LIMIT 100",
+    )
+    .bind(&auth.user_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| AppError::Internal(e.into()))?;
+    rows.reverse();
+    Ok(Json(rows))
+}
+
+/// 대화를 지운다. 사진(`outfit_image`)은 남긴다 — 같은 코디를 다시 만들면 돈이 든다.
+async fn clear_history(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let done = sqlx::query("DELETE FROM chat_message WHERE user_id = ?")
+        .bind(&auth.user_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| AppError::Internal(e.into()))?;
+    Ok(Json(json!({ "deleted": done.rows_affected() })))
+}
+
+/// 질문과 답을 함께 남긴다. 답을 못 만든 질문은 남기지 않는다 — 다시 열었을 때 답 없는
+/// 질문만 덩그러니 남는다. 저장 실패가 답을 막을 이유는 없어서 경고만 남긴다.
+async fn save_exchange(
+    db: &sqlx::MySqlPool,
+    user_id: &str,
+    body: &ChatRequest,
+    reply: &str,
+    items: &[ChatItem],
+) {
+    let items_json = (!items.is_empty()).then(|| json!(items));
+    let base_json = (!items.is_empty() && !body.previous_items.is_empty())
+        .then(|| json!(body.previous_items));
+    let saved = sqlx::query(
+        "INSERT INTO chat_message (user_id, role, text, items_json, base_items_json, mood_key) \
+         VALUES (?, 'user', ?, NULL, NULL, ?), (?, 'ai', ?, ?, ?, ?)",
+    )
+    .bind(user_id)
+    .bind(&body.message)
+    .bind(&body.style_mood)
+    .bind(user_id)
+    .bind(reply)
+    .bind(items_json)
+    .bind(base_json)
+    .bind(&body.style_mood)
+    .execute(db)
+    .await;
+    if let Err(e) = saved {
+        tracing::warn!("상담 기록 저장 실패: {e}");
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -278,7 +358,7 @@ async fn chat(
     );
 
     // ─── Tool calling loop (최대 8회 반복) ───
-    let mut messages: Vec<Message> = vec![Message::user_text(body.message)];
+    let mut messages: Vec<Message> = vec![Message::user_text(body.message.clone())];
     let mut final_items: Vec<ChatItem> = Vec::new();
     let mut final_item_ids: Vec<String> = Vec::new();
     let mut final_reply = String::new();
@@ -606,6 +686,8 @@ async fn chat(
         )
         .await;
     }
+
+    save_exchange(&state.db, user_id, &body, &final_reply, &final_items).await;
 
     Ok(Json(ChatResponse {
         reply: final_reply,

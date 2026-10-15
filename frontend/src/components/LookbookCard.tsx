@@ -11,6 +11,7 @@ import {
   extractSilhouetteTags,
   extractTextureTags,
   generateLookbookTitle,
+  buildImagePrompt,
   generateMoodSubtitle,
 } from '../lib/lookbook';
 import { OutfitImage } from './OutfitImage';
@@ -41,12 +42,44 @@ type FeedbackState =
 
 export function LookbookCard({ items, reply, weather, selectedMood, baseItems }: Props) {
   const [feedback, setFeedback] = useState<FeedbackState>({ phase: 'idle' });
+  const [keep, setKeep] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
 
   const title = generateLookbookTitle(items);
   const moodSub = generateMoodSubtitle(items);
   const note = cleanStyleNote(reply);
   const texTags = extractTextureTags(items);
   const silTags = extractSilhouetteTags(items);
+
+  /**
+   * 마음에 든 상담 코디를 룩북에 담는다.
+   *
+   * 사진은 새로 만들지 않는다. 룩북은 `image_prompt` 와 무드로 사진 캐시를 찾는데, 여기서
+   * 넘기는 문자열이 이 카드가 사진을 요청한 문자열과 같아서 같은 사진이 걸린다.
+   * 같은 코디를 두 번 담아도 룩북에는 한 장만 남는다 (서버가 `image_prompt` 로 합친다).
+   */
+  const keepInLookbook = async () => {
+    setKeep('saving');
+    try {
+      await api.lookbook.save({
+        mood_key: selectedMood,
+        title,
+        weather_summary: weather ? `${weather.temperature}°C · ${weather.weather_description || ''}` : null,
+        reason: note || null,
+        recommendation: null,
+        image_prompt: buildImagePrompt(items),
+        outfit_json: items.map((i) => ({
+          name: i.name,
+          category: i.category,
+          material: i.material ?? null,
+          reason: '',
+          image_url: null,
+        })),
+      });
+      setKeep('saved');
+    } catch {
+      setKeep('failed');
+    }
+  };
 
   const submitFeedback = async (type: FeedbackType, reasons: string[]) => {
     // 슬롯별로 정해진 필드에 담는다. switch 로 쓰면 필드명이 타입으로 검사된다.
@@ -178,6 +211,17 @@ export function LookbookCard({ items, reply, weather, selectedMood, baseItems }:
         )}
 
         {feedback.phase === 'done' && <span className="chat-fb-done">{feedback.text}</span>}
+      </div>
+
+      <div className="lookbook-keep">
+        {keep === 'saved' ? (
+          <span className="chat-fb-done">룩북에 담았어요</span>
+        ) : (
+          <button className="lookbook-action-btn" disabled={keep === 'saving'} onClick={() => void keepInLookbook()}>
+            {keep === 'saving' ? '담는 중…' : '룩북에 담기'}
+          </button>
+        )}
+        {keep === 'failed' && <span className="saved-delete-error">룩북에 담지 못했어요. 다시 눌러 주세요.</span>}
       </div>
     </div>
   );

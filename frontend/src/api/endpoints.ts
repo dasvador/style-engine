@@ -29,6 +29,7 @@ import type {
   UpdateClothingBody,
   UpsertRegionBody,
   WeatherResponse,
+  ChatHistoryRow,
 } from '../types/api';
 
 export const api = {
@@ -67,6 +68,8 @@ export const api = {
   chat: {
     send: (body: ChatBody) => apiPost<ChatResponse>('/chat', body),
     image: (body: OutfitImageBody) => apiPost<OutfitImageResponse>('/chat/image', body),
+    history: () => apiGet<ChatHistoryRow[]>('/chat/history'),
+    clearHistory: () => apiDelete<{ deleted: number }>('/chat/history'),
   },
 
   feedback: (body: FeedbackBody) => apiPost<unknown>('/feedback', body),

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/endpoints';
 import { errorMessage } from '../api/client';
-import type { ChatItem, Gender, StyleMood, WeatherResponse } from '../types/api';
+import type { ChatHistoryRow, ChatItem, Gender, StyleMood, WeatherResponse } from '../types/api';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { LookbookCard } from '../components/LookbookCard';
 
@@ -14,7 +14,16 @@ import { LookbookCard } from '../components/LookbookCard';
 type Message =
   | { kind: 'user'; id: number; text: string }
   | { kind: 'ai-text'; id: number; text: string }
-  | { kind: 'ai-lookbook'; id: number; reply: string; items: ChatItem[]; baseItems?: ChatItem[] }
+  | {
+      kind: 'ai-lookbook';
+      id: number;
+      reply: string;
+      items: ChatItem[];
+      baseItems?: ChatItem[];
+      /** 이 카드를 만들 때의 무드. 사진 캐시 키에 들어가므로 화면의 현재 무드로 그리면
+       *  무드를 바꿀 때마다 예전 카드 사진을 새로 만든다. */
+      mood: string | null;
+    }
   | { kind: 'error'; id: number; text: string };
 
 interface Props {
@@ -24,12 +33,62 @@ interface Props {
   selectedMood: string | null;
 }
 
+/** 서버에 남은 한 줄을 화면의 한 줄로. id 는 서버 값을 음수로 써서 새 메시지와 겹치지 않게 한다. */
+function fromHistory(row: ChatHistoryRow): Message {
+  const id = -row.id;
+  if (row.role === 'user') return { kind: 'user', id, text: row.text };
+  if (row.items_json && row.items_json.length > 0) {
+    return {
+      kind: 'ai-lookbook',
+      id,
+      reply: row.text,
+      items: row.items_json,
+      baseItems: row.base_items_json ?? undefined,
+      mood: row.mood_key,
+    };
+  }
+  return { kind: 'ai-text', id, text: row.text || '추천 결과가 없습니다.' };
+}
+
 export function ChatPage({ weather, gender, moods, selectedMood }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [confirmingClear, setConfirmingClear] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(1);
+
+  // 지난 대화를 불러온다. 사진은 코디별로 저장돼 있어 다시 열어도 새로 만들지 않는다.
+  // 불러오는 사이에 보낸 메시지가 있으면 그 뒤에 이어 붙는다.
+  useEffect(() => {
+    let alive = true;
+    api.chat
+      .history()
+      .then((rows) => {
+        if (!alive) return;
+        setMessages((prev) => [...rows.map(fromHistory), ...prev]);
+      })
+      .catch(() => {
+        // 기록을 못 불러와도 새 대화는 할 수 있다.
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const clearHistory = async () => {
+    try {
+      await api.chat.clearHistory();
+      setMessages([]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        { kind: 'error', id: nextId.current++, text: `대화를 지우지 못했어요: ${errorMessage(err)}` },
+      ]);
+    } finally {
+      setConfirmingClear(false);
+    }
+  };
 
   const moodLabel = moods.find((m) => m.mood_key === selectedMood)?.mood_label ?? '전체';
 
@@ -63,7 +122,14 @@ export function ChatPage({ weather, gender, moods, selectedMood }: Props) {
       setMessages((prev) => [
         ...prev,
         r.items.length > 0
-          ? { kind: 'ai-lookbook', id, reply: r.reply, items: r.items, baseItems: previousItems }
+          ? {
+              kind: 'ai-lookbook',
+              id,
+              reply: r.reply,
+              items: r.items,
+              baseItems: previousItems,
+              mood: selectedMood,
+            }
           : { kind: 'ai-text', id, text: r.reply || '추천 결과가 없습니다.' },
       ]);
     } catch (err) {
@@ -83,6 +149,25 @@ export function ChatPage({ weather, gender, moods, selectedMood }: Props) {
       <div className="chat-mood-line">
         <span>현재 무드</span>
         <span className="chat-mood-value">{moodLabel}</span>
+        {messages.length > 0 && (
+          <span className="saved-delete chat-clear">
+            {confirmingClear ? (
+              <>
+                <span className="saved-delete-ask">대화를 모두 지울까요?</span>
+                <button className="saved-delete-yes" onClick={() => void clearHistory()}>
+                  지우기
+                </button>
+                <button className="saved-delete-no" onClick={() => setConfirmingClear(false)}>
+                  취소
+                </button>
+              </>
+            ) : (
+              <button className="saved-delete-btn" onClick={() => setConfirmingClear(true)}>
+                대화 지우기
+              </button>
+            )}
+          </span>
+        )}
       </div>
 
       <div className="chat-container" ref={containerRef}>
@@ -114,7 +199,7 @@ export function ChatPage({ weather, gender, moods, selectedMood }: Props) {
                   items={m.items}
                   reply={m.reply}
                   weather={weather?.current ?? null}
-                  selectedMood={selectedMood}
+                  selectedMood={m.mood}
                   baseItems={m.baseItems}
                 />
               );
