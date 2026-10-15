@@ -46,6 +46,15 @@ pub struct SaveLookRequest {
     pub recommendation: Option<String>,
     pub image_prompt: String,
     pub outfit_json: serde_json::Value,
+    /// 홈 추천 한 번을 가리키는 값. 있으면 `look_signal` 에 이 요청의 코디로 남긴다.
+    /// 상담 화면처럼 비교 묶음이 없는 저장은 보내지 않는다.
+    #[serde(default)]
+    pub request_id: Option<String>,
+    /// 응답 안의 순서(0부터).
+    #[serde(default)]
+    pub position: Option<u8>,
+    #[serde(default)]
+    pub gender: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -148,9 +157,32 @@ async fn save_look(
     .await
     .map_err(|e| AppError::Internal(e.into()))?;
 
-    Ok(Json(SaveResponse {
-        id: existing.map(|r| r.0).unwrap_or(id),
-    }))
+    let id = existing.map(|r| r.0).unwrap_or(id);
+
+    // 비교 묶음 기록은 곁가지다. 실패해도 룩북 저장은 성공으로 돌려준다.
+    if let Some(request_id) = body.request_id.as_deref().filter(|r| !r.is_empty()) {
+        let recorded = sqlx::query(
+            "INSERT IGNORE INTO look_signal \
+             (user_id, request_id, look_id, position, gender, mood_key, weather_summary, \
+              outfit_json) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&auth.user_id)
+        .bind(request_id)
+        .bind(&id)
+        .bind(body.position.unwrap_or(0))
+        .bind(&body.gender)
+        .bind(&body.mood_key)
+        .bind(&body.weather_summary)
+        .bind(&body.outfit_json)
+        .execute(&state.db)
+        .await;
+        if let Err(e) = recorded {
+            tracing::warn!("look_signal 기록 실패: {e}");
+        }
+    }
+
+    Ok(Json(SaveResponse { id }))
 }
 
 /// '마음에 들어요' / '오늘 입을래요' 표시. 한 번 켜진 것은 꺼지지 않는다 —
@@ -173,6 +205,18 @@ async fn mark_look(
     .await
     .map_err(|e| AppError::Internal(e.into()))?;
 
+    // 같은 코디가 나온 요청 모두에 표시한다 — 좋아요는 그 코디에 대한 판단이다.
+    let _ = sqlx::query(
+        "UPDATE look_signal SET liked = liked | ?, worn = worn | ? \
+         WHERE look_id = ? AND user_id = ?",
+    )
+    .bind(body.liked.unwrap_or(false))
+    .bind(body.worn.unwrap_or(false))
+    .bind(&id)
+    .bind(&auth.user_id)
+    .execute(&state.db)
+    .await;
+
     Ok(Json(SaveResponse { id }))
 }
 
@@ -180,6 +224,9 @@ async fn mark_look(
 ///
 /// 그림(`outfit_image`)은 지우지 않는다 — 다른 룩이나 같은 코디의 다음 요청이 같은
 /// 캐시를 쓰고, 다시 만들면 돈이 든다.
+///
+/// 지운 사실은 `look_signal` 에 남긴다. 룩북 행은 사라지지만, 일부러 지웠다는 것은
+/// 같은 요청의 다른 코디보다 못하다는 가장 분명한 신호다.
 async fn delete_look(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -196,5 +243,10 @@ async fn delete_look(
             "이 코디를 찾을 수 없습니다.".to_string(),
         ));
     }
+    let _ = sqlx::query("UPDATE look_signal SET deleted = 1 WHERE look_id = ? AND user_id = ?")
+        .bind(&id)
+        .bind(&auth.user_id)
+        .execute(&state.db)
+        .await;
     Ok(Json(SaveResponse { id }))
 }

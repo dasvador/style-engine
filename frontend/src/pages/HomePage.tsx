@@ -216,6 +216,9 @@ export function HomePage({
       // 두면 두 번째·세 번째 코디는 1분 넘게 저장되지 않는다. 그 사이에 화면을
       // 벗어나면 비용을 들여 만든 코디가 그냥 사라진다. DB 쓰기는 금방이므로
       // 전부 저장한 뒤에 이미지를 받는다.
+      // 이번 추천 한 번을 묶는 값. 같은 묶음 안에서 좋아요·입어봄·삭제를 받은 코디와
+      // 못 받은 코디를 비교하면, 사람이 따로 고르지 않아도 취향 쌍이 쌓인다.
+      const requestId = crypto.randomUUID();
       void (async () => {
         await Promise.all(
           added.map(async (l) => {
@@ -228,6 +231,9 @@ export function HomePage({
                 recommendation: l.recommendation,
                 image_prompt: buildImagePrompt(outfitToImageItems(l.outfit)),
                 outfit_json: l.outfit,
+                request_id: requestId,
+                position: fresh.indexOf(l),
+                gender,
               });
               setLooks((prev) =>
                 prev.map((x) => (x.key === l.key ? { ...x, savedId: saved.id } : x)),

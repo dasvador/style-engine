@@ -332,6 +332,11 @@ export interface SaveLookBody {
   recommendation: string | null;
   image_prompt: string;
   outfit_json: OutfitItem[];
+  /** 홈 추천 한 번을 묶는 값. 상담 화면 저장은 보내지 않는다. */
+  request_id?: string;
+  /** 응답 안의 순서(0부터). */
+  position?: number;
+  gender?: string;
 }
 
 // ─── 헬스체크 (src/routes/health.rs) ───
