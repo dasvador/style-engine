@@ -41,8 +41,7 @@ pub use provider::ProviderId;
 #[allow(unused_imports)]
 pub use types::{
     ChatRequest, ChatResponse, ContentPart, EmbeddingResult, ImageDetail, ImageEditRequest,
-    ImageRequest,
-    ImageResult, Message, ResponseFormat, StopReason, ToolCall, ToolDef,
+    ImageRequest, ImageResult, Message, ResponseFormat, StopReason, ToolCall, ToolDef,
 };
 pub use usage::Usage;
 

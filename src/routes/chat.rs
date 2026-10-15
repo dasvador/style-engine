@@ -17,8 +17,7 @@ use crate::AppState;
 use crate::models::style_vocab::{StyleGenre, Tone, Weight};
 use crate::services::llm::{
     ChatRequest as LlmChatRequest, ImageDetail, ImageEditRequest as LlmImageEditRequest,
-    ImageRequest as LlmImageRequest, LlmClient,
-    LlmTask, Message, ToolDef, Usage,
+    ImageRequest as LlmImageRequest, LlmClient, LlmTask, Message, ToolDef, Usage,
 };
 use crate::services::outfit_scorer;
 use crate::services::weather as weather_service;
@@ -97,8 +96,8 @@ async fn save_exchange(
     items: &[ChatItem],
 ) {
     let items_json = (!items.is_empty()).then(|| json!(items));
-    let base_json = (!items.is_empty() && !body.previous_items.is_empty())
-        .then(|| json!(body.previous_items));
+    let base_json =
+        (!items.is_empty() && !body.previous_items.is_empty()).then(|| json!(body.previous_items));
     let saved = sqlx::query(
         "INSERT INTO chat_message (user_id, role, text, items_json, base_items_json, mood_key) \
          VALUES (?, 'user', ?, NULL, NULL, ?), (?, 'ai', ?, ?, ?, ?)",
@@ -873,12 +872,16 @@ async fn generate_image(
     let mut outcome: Option<(Option<String>, VerificationStatus)> = None;
 
     // 앞 사진에서 1~2개만 바뀌었으면 편집부터 해 본다. 실패하면 아래에서 새로 만든다.
-    if let Some(base_items) = body.base_items.as_deref() {
-        if let Some(url) = edit_from_base(&state, genre, base_items, &body.items, &mut m).await {
-            outcome = Some((Some(url), VerificationStatus::Passed));
-        }
+    if let Some(base_items) = body.base_items.as_deref()
+        && let Some(url) = edit_from_base(&state, genre, base_items, &body.items, &mut m).await
+    {
+        outcome = Some((Some(url), VerificationStatus::Passed));
     }
-    let generate_attempts = if outcome.is_some() { 0 } else { MAX_IMAGE_ATTEMPTS };
+    let generate_attempts = if outcome.is_some() {
+        0
+    } else {
+        MAX_IMAGE_ATTEMPTS
+    };
 
     for attempt in 1..=generate_attempts {
         let started = std::time::Instant::now();
@@ -1027,9 +1030,19 @@ fn split_image_items(items: &str) -> Vec<(String, String)> {
 /// 앞 코디에서 무엇이 바뀌었는지.
 #[derive(Debug, PartialEq)]
 enum ItemChange {
-    Replace { slot: String, from: String, to: String },
-    Add { slot: String, to: String },
-    Remove { slot: String, from: String },
+    Replace {
+        slot: String,
+        from: String,
+        to: String,
+    },
+    Add {
+        slot: String,
+        to: String,
+    },
+    Remove {
+        slot: String,
+        from: String,
+    },
 }
 
 fn diff_image_items(base: &str, next: &str) -> Vec<ItemChange> {
@@ -1044,12 +1057,18 @@ fn diff_image_items(base: &str, next: &str) -> Vec<ItemChange> {
                 from: from.clone(),
                 to: to.clone(),
             }),
-            None => changes.push(ItemChange::Add { slot: slot.clone(), to: to.clone() }),
+            None => changes.push(ItemChange::Add {
+                slot: slot.clone(),
+                to: to.clone(),
+            }),
         }
     }
     for (slot, from) in &base {
         if !next.iter().any(|(s, _)| s == slot) {
-            changes.push(ItemChange::Remove { slot: slot.clone(), from: from.clone() });
+            changes.push(ItemChange::Remove {
+                slot: slot.clone(),
+                from: from.clone(),
+            });
         }
     }
     changes
@@ -1233,8 +1252,14 @@ impl ImageGenMetrics {
         if self.edit_calls == 0 {
             return Some(0.0);
         }
-        let base = estimate_cost_usd(&llm.config().task(LlmTask::ImageEdit).model, &self.edit_usage)?;
-        Some(base + self.edit_usage.input_tokens as f64 / 1_000_000.0 * EDIT_IMAGE_INPUT_SURCHARGE_PER_MTOK)
+        let base = estimate_cost_usd(
+            &llm.config().task(LlmTask::ImageEdit).model,
+            &self.edit_usage,
+        )?;
+        Some(
+            base + self.edit_usage.input_tokens as f64 / 1_000_000.0
+                * EDIT_IMAGE_INPUT_SURCHARGE_PER_MTOK,
+        )
     }
 
     /// 원장에 더한다. 예산은 이 값을 보고 판단한다.
@@ -2588,7 +2613,10 @@ async fn tool_swap_item(
         "가방" => "bag",
         _ => return None,
     };
-    let current = base.iter().find(|i| i.slot == slot).map(|i| i.name.as_str());
+    let current = base
+        .iter()
+        .find(|i| i.slot == slot)
+        .map(|i| i.name.as_str());
     let pool = |from: &[Clothing]| -> Vec<Clothing> {
         from.iter()
             .filter(|c| c.category == category && Some(c.name.as_str()) != current)
@@ -2679,10 +2707,16 @@ async fn tool_swap_item(
 fn color_family(query: &str) -> Vec<&'static str> {
     const FAMILIES: &[(&[&str], &[&str])] = &[
         (&["카멜", "탄", "코냑"], &["카멜", "탄 ", "코냑"]),
-        (&["브라운", "갈색"], &["브라운", "카멜", "탄 ", "코냑", "초콜릿", "모카"]),
+        (
+            &["브라운", "갈색"],
+            &["브라운", "카멜", "탄 ", "코냑", "초콜릿", "모카"],
+        ),
         (&["블랙", "검은", "검정", "까만"], &["블랙"]),
         (&["화이트", "흰", "하얀"], &["화이트"]),
-        (&["아이보리", "크림", "에크루"], &["아이보리", "크림", "에크루"]),
+        (
+            &["아이보리", "크림", "에크루"],
+            &["아이보리", "크림", "에크루"],
+        ),
         (&["베이지"], &["베이지"]),
         (&["네이비", "남색"], &["네이비"]),
         (&["그레이", "회색"], &["그레이", "차콜"]),

@@ -7,8 +7,7 @@ use super::error::LlmError;
 use super::provider::{ChatProvider, EmbeddingProvider, ImageProvider, ProviderId};
 use super::types::{
     ChatRequest, ChatResponse, ContentPart, EmbeddingResult, ImageEditRequest, ImageRequest,
-    ImageResult, Message,
-    ResponseFormat, StopReason, ToolCall, ToolDef,
+    ImageResult, Message, ResponseFormat, StopReason, ToolCall, ToolDef,
 };
 use super::usage::Usage;
 
