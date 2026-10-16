@@ -2,7 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api/endpoints';
 import { errorMessage } from '../api/client';
-import type { Clothing, Gender, Look, Region, StyleMood, WeatherResponse } from '../types/api';
+import type {
+  Clothing,
+  Gender,
+  Look,
+  ModeRecommendation,
+  Region,
+  StyleMood,
+  WeatherResponse,
+} from '../types/api';
 import { WeatherBar } from '../components/WeatherBar';
 import { RegionBar } from '../components/RegionBar';
 import { LookbookStack } from '../components/LookbookStack';
@@ -42,6 +50,17 @@ interface Props {
 }
 
 /** 저장해 둔 코디의 시각. 오늘 만든 것과 지난 것을 구분한다. */
+/** 룩 저장 때 같이 남길 점수 — 반응 쌍에서 어느 점수가 고른 쪽을 맞히는지 잰다. */
+function scoringOf(m: ModeRecommendation | undefined): Record<string, unknown> | undefined {
+  if (!m) return undefined;
+  return {
+    mode: m.mode,
+    ...(m.scoring_detail ?? {}),
+    shadow_score: m.shadow_score ?? null,
+    silhouette_delta: m.silhouette_delta ?? null,
+  };
+}
+
 function formatSavedAt(iso: string): string {
   const d = new Date(iso.includes('Z') || iso.includes('+') ? iso : `${iso}Z`);
   if (Number.isNaN(d.getTime())) return '';
@@ -235,6 +254,7 @@ export function HomePage({
                 request_id: requestId,
                 position: fresh.indexOf(l),
                 gender,
+                scoring: scoringOf(r.modes[fresh.indexOf(l)]),
               });
               setLooks((prev) =>
                 prev.map((x) => (x.key === l.key ? { ...x, savedId: saved.id } : x)),

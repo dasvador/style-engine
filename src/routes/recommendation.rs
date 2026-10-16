@@ -395,6 +395,7 @@ async fn get_multi_recommendation(
     // 그대로 둔다(빈 추천을 내지 않는다). 아래 shadow 로그는 거르기 전 목록으로 남긴다.
     let mut unfit = Vec::with_capacity(reranked.len());
     let mut silhouette_delta = Vec::with_capacity(reranked.len());
+    let mut shadow_scores: Vec<(usize, i32)> = Vec::with_capacity(reranked.len());
     for c in &reranked {
         let (fail, silhouette) = match crate::services::candidate_pipeline::rebuild_context(
             c,
@@ -404,11 +405,19 @@ async fn get_multi_recommendation(
         )
         .await
         {
-            Some(ctx) => (
-                crate::services::serving_ranker::compute_today_fit(&ctx, weather.temperature)
-                    == crate::services::style_engine_v2::TodayFitLevel::Fail,
-                crate::services::style_engine_v2::silhouette_balance(&ctx),
-            ),
+            Some(ctx) => {
+                let sub = crate::services::style_engine_v2::compute_subscores(&ctx, None);
+                shadow_scores.push((
+                    c.ai_candidate_index,
+                    crate::services::style_engine_v2::compute_style_score(&sub)
+                        + crate::services::serving_ranker::compute_serving_adjustment(&ctx).0,
+                ));
+                (
+                    crate::services::serving_ranker::compute_today_fit(&ctx, weather.temperature)
+                        == crate::services::style_engine_v2::TodayFitLevel::Fail,
+                    crate::services::style_engine_v2::silhouette_balance(&ctx),
+                )
+            }
             None => (false, 0),
         };
         unfit.push((c.ai_candidate_index, fail));
@@ -499,6 +508,10 @@ async fn get_multi_recommendation(
         ),
     ];
 
+    let shadow_of = |idx: usize| shadow_scores.iter().find(|(i, _)| *i == idx).map(|(_, s)| *s);
+    let silhouette_of =
+        |idx: usize| silhouette_delta.iter().find(|(i, _)| *i == idx).map(|(_, d)| *d);
+
     let mut modes = Vec::new();
     let todays_idx = todays.as_ref().map(|t| t.candidate.ai_candidate_index);
 
@@ -550,6 +563,8 @@ async fn get_multi_recommendation(
                     reason,
                     revival_items,
                     scoring_detail: fallback.scoring,
+                    shadow_score: shadow_of(ai_idx),
+                    silhouette_delta: silhouette_of(ai_idx),
                 });
                 continue;
             }
@@ -580,6 +595,8 @@ async fn get_multi_recommendation(
             reason,
             revival_items,
             scoring_detail: scoring.clone(),
+            shadow_score: shadow_of(ai_idx),
+            silhouette_delta: silhouette_of(ai_idx),
         });
     }
 

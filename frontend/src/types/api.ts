@@ -143,6 +143,9 @@ export interface ModeRecommendation {
   reason: string;
   revival_items: string[];
   scoring_detail: ScoringDetail | null;
+  /** shadow 엔진 점수. 순서에는 쓰지 않고 룩 저장 때 돌려보낸다. */
+  shadow_score?: number | null;
+  silhouette_delta?: number | null;
 }
 
 export interface MultiModeRecommendation {
@@ -352,6 +355,8 @@ export interface SaveLookBody {
   /** 응답 안의 순서(0부터). */
   position?: number;
   gender?: string;
+  /** 홈 추천이 매긴 점수 내역. 반응 쌍과 비교하려고 `look_signal` 에 남긴다. */
+  scoring?: Record<string, unknown>;
 }
 
 // ─── 헬스체크 (src/routes/health.rs) ───

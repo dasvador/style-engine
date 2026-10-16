@@ -54,6 +54,9 @@ pub struct SaveLookRequest {
     pub position: Option<u8>,
     #[serde(default)]
     pub gender: Option<String>,
+    /// 홈 추천이 이 코디에 매긴 점수 내역과 shadow 점수. 그대로 `look_signal` 에 남긴다.
+    #[serde(default)]
+    pub scoring: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -166,8 +169,8 @@ async fn save_look(
         let recorded = sqlx::query(
             "INSERT IGNORE INTO look_signal \
              (user_id, request_id, look_id, position, gender, mood_key, weather_summary, \
-              outfit_json) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+              outfit_json, scoring_json) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&auth.user_id)
         .bind(request_id)
@@ -177,6 +180,7 @@ async fn save_look(
         .bind(&body.mood_key)
         .bind(&body.weather_summary)
         .bind(&body.outfit_json)
+        .bind(&body.scoring)
         .execute(&state.db)
         .await;
         if let Err(e) = recorded {

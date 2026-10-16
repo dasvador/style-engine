@@ -84,7 +84,8 @@ def existing_items(text: str) -> dict[str, str]:
 def main() -> None:
     pairs = query(
         "SELECT request_id, gender, mood_key, better_look_id, worse_look_id, strength, "
-        "better_position, worse_position, better_outfit, worse_outfit, created_at "
+        "better_position, worse_position, better_outfit, worse_outfit, created_at, "
+        "better_scoring, worse_scoring "
         "FROM look_pair ORDER BY created_at, request_id, better_look_id, worse_look_id"
     )
     ids = sorted({o["id"] for p in pairs for k in ("better_outfit", "worse_outfit")
@@ -150,7 +151,28 @@ def main() -> None:
             "",
         ]
     PAIRS.write_text("\n".join(out))
+    report_scoring(pairs)
     print(f"{len(pairs)}쌍, 새 아이템 {len(new_blocks)}개, 기존 키 재사용 {len(ids) - len(new_blocks)}개")
+
+
+def report_scoring(pairs: list[dict]) -> None:
+    """추천 때 매긴 실제 점수가 남은 쌍에서, 각 점수가 고른 쪽을 높게 쳤는지 센다.
+
+    점수는 2026-10-16 부터 저장된다. 그 전 쌍은 건너뛴다.
+    """
+    scored = [(json.loads(p["better_scoring"]), json.loads(p["worse_scoring"]))
+              for p in pairs if p["better_scoring"] and p["worse_scoring"]]
+    if not scored:
+        print("점수가 남은 쌍 없음")
+        return
+    print(f"점수가 남은 쌍 {len(scored)}개 — 고른 쪽이 높음 / 같음 / 낮음")
+    for key in ["final_score", "style_score", "recency_penalty", "diversity_bonus",
+                "dormant_bonus", "shadow_score", "silhouette_delta"]:
+        pairs_k = [(b.get(key), w.get(key)) for b, w in scored
+                   if b.get(key) is not None and w.get(key) is not None]
+        hi = sum(b > w for b, w in pairs_k)
+        eq = sum(b == w for b, w in pairs_k)
+        print(f"  {key:16s} {hi:3d} / {eq:3d} / {len(pairs_k) - hi - eq:3d}")
 
 
 if __name__ == "__main__":

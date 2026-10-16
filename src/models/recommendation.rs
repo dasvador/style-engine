@@ -102,6 +102,11 @@ pub struct ModeRecommendation {
     pub reason: String,
     pub revival_items: Vec<String>,
     pub scoring_detail: ScoringDetail,
+    /// shadow 엔진(style_engine_v2 스타일 점수 + 상황 보정)의 점수. 응답 순서에는 쓰지
+    /// 않는다 — 화면이 룩을 저장할 때 같이 돌려보내 반응 쌍과 비교한다.
+    pub shadow_score: Option<i32>,
+    /// 실루엣 shadow 가 더했을 점수.
+    pub silhouette_delta: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
