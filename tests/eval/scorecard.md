@@ -13,6 +13,7 @@
 | — Accept 평균 / Reject 평균 / 간격 | 96.0 / 91.3 / 4.7 |
 | Hard + fit 동시 일치 | **77.2%** |
 | 사람이 고른 쌍과 일치 — 운영 / shadow (16쌍, `preference_pairs.toml`) | **68.8%** / **50.0%** |
+| 반응으로 정해진 쌍과 일치 — 운영 / shadow / 화면 순서 (30쌍 · 지운 코디 26쌍, `usage_pairs.toml`) | **48.3%** / **50.0%** / 60.0% |
 
 ## False positive를 유발한 룰
 

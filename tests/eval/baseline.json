@@ -32,5 +32,12 @@
     "pairs": 16,
     "production_agree_pct": 68.8,
     "shadow_agree_pct": 50.0
+  },
+  "usage_pairs": {
+    "pairs": 30,
+    "strong_pairs": 26,
+    "production_agree_pct": 48.3,
+    "shadow_agree_pct": 50.0,
+    "screen_order_agree_pct": 60.0
   }
 }

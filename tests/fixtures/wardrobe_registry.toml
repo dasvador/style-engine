@@ -3403,3 +3403,1351 @@ weight = "중간"
 formality_level = 2
 seasons = ["가을", "겨울", "봄", "여름"]
 texture_worlds = ["leather"]
+
+# ─── 반응 쌍용 아이템 (tools/look-pairs/export.py 가 다시 쓴다) ───
+# 값은 내보낸 시점의 DB 그대로다.
+
+[items.lp_4175aa]
+name = "라이트그레이 스웻셔츠"
+category = "상의"
+thickness = "medium"
+style = "베이직"
+role = "연결템"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "겨울", "봄"]
+texture_worlds = ["sweat"]
+
+[items.lp_a2699c]
+name = "스톤베이지 스트레이트 팬츠"
+category = "하의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["minimal"]
+
+[items.lp_3cd83f]
+name = "오트밀 스웻셔츠"
+category = "상의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "겨울", "봄"]
+texture_worlds = ["sweat"]
+
+[items.lp_a8970c]
+name = "웜그레이 크루넥 티셔츠"
+category = "상의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["minimal"]
+
+[items.lp_6e67bc]
+name = "블랙 리브 탱크탑"
+category = "상의"
+thickness = "thin"
+style = "베이직"
+role = "베이스"
+tone = "어두움"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 1
+silhouette = "slim"
+seasons = ["봄", "여름"]
+texture_worlds = ["minimal"]
+
+[items.lp_1bcdc8]
+name = "오트밀 코튼 니트 크루넥"
+category = "상의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "겨울"]
+texture_worlds = ["minimal"]
+
+[items.lp_5045ba]
+name = "인디고 데님 트러커 자켓"
+category = "아우터"
+thickness = "medium"
+style = "베이직"
+role = "연결템"
+tone = "어두움"
+saturation = "중간"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["denim", "minimal"]
+
+[items.lp_22279c]
+name = "블랙 코튼 크루넥 티셔츠"
+category = "상의"
+thickness = "thin"
+style = "베이직"
+role = "베이스"
+tone = "어두움"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 1
+silhouette = "regular"
+seasons = ["봄", "여름"]
+texture_worlds = ["minimal"]
+
+[items.lp_637a24]
+name = "블랙 하이웨이스트 핀턱 슬랙스"
+category = "하의"
+thickness = "medium"
+style = "포멀"
+role = "베이스"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 4
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["tailoring"]
+
+[items.lp_38ed49]
+name = "카키 카고 팬츠"
+category = "하의"
+thickness = "medium"
+style = "밀리터리"
+role = "연결템"
+tone = "중간"
+saturation = "중간"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["military", "workwear"]
+
+[items.lp_a5614d]
+name = "라이트 인디고 데님"
+category = "하의"
+thickness = "medium"
+style = "베이직"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["denim", "workwear"]
+
+[items.lp_bf3f99]
+name = "브라운 레더 로퍼"
+category = "신발"
+thickness = "medium"
+style = "베이직"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 3
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["leather", "minimal"]
+
+[items.lp_89360a]
+name = "샌드 캔버스 숄더백"
+category = "가방"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["canvas", "minimal"]
+
+[items.lp_4b65ea]
+name = "오트밀 와플 헨리넥"
+category = "상의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["minimal"]
+
+[items.lp_0ebf18]
+name = "샌드 캔버스 슬립온"
+category = "신발"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["canvas", "minimal"]
+
+[items.lp_c4171a]
+name = "크림 코튼 밴드칼라 셔츠"
+category = "상의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["minimal"]
+
+[items.lp_74c5a2]
+name = "그레이 스웨이드 러닝 스니커"
+category = "신발"
+thickness = "medium"
+style = "스포츠"
+role = "구조템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["minimal"]
+
+[items.lp_ef4f67]
+name = "하늘색 샴브레이 셔츠"
+category = "상의"
+thickness = "medium"
+style = "워크"
+role = "연결템"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄", "여름"]
+texture_worlds = ["workwear"]
+
+[items.lp_0a4714]
+name = "블랙 폴리 트랙 팬츠"
+category = "하의"
+thickness = "thin"
+style = "스포츠"
+role = "베이스"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "봄", "여름"]
+
+[items.lp_8c9e1d]
+name = "헤더그레이 조거 스웻팬츠"
+category = "하의"
+thickness = "medium"
+style = "스포츠"
+role = "베이스"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 1
+silhouette = "relaxed"
+seasons = ["가을", "겨울", "봄"]
+
+[items.lp_5d566a]
+name = "베이지 리플스탑 카고 팬츠"
+category = "하의"
+thickness = "medium"
+style = "스포츠"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 1
+silhouette = "relaxed"
+seasons = ["가을", "봄"]
+
+[items.lp_66e693]
+name = "그레이 하이웨이스트 7부 레깅스"
+category = "하의"
+thickness = "thin"
+style = "스포츠"
+role = "베이스"
+tone = "중간"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 1
+silhouette = "slim"
+seasons = ["가을", "겨울", "봄"]
+
+[items.lp_e15a30]
+name = "화이트 라셀백 스포츠 브라탑"
+category = "상의"
+thickness = "thin"
+style = "스포츠"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 1
+silhouette = "slim"
+seasons = ["봄", "여름"]
+
+[items.lp_7201ea]
+name = "차콜 울 스니커"
+category = "신발"
+thickness = "medium"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["minimal"]
+
+[items.lp_0ab674]
+name = "그레이지 니트 폴로"
+category = "상의"
+thickness = "medium"
+style = "베이직"
+role = "연결템"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["minimal"]
+
+[items.lp_f83a5f]
+name = "피그먼트 그레이 백팩"
+category = "가방"
+thickness = "medium"
+style = "베이직"
+role = "구조템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["minimal"]
+
+[items.lp_86245f]
+name = "차콜 울 싱글 코트"
+category = "아우터"
+thickness = "medium"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 3
+silhouette = "relaxed"
+seasons = ["가을", "봄"]
+texture_worlds = ["tailoring"]
+
+[items.lp_6f0400]
+name = "샌드 하링턴 자켓"
+category = "아우터"
+thickness = "medium"
+style = "베이직"
+role = "연결템"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 3
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["minimal", "tailoring"]
+
+[items.lp_9de6d4]
+name = "크림 숏 트렌치코트"
+category = "아우터"
+thickness = "medium"
+style = "베이직"
+role = "구조템"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+silhouette = "relaxed"
+seasons = ["가을", "봄"]
+texture_worlds = ["minimal"]
+
+[items.lp_f729a3]
+name = "화이트 와이드 데님 팬츠"
+category = "하의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 2
+silhouette = "oversized"
+seasons = ["가을", "봄"]
+texture_worlds = ["denim", "minimal"]
+
+[items.lp_ada724]
+name = "베이지 미니 버킷백"
+category = "가방"
+thickness = "medium"
+style = "베이직"
+role = "포인트"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 2
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather", "minimal"]
+
+[items.lp_ac0d00]
+name = "실버 체인 미니 크로스백"
+category = "가방"
+thickness = "thin"
+style = "베이직"
+role = "포인트"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 2
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather", "minimal"]
+
+[items.lp_f1bcd1]
+name = "네이비 울 싱글 코트"
+category = "아우터"
+thickness = "medium"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 3
+silhouette = "relaxed"
+seasons = ["가을", "봄"]
+texture_worlds = ["tailoring"]
+
+[items.lp_727bae]
+name = "그레이 니트 터틀넥 탑"
+category = "상의"
+thickness = "medium"
+style = "포멀"
+role = "베이스"
+tone = "중간"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+silhouette = "regular"
+seasons = ["가을", "겨울"]
+texture_worlds = ["minimal"]
+
+[items.lp_a02c7e]
+name = "네이비 더블 브레스티드 블레이저"
+category = "아우터"
+thickness = "medium"
+style = "포멀"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 4
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["tailoring"]
+
+[items.lp_ff563f]
+name = "블랙 스트레이트 울혼방 슬랙스"
+category = "하의"
+thickness = "medium"
+style = "포멀"
+role = "베이스"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 4
+silhouette = "relaxed"
+seasons = ["가을", "겨울"]
+texture_worlds = ["tailoring"]
+
+[items.lp_c891b7]
+name = "블랙 버클 스트랩 숄더백"
+category = "가방"
+thickness = "medium"
+style = "포멀"
+role = "포인트"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 4
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather"]
+
+[items.lp_d03c46]
+name = "라벤더 리본 넥 퍼프슬리브 블라우스"
+category = "상의"
+thickness = "thin"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 3
+silhouette = "regular"
+seasons = ["가을", "봄", "여름"]
+texture_worlds = ["romantic"]
+
+[items.lp_44b673]
+name = "화이트 코튼 스모킹 크롭 탑"
+category = "상의"
+thickness = "thin"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 1
+silhouette = "regular"
+seasons = ["봄", "여름"]
+texture_worlds = ["romantic"]
+
+[items.lp_b0a2d7]
+name = "베이비핑크 플리츠 새틴 미디 스커트"
+category = "하의"
+thickness = "thin"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 3
+silhouette = "regular"
+seasons = ["가을", "봄", "여름"]
+texture_worlds = ["romantic"]
+
+[items.lp_8206d1]
+name = "베이지 플로럴 프린트 맥시 원피스"
+category = "하의"
+thickness = "thin"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄", "여름"]
+texture_worlds = ["bohemian"]
+
+[items.lp_daae51]
+name = "화이트 메리제인 스트랩 플랫슈즈"
+category = "신발"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather"]
+
+[items.lp_0b530e]
+name = "크림 레이스업 발레리나 슈즈"
+category = "신발"
+thickness = "thin"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 3
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather"]
+
+[items.lp_a28469]
+name = "아이보리 레이스 트리밍 버킷백"
+category = "가방"
+thickness = "medium"
+style = "베이직"
+role = "포인트"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 2
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather"]
+
+[items.lp_071d1b]
+name = "올리브 울 오버셔츠"
+category = "아우터"
+thickness = "medium"
+style = "워크"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+silhouette = "relaxed"
+seasons = ["가을", "봄"]
+texture_worlds = ["workwear"]
+
+[items.lp_192b06]
+name = "다크올리브 카고 팬츠"
+category = "하의"
+thickness = "medium"
+style = "밀리터리"
+role = "연결템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["military", "workwear"]
+
+[items.lp_b28075]
+name = "오트밀 니트 크루넥"
+category = "상의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["minimal"]
+
+[items.lp_c86a9b]
+name = "그레이지 코튼 팬츠"
+category = "하의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["minimal"]
+
+[items.lp_dfcaa5]
+name = "네이비 모크넥 롱슬리브"
+category = "상의"
+thickness = "medium"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["minimal"]
+
+[items.lp_3a4430]
+name = "차콜 모크넥 니트"
+category = "상의"
+thickness = "medium"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["minimal"]
+
+[items.lp_38879a]
+name = "네이비 캔버스 토트백"
+category = "가방"
+thickness = "medium"
+style = "베이직"
+role = "연결템"
+tone = "어두움"
+saturation = "중간"
+color_temperature = "cool"
+weight = "가벼움"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["minimal"]
+
+[items.lp_b66079]
+name = "그레이지 린넨 셔츠"
+category = "상의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["linen"]
+
+[items.lp_e7b295]
+name = "크림 치노 팬츠"
+category = "하의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["봄", "여름"]
+texture_worlds = ["minimal"]
+
+[items.lp_6cd732]
+name = "올리브 백팩"
+category = "가방"
+thickness = "medium"
+style = "밀리터리"
+role = "연결템"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["canvas", "military"]
+
+[items.lp_697029]
+name = "크림 메쉬 패널 트랙재킷"
+category = "아우터"
+thickness = "thin"
+style = "스포츠"
+role = "약한포인트"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "봄"]
+
+[items.lp_6f706f]
+name = "화이트 드라이핏 오버사이즈 반팔티"
+category = "상의"
+thickness = "thin"
+style = "스포츠"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 1
+silhouette = "oversized"
+seasons = ["봄", "여름"]
+
+[items.lp_08b528]
+name = "차콜 스웨트 와이드 조거팬츠"
+category = "하의"
+thickness = "medium"
+style = "스포츠"
+role = "베이스"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 1
+silhouette = "oversized"
+seasons = ["가을", "겨울", "봄"]
+
+[items.lp_b7f449]
+name = "화이트 메쉬 러닝 스니커즈"
+category = "신발"
+thickness = "medium"
+style = "스포츠"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 1
+seasons = ["가을", "겨울", "봄", "여름"]
+
+[items.lp_35edc8]
+name = "베이지 리플스탑 미니 백팩"
+category = "가방"
+thickness = "thin"
+style = "스포츠"
+role = "포인트"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 1
+seasons = ["가을", "겨울", "봄", "여름"]
+
+[items.lp_98dfdb]
+name = "블랙 레더 숄더백"
+category = "가방"
+thickness = "medium"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "중간"
+formality_level = 3
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["leather", "minimal"]
+
+[items.lp_fd2392]
+name = "라이트그레이 스웻 집업"
+category = "아우터"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["sweat"]
+
+[items.lp_8021de]
+name = "네이비 하링턴 자켓"
+category = "아우터"
+thickness = "medium"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 3
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["minimal", "tailoring"]
+
+[items.lp_834bbe]
+name = "스톤 린넨 팬츠"
+category = "하의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["linen"]
+
+[items.lp_32defd]
+name = "네이비 스웻 집업"
+category = "아우터"
+thickness = "medium"
+style = "베이직"
+role = "연결템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["sweat"]
+
+[items.lp_3f96ee]
+name = "크림 스모크 셔링 탑"
+category = "상의"
+thickness = "thin"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 3
+silhouette = "regular"
+seasons = ["가을", "봄", "여름"]
+texture_worlds = ["romantic"]
+
+[items.lp_1c2424]
+name = "화이트 퍼프슬리브 티셔츠"
+category = "상의"
+thickness = "thin"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "봄", "여름"]
+texture_worlds = ["romantic"]
+
+[items.lp_5dcce1]
+name = "아이보리 트위드 자켓"
+category = "아우터"
+thickness = "medium"
+style = "포멀"
+role = "구조템"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+silhouette = "regular"
+seasons = ["가을", "겨울"]
+texture_worlds = ["tailoring"]
+
+[items.lp_97bb2a]
+name = "크림 플리츠 미디스커트"
+category = "하의"
+thickness = "thin"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 3
+silhouette = "regular"
+seasons = ["가을", "봄", "여름"]
+texture_worlds = ["romantic"]
+
+[items.lp_35d7cf]
+name = "화이트 A라인 미니스커트"
+category = "하의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["minimal"]
+
+[items.lp_45cb88]
+name = "아이보리 스트랩 뮬 샌들"
+category = "신발"
+thickness = "thin"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 2
+seasons = ["봄", "여름"]
+texture_worlds = ["leather"]
+
+[items.lp_b50a34]
+name = "소프트핑크 숄더백"
+category = "가방"
+thickness = "medium"
+style = "베이직"
+role = "포인트"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather"]
+
+[items.lp_1f4354]
+name = "화이트 오버핏 코튼 티셔츠"
+category = "상의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 1
+silhouette = "oversized"
+seasons = ["가을", "봄", "여름"]
+texture_worlds = ["minimal"]
+
+[items.lp_39596d]
+name = "네이비 스트라이프 럭비 티"
+category = "상의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "봄", "여름"]
+texture_worlds = ["minimal"]
+
+[items.lp_f84936]
+name = "베이지 코듀로이 트러커자켓"
+category = "아우터"
+thickness = "medium"
+style = "워크"
+role = "연결템"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 2
+silhouette = "relaxed"
+seasons = ["가을", "봄"]
+texture_worlds = ["workwear"]
+
+[items.lp_713dfe]
+name = "베이지 와이드 치노팬츠"
+category = "하의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 2
+silhouette = "oversized"
+seasons = ["가을", "봄"]
+texture_worlds = ["minimal"]
+
+[items.lp_53c910]
+name = "브라운 스웨이드 로퍼"
+category = "신발"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "중간"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather", "minimal"]
+
+[items.lp_55869f]
+name = "카키 캔버스 토트백"
+category = "가방"
+thickness = "medium"
+style = "베이직"
+role = "포인트"
+tone = "중간"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["canvas", "minimal"]
+
+[items.lp_ed7d40]
+name = "블랙 나일론 메신저백"
+category = "가방"
+thickness = "medium"
+style = "베이직"
+role = "포인트"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 2
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["minimal", "nylon"]
+
+[items.lp_b1ae4e]
+name = "탄 레더 크로스 사첼백"
+category = "가방"
+thickness = "medium"
+style = "베이직"
+role = "포인트"
+tone = "중간"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather"]
+
+[items.lp_9b3ef8]
+name = "베이지 오버사이즈 울 코트"
+category = "아우터"
+thickness = "thick"
+style = "베이직"
+role = "구조템"
+tone = "밝음"
+saturation = "낮음"
+weight = "무거움"
+formality_level = 3
+silhouette = "oversized"
+seasons = ["가을", "겨울"]
+texture_worlds = ["tailoring"]
+
+[items.lp_44f7cb]
+name = "차콜 테이퍼드 울 팬츠"
+category = "하의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 4
+silhouette = "slim"
+seasons = ["가을", "겨울"]
+texture_worlds = ["minimal"]
+
+[items.lp_82a403]
+name = "크림 핀턱 와이드 팬츠"
+category = "하의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+silhouette = "oversized"
+seasons = ["가을", "봄"]
+texture_worlds = ["minimal"]
+
+[items.lp_fc0daa]
+name = "차콜 크롭 후드 스웨트셔츠"
+category = "상의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "겨울", "봄"]
+texture_worlds = ["sweat"]
+
+[items.lp_22dc65]
+name = "블랙 메쉬 레이어드 롱슬리브"
+category = "상의"
+thickness = "thin"
+style = "베이직"
+role = "베이스"
+tone = "어두움"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "봄"]
+
+[items.lp_fc51ff]
+name = "워시드 블랙 크롭 데님자켓"
+category = "아우터"
+thickness = "medium"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["denim"]
+
+[items.lp_cb2da9]
+name = "워시드 다크블루 와이드 데님"
+category = "하의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 2
+silhouette = "oversized"
+seasons = ["가을", "봄"]
+texture_worlds = ["denim"]
+
+[items.lp_733477]
+name = "화이트 캔버스 하이탑 스니커즈"
+category = "신발"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+weight = "중간"
+formality_level = 1
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["canvas"]
+
+[items.lp_ab2f7d]
+name = "블랙 나일론 크로스 슬링백"
+category = "가방"
+thickness = "thin"
+style = "스포츠"
+role = "포인트"
+tone = "어두움"
+saturation = "낮음"
+weight = "가벼움"
+formality_level = 1
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["nylon"]
+
+[items.lp_97f6dc]
+name = "블랙 미니 체인 숄더백"
+category = "가방"
+thickness = "medium"
+style = "베이직"
+role = "포인트"
+tone = "어두움"
+saturation = "낮음"
+weight = "중간"
+formality_level = 3
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["leather"]
+
+[items.lp_00213a]
+name = "네이비 코튼 블루종"
+category = "아우터"
+thickness = "medium"
+style = "베이직"
+role = "구조템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["minimal"]
+
+[items.lp_c7c4f9]
+name = "네이비 캔버스 스니커"
+category = "신발"
+thickness = "medium"
+style = "베이직"
+role = "연결템"
+tone = "어두움"
+saturation = "낮음"
+color_temperature = "cool"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["canvas", "minimal"]
+
+[items.lp_a6abf0]
+name = "라이트그레이 스웻팬츠"
+category = "하의"
+thickness = "medium"
+style = "베이직"
+role = "연결템"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["sweat"]
+
+[items.lp_d6f9fb]
+name = "화이트 캔버스 스니커"
+category = "신발"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "neutral"
+weight = "가벼움"
+formality_level = 1
+silhouette = "regular"
+seasons = ["가을", "겨울", "봄", "여름"]
+texture_worlds = ["minimal"]
+
+[items.lp_4c20b5]
+name = "베이지 저먼트레이너"
+category = "신발"
+thickness = "medium"
+style = "베이직"
+role = "연결템"
+tone = "밝음"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["military", "minimal"]
+
+[items.lp_dd488d]
+name = "웜그레이 니트 크루넥"
+category = "상의"
+thickness = "medium"
+style = "베이직"
+role = "베이스"
+tone = "중간"
+saturation = "낮음"
+color_temperature = "warm"
+weight = "중간"
+formality_level = 2
+silhouette = "regular"
+seasons = ["가을", "봄"]
+texture_worlds = ["minimal"]

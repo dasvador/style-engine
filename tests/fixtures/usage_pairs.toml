@@ -1,0 +1,277 @@
+# 홈 추천 한 번에 나온 코디들 중, 사용자가 남긴 반응으로 더 나은 쪽이 정해진 쌍.
+# tools/look-pairs/export.py 가 DB 의 `look_pair` 뷰에서 만든다 — 손으로 고치지 않는다.
+#
+# better 는 좋아요/입어봄을 받고 지우지 않은 코디, worse 는 같은 요청에서 지운 코디(strong)
+# 이거나 아무 반응도 없던 코디(weak)다. `preference_pairs.toml` 의 블라인드 비교와 달리
+# 운영 엔진이 고른 후보끼리의 비교라, 운영 엔진이 이미 걸러 낸 뒤의 취향을 잰다.
+version = 1
+
+[[pairs]]
+id = "LP590b8cf9"
+context = "여성 · romantic"
+situation = "일상"
+strength = "weak"
+positions = [1, 0]
+better = { top = "lp_44b673", bottom = "pw_67", shoes = "lp_45cb88", bag = "pw_25" }
+worse = { top = "lp_3f96ee", bottom = "lp_b0a2d7", outer = "lp_5dcce1", shoes = "pw_03", bag = "pw_69" }
+
+[[pairs]]
+id = "LP80dcdcfd"
+context = "여성 · mannish"
+situation = "일상"
+strength = "strong"
+positions = [0, 1]
+better = { top = "lp_1f4354", bottom = "lp_637a24", shoes = "fw_48", bag = "lp_b1ae4e" }
+worse = { top = "lp_39596d", bottom = "lp_713dfe", shoes = "lp_53c910", bag = "lp_55869f" }
+
+[[pairs]]
+id = "LP9b3ad794"
+context = "여성 · minimal"
+situation = "일상"
+strength = "strong"
+positions = [0, 1]
+better = { top = "pw_30", bottom = "pw_27", outer = "lp_9b3ef8", shoes = "pw_02", bag = "lp_ada724" }
+worse = { top = "lp_1bcdc8", bottom = "lp_82a403", outer = "lp_9b3ef8", shoes = "fw_48", bag = "fw_11" }
+
+[[pairs]]
+id = "LPc42ddb81"
+context = "여성 · modern_chic"
+situation = "일상"
+strength = "strong"
+positions = [0, 1]
+better = { top = "lp_727bae", bottom = "pw_07", outer = "lp_a02c7e", shoes = "pw_08", bag = "fw_43" }
+worse = { top = "fw_25", bottom = "pw_06", shoes = "pw_08", bag = "fw_43" }
+
+[[pairs]]
+id = "LP49b0f35d"
+context = "여성 · street"
+situation = "일상"
+strength = "strong"
+positions = [1, 0]
+better = { top = "pw_32", bottom = "fw_37", shoes = "lp_733477", bag = "lp_ab2f7d" }
+worse = { top = "pw_14", bottom = "pw_22", shoes = "lp_733477", bag = "pw_20" }
+
+[[pairs]]
+id = "LPab63944c"
+context = "여성 · romantic"
+situation = "일상"
+strength = "strong"
+positions = [1, 0]
+better = { top = "lp_d03c46", bottom = "lp_97bb2a", outer = "pw_68", shoes = "lp_0b530e", bag = "lp_a28469" }
+worse = { top = "lp_1c2424", bottom = "lp_8206d1", shoes = "lp_daae51", bag = "lp_b50a34" }
+
+[[pairs]]
+id = "LP89739f66"
+context = "여성 · mannish"
+situation = "일상"
+strength = "strong"
+positions = [0, 1]
+better = { top = "lp_39596d", bottom = "fw_34", outer = "lp_f84936", shoes = "fw_48", bag = "fw_15" }
+worse = { top = "lp_1f4354", bottom = "fw_33", shoes = "fw_48", bag = "lp_ed7d40" }
+
+[[pairs]]
+id = "LP37a89a14"
+context = "남성 · preppy"
+situation = "일상"
+strength = "strong"
+positions = [0, 1]
+better = { top = "lp_3a4430", bottom = "lp_a2699c", shoes = "lp_bf3f99", bag = "lp_38879a" }
+worse = { top = "lp_0ab674", bottom = "pw_53", outer = "lp_6f0400", shoes = "pw_56", bag = "pw_37" }
+
+[[pairs]]
+id = "LP7537e384"
+context = "남성 · outdoor_casual"
+situation = "일상"
+strength = "strong"
+positions = [0, 1]
+better = { top = "pw_54", bottom = "lp_192b06", shoes = "lp_74c5a2", bag = "pw_52" }
+worse = { top = "lp_4b65ea", bottom = "lp_38ed49", shoes = "lp_4c20b5", bag = "lp_f83a5f" }
+
+[[pairs]]
+id = "LP16809832"
+context = "남성 · amekaji"
+situation = "일상"
+strength = "strong"
+positions = [2, 0]
+better = { top = "lp_c4171a", bottom = "lp_834bbe", shoes = "pw_48", bag = "pw_52" }
+worse = { top = "lp_a8970c", bottom = "pw_58", outer = "lp_00213a", shoes = "lp_7201ea", bag = "pw_41" }
+
+[[pairs]]
+id = "LPcf4cd52d"
+context = "남성 · amekaji"
+situation = "일상"
+strength = "strong"
+positions = [1, 0]
+better = { top = "pw_42", bottom = "pw_53", outer = "lp_86245f", shoes = "lp_0ebf18", bag = "lp_89360a" }
+worse = { top = "lp_a8970c", bottom = "pw_58", outer = "lp_00213a", shoes = "lp_7201ea", bag = "pw_41" }
+
+[[pairs]]
+id = "LPcd0a4f7b"
+context = "여성 · street"
+situation = "일상"
+strength = "strong"
+positions = [0, 1]
+better = { top = "lp_fc0daa", bottom = "fw_37", outer = "lp_fc51ff", shoes = "pw_17", bag = "lp_97f6dc" }
+worse = { top = "lp_22dc65", bottom = "lp_cb2da9", outer = "lp_5045ba", shoes = "lp_733477", bag = "lp_ab2f7d" }
+
+[[pairs]]
+id = "LP4eec68b8"
+context = "여성 · sporty_casual"
+situation = "일상"
+strength = "strong"
+positions = [0, 1]
+better = { top = "lp_6f706f", bottom = "lp_66e693", outer = "lp_697029", shoes = "lp_b7f449", bag = "lp_35edc8" }
+worse = { top = "lp_e15a30", bottom = "lp_08b528", shoes = "lp_b7f449", bag = "lp_35edc8" }
+
+[[pairs]]
+id = "LP2082380a"
+context = "여성 · minimal"
+situation = "일상"
+strength = "strong"
+positions = [0, 1]
+better = { top = "lp_6e67bc", bottom = "lp_82a403", outer = "lp_9b3ef8", shoes = "pw_02", bag = "lp_ac0d00" }
+worse = { top = "pw_30", bottom = "lp_f729a3", shoes = "pw_31", bag = "fw_11" }
+
+[[pairs]]
+id = "LPbd091c37"
+context = "여성 · minimal"
+situation = "일상"
+strength = "weak"
+positions = [0, 2]
+better = { top = "lp_6e67bc", bottom = "lp_82a403", outer = "lp_9b3ef8", shoes = "pw_02", bag = "lp_ac0d00" }
+worse = { top = "lp_22279c", bottom = "pw_27", shoes = "fw_48", bag = "fw_51" }
+
+[[pairs]]
+id = "LP223660e2"
+context = "여성 · classic"
+situation = "일상"
+strength = "weak"
+positions = [0, 1]
+better = { top = "pw_33", bottom = "fw_05", outer = "lp_9de6d4", shoes = "pw_15", bag = "pw_11" }
+worse = { top = "pw_33", bottom = "lp_44f7cb", shoes = "fw_14", bag = "pw_11" }
+
+[[pairs]]
+id = "LPe61d18e8"
+context = "여성 · romantic"
+situation = "일상"
+strength = "weak"
+positions = [1, 0]
+better = { top = "lp_1c2424", bottom = "lp_35d7cf", shoes = "pw_03", bag = "pw_69" }
+worse = { top = "lp_44b673", bottom = "pw_67", outer = "pw_68", shoes = "lp_45cb88", bag = "pw_25" }
+
+[[pairs]]
+id = "LP9eb23a83"
+context = "남성 · sporty_casual"
+situation = "일상"
+strength = "strong"
+positions = [2, 0]
+better = { top = "pw_39", bottom = "lp_0a4714", outer = "lp_32defd", shoes = "lp_74c5a2", bag = "pw_41" }
+worse = { top = "lp_3cd83f", bottom = "lp_8c9e1d", outer = "lp_fd2392", shoes = "lp_d6f9fb", bag = "lp_f83a5f" }
+
+[[pairs]]
+id = "LP139856ce"
+context = "남성 · sporty_casual"
+situation = "일상"
+strength = "strong"
+positions = [2, 1]
+better = { top = "pw_39", bottom = "lp_0a4714", outer = "lp_32defd", shoes = "lp_74c5a2", bag = "pw_41" }
+worse = { top = "lp_4175aa", bottom = "lp_a6abf0", shoes = "lp_4c20b5", bag = "lp_6cd732" }
+
+[[pairs]]
+id = "LPad08c722"
+context = "남성 · outdoor_casual"
+situation = "일상"
+strength = "strong"
+positions = [1, 0]
+better = { top = "pw_39", bottom = "lp_5d566a", outer = "lp_32defd", shoes = "pw_36", bag = "pw_41" }
+worse = { top = "lp_dd488d", bottom = "pw_45", outer = "pw_43", shoes = "pw_40", bag = "pw_50" }
+
+[[pairs]]
+id = "LP926d2784"
+context = "남성 · workwear"
+situation = "일상"
+strength = "strong"
+positions = [0, 1]
+better = { top = "pw_38", bottom = "pw_60", outer = "pw_57", shoes = "pw_49", bag = "pw_65" }
+worse = { top = "lp_ef4f67", bottom = "pw_59", outer = "lp_071d1b", shoes = "pw_46", bag = "pw_47" }
+
+[[pairs]]
+id = "LP685d241e"
+context = "남성 · preppy"
+situation = "일상"
+strength = "strong"
+positions = [1, 0]
+better = { top = "lp_b66079", bottom = "pw_53", outer = "lp_8021de", shoes = "pw_56", bag = "pw_37" }
+worse = { top = "lp_c4171a", bottom = "lp_c86a9b", outer = "lp_86245f", shoes = "lp_bf3f99", bag = "lp_38879a" }
+
+[[pairs]]
+id = "LP408e9647"
+context = "남성 · preppy"
+situation = "일상"
+strength = "strong"
+positions = [2, 0]
+better = { top = "lp_b28075", bottom = "lp_e7b295", outer = "lp_f1bcd1", shoes = "lp_d6f9fb", bag = "lp_38879a" }
+worse = { top = "lp_c4171a", bottom = "lp_c86a9b", outer = "lp_86245f", shoes = "lp_bf3f99", bag = "lp_38879a" }
+
+[[pairs]]
+id = "LP0e7b1371"
+context = "남성 · amekaji"
+situation = "일상"
+strength = "strong"
+positions = [1, 2]
+better = { top = "pw_42", bottom = "lp_e7b295", shoes = "pw_56", bag = "pw_41" }
+worse = { top = "lp_a8970c", bottom = "pw_58", outer = "lp_f1bcd1", shoes = "lp_7201ea", bag = "lp_98dfdb" }
+
+[[pairs]]
+id = "LP9ddc540e"
+context = "남성 · amekaji"
+situation = "일상"
+strength = "strong"
+positions = [0, 2]
+better = { top = "lp_4b65ea", bottom = "pw_59", shoes = "lp_c7c4f9", bag = "pw_37" }
+worse = { top = "lp_a8970c", bottom = "pw_58", outer = "lp_f1bcd1", shoes = "lp_7201ea", bag = "lp_98dfdb" }
+
+[[pairs]]
+id = "LP31068bd4"
+context = "남성 · classic"
+situation = "일상"
+strength = "strong"
+positions = [0, 1]
+better = { top = "lp_3a4430", bottom = "lp_e7b295", shoes = "lp_bf3f99", bag = "pw_50" }
+worse = { top = "lp_b66079", bottom = "lp_834bbe", outer = "lp_00213a", shoes = "pw_64", bag = "pw_41" }
+
+[[pairs]]
+id = "LP644e165e"
+context = "남성 · minimal"
+situation = "일상"
+strength = "strong"
+positions = [1, 2]
+better = { top = "lp_dfcaa5", bottom = "pw_58", outer = "lp_8021de", shoes = "lp_7201ea", bag = "pw_41" }
+worse = { top = "pw_39", bottom = "lp_e7b295", outer = "lp_00213a", shoes = "pw_56", bag = "lp_89360a" }
+
+[[pairs]]
+id = "LP0e9e4277"
+context = "남성 · minimal"
+situation = "일상"
+strength = "strong"
+positions = [0, 2]
+better = { top = "lp_a8970c", bottom = "lp_834bbe", outer = "lp_32defd", shoes = "pw_64", bag = "pw_52" }
+worse = { top = "pw_39", bottom = "lp_e7b295", outer = "lp_00213a", shoes = "pw_56", bag = "lp_89360a" }
+
+[[pairs]]
+id = "LP969a2b49"
+context = "남성 · workwear"
+situation = "일상"
+strength = "strong"
+positions = [0, 1]
+better = { top = "lp_ef4f67", bottom = "pw_58", outer = "pw_57", shoes = "pw_49", bag = "pw_65" }
+worse = { top = "pw_61", bottom = "lp_a5614d", shoes = "pw_49", bag = "pw_65" }
+
+[[pairs]]
+id = "LPf26222f5"
+context = "여성 · modern_chic"
+situation = "일상"
+strength = "strong"
+positions = [1, 0]
+better = { top = "fw_25", bottom = "pw_06", shoes = "pw_08", bag = "fw_43" }
+worse = { top = "lp_727bae", bottom = "lp_ff563f", shoes = "fw_22", bag = "lp_c891b7" }

@@ -41,6 +41,9 @@ struct Scorecard {
     /// 사람이 두 코디 중 고른 쪽을 엔진도 높게 매기는가 (`preference_pairs.toml`).
     #[serde(default)]
     human_pairs: HumanPairMetrics,
+    /// 홈 추천에서 사용자 반응으로 정해진 쌍 (`usage_pairs.toml`).
+    #[serde(default)]
+    usage_pairs: UsagePairMetrics,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -50,6 +53,18 @@ struct HumanPairMetrics {
     production_agree_pct: f64,
     /// shadow 엔진(style_engine_v2 스타일 점수 + 상황 보정)으로 같은 비율.
     shadow_agree_pct: f64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+struct UsagePairMetrics {
+    pairs: usize,
+    /// 지운 코디를 진 쪽으로 둔 쌍. 나머지는 반응 없는 코디가 진 쪽이다.
+    strong_pairs: usize,
+    production_agree_pct: f64,
+    shadow_agree_pct: f64,
+    /// 화면에 먼저 나온 코디가 이긴 비율. 엔진 점수가 이보다 낫지 않으면 순서를 바꿀
+    /// 근거가 없다는 뜻이라 비교용으로 둔다.
+    screen_order_agree_pct: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -62,6 +77,11 @@ struct HumanPair {
     #[allow(dead_code)]
     id: String,
     situation: Option<String>,
+    #[serde(default)]
+    strength: Option<String>,
+    /// [이긴 쪽, 진 쪽] 의 화면 순서(0부터). `usage_pairs.toml` 에만 있다.
+    #[serde(default)]
+    positions: Option<[u8; 2]>,
     better: PairOutfit,
     worse: PairOutfit,
 }
@@ -103,9 +123,52 @@ fn pair_context(o: &PairOutfit, situation: &Option<String>, registry: &Registry)
 /// 엔진이 더 좋아 보였다. 라벨이 실제 취향을 다 담지 못한다는 뜻이라, 취향 판단을 직접
 /// 재는 이 지표를 따로 둔다.
 fn compute_human_pairs(registry: &Registry) -> HumanPairMetrics {
-    let raw = std::fs::read_to_string(fixture_path("preference_pairs.toml"))
-        .expect("preference_pairs.toml 을 읽지 못했다");
-    let file: PairFile = toml::from_str(&raw).expect("preference_pairs.toml 파싱 실패");
+    let file = load_pairs("preference_pairs.toml");
+    let (prod, shadow) = engine_agreement(&file.pairs, registry);
+    let n = file.pairs.len();
+    HumanPairMetrics {
+        pairs: n,
+        production_agree_pct: round1(100.0 * prod / n as f64),
+        shadow_agree_pct: round1(100.0 * shadow / n as f64),
+    }
+}
+
+/// 홈 추천에서 반응으로 정해진 쌍. 블라인드 비교와 달리 운영 엔진이 이미 고른 후보끼리라,
+/// 운영 엔진이 걸러 낸 뒤에도 남는 취향 차이를 엔진 점수가 따라가는지 본다.
+fn compute_usage_pairs(registry: &Registry) -> UsagePairMetrics {
+    let file = load_pairs("usage_pairs.toml");
+    let (prod, shadow) = engine_agreement(&file.pairs, registry);
+    let n = file.pairs.len();
+    let order: f64 = file
+        .pairs
+        .iter()
+        .map(|p| match p.positions {
+            Some([b, w]) if b < w => 1.0,
+            Some([b, w]) if b == w => 0.5,
+            _ => 0.0,
+        })
+        .sum();
+    UsagePairMetrics {
+        pairs: n,
+        strong_pairs: file
+            .pairs
+            .iter()
+            .filter(|p| p.strength.as_deref() == Some("strong"))
+            .count(),
+        production_agree_pct: round1(100.0 * prod / n as f64),
+        shadow_agree_pct: round1(100.0 * shadow / n as f64),
+        screen_order_agree_pct: round1(100.0 * order / n as f64),
+    }
+}
+
+fn load_pairs(name: &str) -> PairFile {
+    let raw = std::fs::read_to_string(fixture_path(name))
+        .unwrap_or_else(|_| panic!("{name} 을 읽지 못했다"));
+    toml::from_str(&raw).unwrap_or_else(|e| panic!("{name} 파싱 실패: {e}"))
+}
+
+/// 두 엔진이 이긴 쪽을 더 높게 매긴 쌍의 수(동점 0.5) — (운영, shadow).
+fn engine_agreement(pairs: &[HumanPair], registry: &Registry) -> (f64, f64) {
     let (mut prod, mut shadow) = (0.0, 0.0);
     let agree = |better: i32, worse: i32| match better.cmp(&worse) {
         std::cmp::Ordering::Greater => 1.0,
@@ -117,7 +180,7 @@ fn compute_human_pairs(registry: &Registry) -> HumanPairMetrics {
         style_engine_v2::compute_style_score(&sub)
             + style_engine::services::serving_ranker::compute_serving_adjustment(ctx).0
     };
-    for p in &file.pairs {
+    for p in pairs {
         let b = pair_context(&p.better, &p.situation, registry);
         let w = pair_context(&p.worse, &p.situation, registry);
         prod += agree(
@@ -126,12 +189,7 @@ fn compute_human_pairs(registry: &Registry) -> HumanPairMetrics {
         );
         shadow += agree(shadow_score(&b), shadow_score(&w));
     }
-    let n = file.pairs.len();
-    HumanPairMetrics {
-        pairs: n,
-        production_agree_pct: round1(100.0 * prod / n as f64),
-        shadow_agree_pct: round1(100.0 * shadow / n as f64),
-    }
+    (prod, shadow)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -311,6 +369,7 @@ fn compute_scorecard() -> Scorecard {
         },
         combined_accuracy_pct: pct(combined_agree, total),
         human_pairs: compute_human_pairs(&registry),
+        usage_pairs: compute_usage_pairs(&registry),
     }
 }
 
@@ -364,8 +423,16 @@ fn render_markdown(s: &Scorecard) -> String {
         s.combined_accuracy_pct
     ));
     out.push_str(&format!(
-        "| 사람이 고른 쌍과 일치 — 운영 / shadow ({}쌍, `preference_pairs.toml`) | **{:.1}%** / **{:.1}%** |\n\n",
+        "| 사람이 고른 쌍과 일치 — 운영 / shadow ({}쌍, `preference_pairs.toml`) | **{:.1}%** / **{:.1}%** |\n",
         s.human_pairs.pairs, s.human_pairs.production_agree_pct, s.human_pairs.shadow_agree_pct
+    ));
+    out.push_str(&format!(
+        "| 반응으로 정해진 쌍과 일치 — 운영 / shadow / 화면 순서 ({}쌍 · 지운 코디 {}쌍, `usage_pairs.toml`) | **{:.1}%** / **{:.1}%** / {:.1}% |\n\n",
+        s.usage_pairs.pairs,
+        s.usage_pairs.strong_pairs,
+        s.usage_pairs.production_agree_pct,
+        s.usage_pairs.shadow_agree_pct,
+        s.usage_pairs.screen_order_agree_pct
     ));
 
     if !s.hard_filter.fp_by_reason.is_empty() {
@@ -399,7 +466,17 @@ fn render_markdown(s: &Scorecard) -> String {
 
 /// 기준선 대비 하락한 지표를 모아 돌려준다.
 fn regressions(baseline: &Scorecard, current: &Scorecard) -> Vec<String> {
-    let checks: [(&str, f64, f64); 7] = [
+    let checks: [(&str, f64, f64); 9] = [
+        (
+            "usage_pairs.production_agree_pct",
+            baseline.usage_pairs.production_agree_pct,
+            current.usage_pairs.production_agree_pct,
+        ),
+        (
+            "usage_pairs.shadow_agree_pct",
+            baseline.usage_pairs.shadow_agree_pct,
+            current.usage_pairs.shadow_agree_pct,
+        ),
         (
             "human_pairs.production_agree_pct",
             baseline.human_pairs.production_agree_pct,
@@ -587,6 +664,7 @@ mod gate_tests {
             },
             combined_accuracy_pct: 75.0,
             human_pairs: HumanPairMetrics::default(),
+            usage_pairs: UsagePairMetrics::default(),
         }
     }
 
