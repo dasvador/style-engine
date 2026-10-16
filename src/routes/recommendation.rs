@@ -508,9 +508,18 @@ async fn get_multi_recommendation(
         ),
     ];
 
-    let shadow_of = |idx: usize| shadow_scores.iter().find(|(i, _)| *i == idx).map(|(_, s)| *s);
-    let silhouette_of =
-        |idx: usize| silhouette_delta.iter().find(|(i, _)| *i == idx).map(|(_, d)| *d);
+    let shadow_of = |idx: usize| {
+        shadow_scores
+            .iter()
+            .find(|(i, _)| *i == idx)
+            .map(|(_, s)| *s)
+    };
+    let silhouette_of = |idx: usize| {
+        silhouette_delta
+            .iter()
+            .find(|(i, _)| *i == idx)
+            .map(|(_, d)| *d)
+    };
 
     let mut modes = Vec::new();
     let todays_idx = todays.as_ref().map(|t| t.candidate.ai_candidate_index);
