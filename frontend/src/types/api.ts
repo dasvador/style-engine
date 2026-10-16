@@ -318,6 +318,9 @@ export interface Look {
   worn: boolean;
   /** 서버에 저장된 행의 id. 저장 응답을 받으면 채워진다. */
   savedId?: string;
+  /** 이 코디가 나온 추천 한 번. 같은 값끼리 "이번엔 이게 제일" 을 하나 고른다. */
+  requestId?: string;
+  best?: boolean;
 }
 
 export interface SetGenresBody {
@@ -343,6 +346,9 @@ export interface SavedLook {
   /** 이미 만들어 둔 그림. 없으면 아직 생성되지 않은 코디다. */
   image_path: string | null;
 }
+
+/** 룩북에서 지우는 이유. 코디가 별로인 것만 취향 비교에서 진 쪽으로 센다. */
+export type DeleteReason = 'outfit' | 'photo' | 'cleanup';
 
 export interface SaveLookBody {
   mood_key: string | null;

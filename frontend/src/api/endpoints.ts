@@ -30,6 +30,7 @@ import type {
   UpsertRegionBody,
   WeatherResponse,
   ChatHistoryRow,
+  DeleteReason,
 } from '../types/api';
 
 export const api = {
@@ -79,6 +80,9 @@ export const api = {
     save: (body: SaveLookBody) => apiPost<{ id: string }>('/lookbook', body),
     mark: (id: string, body: { liked?: boolean; worn?: boolean }) =>
       apiPatch<{ id: string }>(`/lookbook/${id}`, body),
-    remove: (id: string) => apiDelete<{ id: string }>(`/lookbook/${id}`),
+    remove: (id: string, reason?: DeleteReason) =>
+      apiDelete<{ id: string }>(`/lookbook/${id}${reason ? `?reason=${reason}` : ''}`),
+    best: (id: string, request_id: string) =>
+      apiPost<{ id: string }>(`/lookbook/${id}/best`, { request_id }),
   },
 };

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/endpoints';
 import { errorMessage } from '../api/client';
-import type { SavedLook } from '../types/api';
+import type { DeleteReason, SavedLook } from '../types/api';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState, ErrorMessage, Loading } from '../components/Status';
 
@@ -127,11 +127,11 @@ function LookCard({
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const remove = async () => {
+  const remove = async (reason: DeleteReason) => {
     setDeleting(true);
     setDeleteError(null);
     try {
-      await api.lookbook.remove(look.id);
+      await api.lookbook.remove(look.id, reason);
       onDeleted(look.id);
     } catch (err) {
       setDeleteError(errorMessage(err));
@@ -189,10 +189,21 @@ function LookCard({
       <div className="saved-delete">
         {confirming ? (
           <>
-            <span className="saved-delete-ask">룩북에서 지울까요?</span>
-            <button className="saved-delete-yes" disabled={deleting} onClick={() => void remove()}>
-              {deleting ? '지우는 중…' : '지우기'}
-            </button>
+            {/* 이유를 고르는 것이 곧 지우기다. 사진 탓인지 코디 탓인지에 따라
+                취향 비교에 넣을지가 갈린다. */}
+            <span className="saved-delete-ask">
+              {deleting ? '지우는 중…' : '왜 지우세요?'}
+            </span>
+            {DELETE_CHOICES.map(([reason, label]) => (
+              <button
+                key={reason}
+                className="saved-delete-yes"
+                disabled={deleting}
+                onClick={() => void remove(reason)}
+              >
+                {label}
+              </button>
+            ))}
             <button
               className="saved-delete-no"
               disabled={deleting}
@@ -217,6 +228,12 @@ function LookCard({
     </div>
   );
 }
+
+const DELETE_CHOICES: [DeleteReason, string][] = [
+  ['outfit', '코디가 별로'],
+  ['photo', '사진이 이상해요'],
+  ['cleanup', '그냥 정리'],
+];
 
 function formatDate(iso: string): string {
   const d = new Date(iso.includes('Z') || iso.includes('+') ? iso : `${iso}Z`);

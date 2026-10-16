@@ -14,6 +14,7 @@ interface Props {
   onSelect: (index: number) => void;
   onLike: (look: Look) => void;
   onWearToday: (look: Look) => void;
+  onBest: (look: Look) => void;
 }
 
 /**
@@ -26,7 +27,14 @@ interface Props {
  * 카드를 넘기는 것과 마음에 든다는 것은 구분한다 — 넘겨 보는 건 그냥 크게 보려는
  * 행동일 수 있다. 취향 신호는 아래의 두 버튼에서만 나온다.
  */
-export function LookbookStack({ looks, activeIndex, onSelect, onLike, onWearToday }: Props) {
+export function LookbookStack({
+  looks,
+  activeIndex,
+  onSelect,
+  onLike,
+  onWearToday,
+  onBest,
+}: Props) {
   // 이미지가 캐시에 들어오는 즉시 썸네일을 다시 그린다.
   useSyncExternalStore(subscribeOutfitImages, outfitImageVersion, outfitImageVersion);
 
@@ -41,6 +49,11 @@ export function LookbookStack({ looks, activeIndex, onSelect, onLike, onWearToda
     setSlideFrom(next > activeIndex ? 'right' : 'left');
     onSelect(next);
   };
+
+  // "이번엔 이게 제일" 은 같은 추천에서 함께 나온 코디가 둘 이상일 때만 뜻이 있다.
+  const siblings = active.requestId
+    ? looks.filter((l) => l.requestId === active.requestId).length
+    : 0;
 
   // 뒤에 두 장만 비쳐 보이게 한다. 더 쌓여도 깊이감은 두 장이면 충분하다.
   const behind = Math.min(2, looks.length - 1 - activeIndex);
@@ -158,6 +171,16 @@ export function LookbookStack({ looks, activeIndex, onSelect, onLike, onWearToda
         >
           {active.worn ? '오늘 입을래요 ✓' : '오늘 입을래요'}
         </button>
+        {siblings >= 2 && (
+          <button
+            className={`chip-action${active.best ? ' on' : ''}`}
+            onClick={() => onBest(active)}
+            disabled={active.best || !active.savedId}
+            title={`같이 나온 ${siblings}개 중 하나만 고를 수 있어요`}
+          >
+            {active.best ? '이번엔 이게 제일 ✓' : '이번엔 이게 제일'}
+          </button>
+        )}
       </div>
 
       <ul className="rec-pieces">

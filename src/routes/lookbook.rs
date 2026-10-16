@@ -1,7 +1,7 @@
 use axum::{
     Json, Router,
-    extract::{Path, State},
-    routing::{get, patch},
+    extract::{Path, Query, State},
+    routing::{get, patch, post},
 };
 use serde::{Deserialize, Serialize};
 
@@ -65,10 +65,25 @@ pub struct MarkRequest {
     pub worn: Option<bool>,
 }
 
+/// 추천 묶음 하나에서 "이번엔 이게 제일" 로 고른 코디.
+#[derive(Debug, Deserialize)]
+pub struct BestRequest {
+    pub request_id: String,
+}
+
+/// 지우는 이유. 쌍을 셀 때 코디가 별로라 지운 것만 진 쪽으로 넣는다.
+#[derive(Debug, Deserialize)]
+pub struct DeleteQuery {
+    pub reason: Option<String>,
+}
+
+const DELETE_REASONS: [&str; 3] = ["outfit", "photo", "cleanup"];
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_looks).post(save_look))
         .route("/{id}", patch(mark_look).delete(delete_look))
+        .route("/{id}/best", post(mark_best))
 }
 
 /// 최근에 만든 코디부터. 화면이 한 번에 들고 있을 만큼만 준다.
@@ -291,6 +306,34 @@ async fn mark_look(
     Ok(Json(SaveResponse { id }))
 }
 
+/// 추천 묶음 하나에서 이 코디를 "제일" 로 고른다. 다시 고르면 바뀐다 — 묶음마다
+/// 하나만 남는다.
+async fn mark_best(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(id): Path<String>,
+    Json(body): Json<BestRequest>,
+) -> Result<Json<SaveResponse>, AppError> {
+    let done = sqlx::query(
+        "UPDATE look_signal SET \
+           best_at = IF(look_id = ?, NOW(), NULL), best = (look_id = ?) \
+         WHERE request_id = ? AND user_id = ?",
+    )
+    .bind(&id)
+    .bind(&id)
+    .bind(&body.request_id)
+    .bind(&auth.user_id)
+    .execute(&state.db)
+    .await
+    .map_err(|e| AppError::Internal(e.into()))?;
+    if done.rows_affected() == 0 {
+        return Err(AppError::NotFound(
+            "이 추천 묶음을 찾을 수 없습니다.".to_string(),
+        ));
+    }
+    Ok(Json(SaveResponse { id }))
+}
+
 /// 룩북에서 코디 한 장을 지운다. 내 것만 지워진다.
 ///
 /// 그림(`outfit_image`)은 지우지 않는다 — 다른 룩이나 같은 코디의 다음 요청이 같은
@@ -302,7 +345,19 @@ async fn delete_look(
     State(state): State<AppState>,
     auth: AuthUser,
     Path(id): Path<String>,
+    Query(q): Query<DeleteQuery>,
 ) -> Result<Json<SaveResponse>, AppError> {
+    let reason = match q.reason.as_deref() {
+        None => None,
+        Some(r) if DELETE_REASONS.contains(&r) => Some(r),
+        Some(r) => {
+            return Err(AppError::BadRequest(format!(
+                "지우는 이유는 {} 중 하나여야 합니다: {r}",
+                DELETE_REASONS.join(", ")
+            )));
+        }
+    };
+
     // 행이 사라지기 전에 사진 경로를 읽어 둔다 — 아래에서 `look_signal` 로 옮긴다.
     let image_path: Option<String> = sqlx::query_as::<_, (Option<String>,)>(
         "SELECT image_path FROM lookbook_look WHERE id = ? AND user_id = ?",
@@ -327,10 +382,11 @@ async fn delete_look(
         ));
     }
     let _ = sqlx::query(
-        "UPDATE look_signal SET deleted = 1, deleted_at = NOW(), \
+        "UPDATE look_signal SET deleted = 1, deleted_at = NOW(), delete_reason = ?, \
            image_path = COALESCE(image_path, ?) \
          WHERE look_id = ? AND user_id = ?",
     )
+    .bind(reason)
     .bind(&image_path)
     .bind(&id)
     .bind(&auth.user_id)
