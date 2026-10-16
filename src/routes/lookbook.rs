@@ -11,8 +11,8 @@ use crate::middleware::auth::AuthUser;
 
 /// 남겨 둔 코디 한 장.
 ///
-/// 이미지는 `outfit_image` 가 `image_prompt` 의 해시로 들고 있으므로 여기에는
-/// 담지 않는다. 화면이 같은 문자열로 이미지를 다시 요청하면 캐시에 걸린다.
+/// 사진은 `image_path` 에 붙여 둔다. 처음 붙을 때는 `outfit_image` 캐시에서
+/// `image_prompt` 의 해시로 찾는다.
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct LookRow {
     pub id: String,
@@ -32,8 +32,7 @@ pub struct LookRow {
     ///
     /// 화면이 저장된 룩마다 이미지를 요청하면, 캐시에 없는 것은 그 자리에서
     /// 생성되기 시작한다 — 모아 보는 화면을 여는 것만으로 돈이 나간다.
-    /// 그래서 서버가 캐시를 조회해 있는 것만 내려 준다.
-    #[sqlx(default)]
+    /// 그래서 서버가 룩에 붙은 사진(없으면 캐시)을 찾아 있는 것만 내려 준다.
     pub image_path: Option<String>,
 }
 
@@ -76,7 +75,7 @@ async fn list_looks(
 ) -> Result<Json<Vec<LookRow>>, AppError> {
     let mut rows = sqlx::query_as::<_, LookRow>(
         "SELECT id, mood_key, title, weather_summary, reason, recommendation, \
-         image_prompt, outfit_json, liked, worn, created_at \
+         image_prompt, outfit_json, liked, worn, created_at, image_path \
          FROM lookbook_look WHERE user_id = ? ORDER BY created_at DESC LIMIT 60",
     )
     .bind(&auth.user_id)
@@ -84,29 +83,18 @@ async fn list_looks(
     .await
     .map_err(|e| AppError::Internal(e.into()))?;
 
-    // 이미 만들어 둔 그림을 붙여 준다. 생성은 하지 않는다 — 모아 보는 화면을 여는
-    // 것만으로 이미지가 만들어지면 비용이 조용히 새어 나간다.
+    // 담아 둔 사진이 없는 룩만 이미지 캐시에서 찾아 붙이고, 찾으면 룩에 적어 둔다.
+    // 생성은 하지 않는다 — 모아 보는 화면을 여는 것만으로 이미지가 만들어지면 비용이
+    // 조용히 새어 나간다.
     for row in &mut rows {
-        let Some(genre) = row
-            .mood_key
-            .as_deref()
-            .and_then(crate::models::style_vocab::StyleGenre::from_alias)
-        else {
+        if row.image_path.is_some() {
             continue;
-        };
-        let (outfit_hash, prompt_hash, _, _) =
-            crate::routes::chat::image_cache_keys(&row.image_prompt, genre);
-        row.image_path = sqlx::query_as::<_, (Option<String>,)>(
-            "SELECT image_path FROM outfit_image \
-             WHERE outfit_hash = ? AND prompt_hash = ? LIMIT 1",
-        )
-        .bind(&outfit_hash)
-        .bind(&prompt_hash)
-        .fetch_optional(&state.db)
-        .await
-        .ok()
-        .flatten()
-        .and_then(|r| r.0);
+        }
+        row.image_path =
+            cached_image_path(&state.db, &row.image_prompt, row.mood_key.as_deref()).await;
+        if let Some(path) = &row.image_path {
+            pin_image(&state.db, &row.image_prompt, row.mood_key.as_deref(), path).await;
+        }
     }
 
     Ok(Json(rows))
@@ -159,6 +147,20 @@ async fn save_look(
 
     let id = existing.map(|r| r.0).unwrap_or(id);
 
+    // 담는 순간 보이던 사진을 룩에 붙여 둔다. 아직 사진이 없으면 처음 만들어질 때
+    // `chat::generate_image` 가 붙인다.
+    if let Some(path) =
+        cached_image_path(&state.db, &body.image_prompt, body.mood_key.as_deref()).await
+    {
+        pin_image(
+            &state.db,
+            &body.image_prompt,
+            body.mood_key.as_deref(),
+            &path,
+        )
+        .await;
+    }
+
     // 비교 묶음 기록은 곁가지다. 실패해도 룩북 저장은 성공으로 돌려준다.
     if let Some(request_id) = body.request_id.as_deref().filter(|r| !r.is_empty()) {
         let recorded = sqlx::query(
@@ -183,6 +185,66 @@ async fn save_look(
     }
 
     Ok(Json(SaveResponse { id }))
+}
+
+/// 지금 프롬프트로 만든 사진이 캐시에 있으면 그 경로.
+async fn cached_image_path(
+    db: &sqlx::MySqlPool,
+    image_prompt: &str,
+    mood_key: Option<&str>,
+) -> Option<String> {
+    let genre = mood_key.and_then(crate::models::style_vocab::StyleGenre::from_alias)?;
+    let (outfit_hash, prompt_hash, _, _) =
+        crate::routes::chat::image_cache_keys(image_prompt, genre);
+    sqlx::query_as::<_, (Option<String>,)>(
+        "SELECT image_path FROM outfit_image WHERE outfit_hash = ? AND prompt_hash = ? LIMIT 1",
+    )
+    .bind(&outfit_hash)
+    .bind(&prompt_hash)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
+    .and_then(|r| r.0)
+}
+
+/// 담아 둔 룩에 붙은 사진. 이미지 프롬프트가 바뀌어도 이 사진을 계속 보여 준다 —
+/// 캐시 키에는 프롬프트 전체의 해시가 들어가서, 문구를 고치면 예전 사진과의 짝이
+/// 끊긴다(마이그레이션 `20261016000001`).
+pub async fn pinned_image(
+    db: &sqlx::MySqlPool,
+    image_prompt: &str,
+    mood_key: Option<&str>,
+) -> Option<String> {
+    sqlx::query_as::<_, (String,)>(
+        "SELECT image_path FROM lookbook_look \
+         WHERE image_prompt = ? AND mood_key <=> ? AND image_path IS NOT NULL LIMIT 1",
+    )
+    .bind(image_prompt)
+    .bind(mood_key)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
+    .map(|r| r.0)
+}
+
+/// 사진이 아직 없는 룩에만 붙인다. 한 번 붙은 사진은 바꾸지 않는다.
+pub async fn pin_image(
+    db: &sqlx::MySqlPool,
+    image_prompt: &str,
+    mood_key: Option<&str>,
+    path: &str,
+) {
+    let _ = sqlx::query(
+        "UPDATE lookbook_look SET image_path = ? \
+         WHERE image_prompt = ? AND mood_key <=> ? AND image_path IS NULL",
+    )
+    .bind(path)
+    .bind(image_prompt)
+    .bind(mood_key)
+    .execute(db)
+    .await;
 }
 
 /// '마음에 들어요' / '오늘 입을래요' 표시. 한 번 켜진 것은 꺼지지 않는다 —

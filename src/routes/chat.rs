@@ -841,6 +841,16 @@ async fn generate_image(
     let genre = crate::routes::parse_genre(body.mood.as_deref())?.unwrap_or(StyleGenre::Amekaji);
     let (outfit_hash, prompt_hash, _, prompt) = image_cache_keys(&body.items, genre);
 
+    // 룩북에 담아 둔 코디면 그때의 사진을 그대로 쓴다. 프롬프트를 고쳐 캐시 키가
+    // 바뀌어도 담아 둔 사진이 새 그림으로 바뀌거나 비면 안 된다.
+    if let Some(path) =
+        crate::routes::lookbook::pinned_image(&state.db, &body.items, body.mood.as_deref()).await
+    {
+        return Ok(Json(ImageResponse {
+            image_url: Some(path),
+        }));
+    }
+
     // DB 캐시 확인.
     //
     // 캐시에는 두 종류의 결과가 들어 있다. 통과한 이미지(image_path 있음)와,
@@ -1043,6 +1053,12 @@ async fn generate_image(
     // 쓴 돈은 결과와 무관하게 기록한다. 통과하지 못한 시도도 청구된다.
     m.record_spend(&state.db, &state.llm).await;
     m.record(&state.llm, status, genre, prior_attempts);
+
+    // 사진 없이 담아 둔 룩이면 이 사진을 붙인다.
+    if let Some(path) = &url {
+        crate::routes::lookbook::pin_image(&state.db, &body.items, body.mood.as_deref(), path)
+            .await;
+    }
 
     Ok(Json(ImageResponse { image_url: url }))
 }
@@ -1460,11 +1476,18 @@ fn pick_light(genre: StyleGenre, hash: u64) -> &'static str {
 /// 틀로 찍어 낸 사진처럼 보였다(2026-10-15 사용자 지적). 장르와 상관없이 다섯 중 하나를
 /// 고른다. 편안한 눈맞춤도 자연스러우므로 카메라를 보는 자세도 둔다 — 예전의
 /// "not posing for the photographer" 를 세게 걸면 옆을 보며 걷는 장면으로 수렴한다.
+///
+/// 걷는 자세 말고는 두 발을 디딘 채 서 있다고 못 박는다. 몸을 튼 자세에 걸음이 섞이면
+/// 발끝은 한쪽을 보는데 앞발은 반대쪽에 놓여 두 다리가 엇갈린 그림이 나왔다
+/// (2026-10-16 사용자 지적). 같은 이유로 "발을 살짝 교차" 자세는 뺐다.
 const POSES: [&str; 5] = [
-    "a natural near-frontal stance, weight on one leg, eyes resting near the camera",
-    "body turned twenty to thirty degrees from the camera, face turned back towards it",
-    "walking slowly, caught mid-step, only her head turning slightly towards the camera",
-    "paused for a moment with her feet slightly crossed, looking off down the street",
+    "a natural near-frontal stance, standing still with both feet planted, weight on one leg, \
+     eyes resting near the camera",
+    "standing still, body turned twenty to thirty degrees from the camera with both feet \
+     planted and pointing the same way as her hips, face turned back towards it",
+    "walking slowly towards the side her toes point, caught mid-step, only her head turning \
+     slightly towards the camera",
+    "standing still for a moment with both feet planted, looking off down the street",
     "leaning lightly with one shoulder against the wall or railing beside her, the clothes \
      neither pressed flat nor hidden",
 ];
@@ -1833,7 +1856,8 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
     let base_body = "realistic adult body proportions, natural head-to-body ratio, \
          believable shoulder width and waist, ordinary anatomical variation. \
          She carries herself with an easy upright posture — shoulders relaxed and open, \
-         neck long, chin level — with natural weight distribution while standing or walking.";
+         neck long, chin level — with natural weight distribution. Each leg runs straight from its own hip to its own \
+         foot; the legs never cross over or swap sides.";
 
     // 자세는 `POSES` 다섯 중 착장 해시로 고른다(`pick_pose`).
     //
