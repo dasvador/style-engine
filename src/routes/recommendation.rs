@@ -574,6 +574,7 @@ async fn get_multi_recommendation(
                     scoring_detail: fallback.scoring,
                     shadow_score: shadow_of(ai_idx),
                     silhouette_delta: silhouette_of(ai_idx),
+                    feedback_bonus: c.feedback_bonus,
                 });
                 continue;
             }
@@ -606,6 +607,7 @@ async fn get_multi_recommendation(
             scoring_detail: scoring.clone(),
             shadow_score: shadow_of(ai_idx),
             silhouette_delta: silhouette_of(ai_idx),
+            feedback_bonus: winner.feedback_bonus,
         });
     }
 
@@ -869,7 +871,8 @@ async fn build_outfit_candidate(
     // 피드백을 쌓아 두고도 쓰지 않아서, 좋아요를 눌러도 다음 추천이 달라지지
     // 않았다. 같은 `FeedbackContext` 를 여기서도 적용한다.
     let items: Vec<&Clothing> = ctx.slots.iter().map(|s| &s.clothing).collect();
-    candidate.style_score = eval.score + feedback_bonus(&items, feedback);
+    candidate.feedback_bonus = feedback_bonus(&items, feedback);
+    candidate.style_score = eval.score + candidate.feedback_bonus;
 
     Some(candidate)
 }

@@ -51,13 +51,19 @@ interface Props {
 
 /** 저장해 둔 코디의 시각. 오늘 만든 것과 지난 것을 구분한다. */
 /** 룩 저장 때 같이 남길 점수 — 반응 쌍에서 어느 점수가 고른 쪽을 맞히는지 잰다. */
-function scoringOf(m: ModeRecommendation | undefined): Record<string, unknown> | undefined {
+function scoringOf(
+  m: ModeRecommendation | undefined,
+  temperature: number | null,
+): Record<string, unknown> | undefined {
   if (!m) return undefined;
   return {
     mode: m.mode,
     ...(m.scoring_detail ?? {}),
+    feedback_bonus: m.feedback_bonus ?? null,
     shadow_score: m.shadow_score ?? null,
     silhouette_delta: m.silhouette_delta ?? null,
+    // 오늘 입기 판정은 기온으로 갈린다. 요약 문장만으로는 다시 잴 수 없다.
+    temperature,
   };
 }
 
@@ -254,7 +260,7 @@ export function HomePage({
                 request_id: requestId,
                 position: fresh.indexOf(l),
                 gender,
-                scoring: scoringOf(r.modes[fresh.indexOf(l)]),
+                scoring: scoringOf(r.modes[fresh.indexOf(l)], weather?.current.temperature ?? null),
               });
               setLooks((prev) =>
                 prev.map((x) => (x.key === l.key ? { ...x, savedId: saved.id } : x)),

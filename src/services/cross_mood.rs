@@ -78,6 +78,7 @@ mod tests {
             shoes_id: Some(ids[2].into()),
             bag_id: Some(ids[3].into()),
             style_score: score,
+            feedback_bonus: 0,
             recency_penalty: 0,
             diversity_bonus: 0,
             final_score: score,

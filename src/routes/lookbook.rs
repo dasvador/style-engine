@@ -273,9 +273,14 @@ async fn mark_look(
 
     // 같은 코디가 나온 요청 모두에 표시한다 — 좋아요는 그 코디에 대한 판단이다.
     let _ = sqlx::query(
-        "UPDATE look_signal SET liked = liked | ?, worn = worn | ? \
+        "UPDATE look_signal SET \
+           liked_at = IF(? AND liked = 0, NOW(), liked_at), \
+           worn_at = IF(? AND worn = 0, NOW(), worn_at), \
+           liked = liked | ?, worn = worn | ? \
          WHERE look_id = ? AND user_id = ?",
     )
+    .bind(body.liked.unwrap_or(false))
+    .bind(body.worn.unwrap_or(false))
     .bind(body.liked.unwrap_or(false))
     .bind(body.worn.unwrap_or(false))
     .bind(&id)
@@ -298,6 +303,18 @@ async fn delete_look(
     auth: AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<SaveResponse>, AppError> {
+    // 행이 사라지기 전에 사진 경로를 읽어 둔다 — 아래에서 `look_signal` 로 옮긴다.
+    let image_path: Option<String> = sqlx::query_as::<_, (Option<String>,)>(
+        "SELECT image_path FROM lookbook_look WHERE id = ? AND user_id = ?",
+    )
+    .bind(&id)
+    .bind(&auth.user_id)
+    .fetch_optional(&state.db)
+    .await
+    .ok()
+    .flatten()
+    .and_then(|r| r.0);
+
     let done = sqlx::query("DELETE FROM lookbook_look WHERE id = ? AND user_id = ?")
         .bind(&id)
         .bind(&auth.user_id)
@@ -309,10 +326,15 @@ async fn delete_look(
             "이 코디를 찾을 수 없습니다.".to_string(),
         ));
     }
-    let _ = sqlx::query("UPDATE look_signal SET deleted = 1 WHERE look_id = ? AND user_id = ?")
-        .bind(&id)
-        .bind(&auth.user_id)
-        .execute(&state.db)
-        .await;
+    let _ = sqlx::query(
+        "UPDATE look_signal SET deleted = 1, deleted_at = NOW(), \
+           image_path = COALESCE(image_path, ?) \
+         WHERE look_id = ? AND user_id = ?",
+    )
+    .bind(&image_path)
+    .bind(&id)
+    .bind(&auth.user_id)
+    .execute(&state.db)
+    .await;
     Ok(Json(SaveResponse { id }))
 }

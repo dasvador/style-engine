@@ -146,6 +146,8 @@ export interface ModeRecommendation {
   /** shadow 엔진 점수. 순서에는 쓰지 않고 룩 저장 때 돌려보낸다. */
   shadow_score?: number | null;
   silhouette_delta?: number | null;
+  /** `scoring_detail.style_score` 중 피드백 보정분. */
+  feedback_bonus?: number;
 }
 
 export interface MultiModeRecommendation {

@@ -69,6 +69,8 @@ pub struct OutfitCandidate {
     pub bag_id: Option<String>,
 
     pub style_score: i32,
+    /// `style_score` 에 들어 있는 피드백 보정분. 엔진 점수와 따로 보려고 떼어 둔다.
+    pub feedback_bonus: i32,
     pub recency_penalty: i32,
     pub diversity_bonus: i32,
     pub final_score: i32,
@@ -107,6 +109,8 @@ pub struct ModeRecommendation {
     pub shadow_score: Option<i32>,
     /// 실루엣 shadow 가 더했을 점수.
     pub silhouette_delta: Option<i32>,
+    /// `scoring_detail.style_score` 중 피드백(좋아요·아쉬워요) 보정분.
+    pub feedback_bonus: i32,
 }
 
 #[derive(Debug, Serialize)]
@@ -131,6 +135,7 @@ impl OutfitCandidate {
             shoes_id,
             bag_id,
             style_score: 0,
+            feedback_bonus: 0,
             recency_penalty: 0,
             diversity_bonus: 0,
             final_score: 0,
