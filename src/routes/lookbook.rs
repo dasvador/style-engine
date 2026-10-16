@@ -34,6 +34,10 @@ pub struct LookRow {
     /// 생성되기 시작한다 — 모아 보는 화면을 여는 것만으로 돈이 나간다.
     /// 그래서 서버가 룩에 붙은 사진(없으면 캐시)을 찾아 있는 것만 내려 준다.
     pub image_path: Option<String>,
+    /// 이 코디가 나온 가장 최근 홈 추천과, 그 묶음에서 "제일" 로 골랐는지. 새로고침
+    /// 뒤에도 홈이 "제일" 버튼을 다시 그리고 취소할 수 있게 돌려준다.
+    pub request_id: Option<String>,
+    pub best: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -83,7 +87,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_looks).post(save_look))
         .route("/{id}", patch(mark_look).delete(delete_look))
-        .route("/{id}/best", post(mark_best))
+        .route("/{id}/best", post(mark_best).delete(unmark_best))
 }
 
 /// 최근에 만든 코디부터. 화면이 한 번에 들고 있을 만큼만 준다.
@@ -93,7 +97,11 @@ async fn list_looks(
 ) -> Result<Json<Vec<LookRow>>, AppError> {
     let mut rows = sqlx::query_as::<_, LookRow>(
         "SELECT id, mood_key, title, weather_summary, reason, recommendation, \
-         image_prompt, outfit_json, liked, worn, created_at, image_path \
+         image_prompt, outfit_json, liked, worn, created_at, image_path, \
+         (SELECT s.request_id FROM look_signal s WHERE s.look_id = lookbook_look.id \
+           ORDER BY s.created_at DESC, s.id DESC LIMIT 1) AS request_id, \
+         CAST(COALESCE((SELECT s.best FROM look_signal s WHERE s.look_id = lookbook_look.id \
+           ORDER BY s.created_at DESC, s.id DESC LIMIT 1), 0) AS SIGNED) AS best \
          FROM lookbook_look WHERE user_id = ? ORDER BY created_at DESC LIMIT 60",
     )
     .bind(&auth.user_id)
@@ -266,44 +274,90 @@ pub async fn pin_image(
     .await;
 }
 
-/// '마음에 들어요' / '오늘 입을래요' 표시. 한 번 켜진 것은 꺼지지 않는다 —
-/// 취향 신호를 지우는 화면이 아직 없고, 실수로 덮어쓰는 편이 더 나쁘다.
+/// '마음에 들어요' / '오늘 입을래요' 를 켜거나 끈다. 보내지 않은 쪽은 그대로 둔다.
+///
+/// 끄기는 잘못 누른 것을 바로잡는 용도다(2026-10-16 사용자 요청 — 한 번 누르면 되돌릴
+/// 수 없었다). 그래서 끌 때는 그때 남긴 피드백도 되돌린다. 화면은 켤 때 피드백을 따로
+/// 보내고(`/feedback`), 그 피드백은 아이템 점수에 더해져 다음 추천에 반영되기 때문이다.
 async fn mark_look(
     State(state): State<AppState>,
     auth: AuthUser,
     Path(id): Path<String>,
     Json(body): Json<MarkRequest>,
 ) -> Result<Json<SaveResponse>, AppError> {
-    sqlx::query(
-        "UPDATE lookbook_look SET liked = liked | ?, worn = worn | ? \
-         WHERE id = ? AND user_id = ?",
+    let current: Option<(bool, bool, serde_json::Value)> = sqlx::query_as(
+        "SELECT liked, worn, outfit_json FROM lookbook_look WHERE id = ? AND user_id = ?",
     )
-    .bind(body.liked.unwrap_or(false))
-    .bind(body.worn.unwrap_or(false))
     .bind(&id)
     .bind(&auth.user_id)
-    .execute(&state.db)
+    .fetch_optional(&state.db)
     .await
     .map_err(|e| AppError::Internal(e.into()))?;
+    let Some((was_liked, was_worn, outfit)) = current else {
+        return Err(AppError::NotFound(
+            "이 코디를 찾을 수 없습니다.".to_string(),
+        ));
+    };
 
-    // 같은 코디가 나온 요청 모두에 표시한다 — 좋아요는 그 코디에 대한 판단이다.
-    let _ = sqlx::query(
-        "UPDATE look_signal SET \
-           liked_at = IF(? AND liked = 0, NOW(), liked_at), \
-           worn_at = IF(? AND worn = 0, NOW(), worn_at), \
-           liked = liked | ?, worn = worn | ? \
-         WHERE look_id = ? AND user_id = ?",
-    )
-    .bind(body.liked.unwrap_or(false))
-    .bind(body.worn.unwrap_or(false))
-    .bind(body.liked.unwrap_or(false))
-    .bind(body.worn.unwrap_or(false))
-    .bind(&id)
-    .bind(&auth.user_id)
-    .execute(&state.db)
-    .await;
+    for (flag, was, column, feedback_type) in [
+        (body.liked, was_liked, "liked", "like"),
+        (body.worn, was_worn, "worn", "worn"),
+    ] {
+        let Some(on) = flag else { continue };
+        if on == was {
+            continue;
+        }
+        // 열 이름은 위의 고정된 두 값뿐이다.
+        sqlx::query(&format!(
+            "UPDATE lookbook_look SET {column} = ? WHERE id = ? AND user_id = ?"
+        ))
+        .bind(on)
+        .bind(&id)
+        .bind(&auth.user_id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| AppError::Internal(e.into()))?;
+
+        // 같은 코디가 나온 요청 모두에 표시한다 — 좋아요는 그 코디에 대한 판단이다.
+        let _ = sqlx::query(&format!(
+            "UPDATE look_signal SET {column} = ?, {column}_at = IF(?, NOW(), NULL) \
+             WHERE look_id = ? AND user_id = ?"
+        ))
+        .bind(on)
+        .bind(on)
+        .bind(&id)
+        .bind(&auth.user_id)
+        .execute(&state.db)
+        .await;
+
+        if !on {
+            let names = feedback_names(&outfit);
+            let undone = crate::db::feedback_repo::undo_latest_feedback(
+                &state.db,
+                &auth.user_id,
+                feedback_type,
+                names.each_ref().map(|n| n.as_deref()),
+            )
+            .await;
+            if let Err(e) = undone {
+                tracing::warn!("{feedback_type} 피드백 되돌리기 실패: {e}");
+            }
+        }
+    }
 
     Ok(Json(SaveResponse { id }))
+}
+
+/// 홈이 피드백을 보낼 때 쓰는 슬롯 순서(상의·아우터·하의·신발·가방)로 아이템 이름을 꺼낸다.
+fn feedback_names(outfit: &serde_json::Value) -> [Option<String>; 5] {
+    let name = |category: &str| {
+        outfit.as_array()?.iter().find_map(|o| {
+            (o.get("category")?.as_str()? == category)
+                .then(|| o.get("name")?.as_str().map(str::to_string))
+                .flatten()
+        })
+    };
+    ["상의", "아우터", "하의", "신발", "가방"].map(name)
 }
 
 /// 추천 묶음 하나에서 이 코디를 "제일" 로 고른다. 다시 고르면 바뀐다 — 묶음마다
@@ -331,6 +385,26 @@ async fn mark_best(
             "이 추천 묶음을 찾을 수 없습니다.".to_string(),
         ));
     }
+    Ok(Json(SaveResponse { id }))
+}
+
+/// "제일" 선택을 취소한다. 그 묶음에는 고른 코디가 없게 된다.
+async fn unmark_best(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(id): Path<String>,
+    Query(body): Query<BestRequest>,
+) -> Result<Json<SaveResponse>, AppError> {
+    sqlx::query(
+        "UPDATE look_signal SET best = 0, best_at = NULL \
+         WHERE look_id = ? AND request_id = ? AND user_id = ?",
+    )
+    .bind(&id)
+    .bind(&body.request_id)
+    .bind(&auth.user_id)
+    .execute(&state.db)
+    .await
+    .map_err(|e| AppError::Internal(e.into()))?;
     Ok(Json(SaveResponse { id }))
 }
 

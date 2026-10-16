@@ -104,3 +104,88 @@ pub async fn get_preference_scores(
     .fetch_all(pool)
     .await
 }
+
+/// 같은 착장에 남긴 가장 최근의 피드백 하나를 되돌린다. 되돌린 것이 있으면 true.
+///
+/// 홈의 '마음에 들어요' / '오늘 입을래요' 를 잘못 눌렀을 때 취소하는 데 쓴다. 화면은
+/// 피드백 id 를 들고 있지 않으므로(새로고침하면 사라진다) 아이템 이름과 종류로 찾는다.
+/// `insert_feedback` 이 더한 만큼 아이템 점수와 이유 태그 점수를 빼고 행을 지운다 —
+/// 기록만 남기고 점수를 그대로 두면 취소한 좋아요가 다음 추천에 계속 반영된다.
+pub async fn undo_latest_feedback(
+    pool: &MySqlPool,
+    user_id: &str,
+    feedback_type: &str,
+    names: [Option<&str>; 5],
+) -> Result<bool, sqlx::Error> {
+    let [inner, outer, bottom, shoes, bag] = names;
+    let mut tx = pool.begin().await?;
+    let found: Option<(String,)> = sqlx::query_as(
+        "SELECT id FROM outfit_feedback \
+         WHERE user_id = ? AND feedback_type = ? AND inner_name <=> ? AND outer_name <=> ? \
+           AND bottom_name <=> ? AND shoes_name <=> ? AND bag_name <=> ? \
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(user_id)
+    .bind(feedback_type)
+    .bind(inner)
+    .bind(outer)
+    .bind(bottom)
+    .bind(shoes)
+    .bind(bag)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((id,)) = found else {
+        return Ok(false);
+    };
+
+    let item_delta = match feedback_type {
+        "like" | "worn" | "saved" => 1,
+        "dislike" => -1,
+        _ => 0,
+    };
+    for item in [inner, outer, bottom, shoes, bag].into_iter().flatten() {
+        if item.is_empty() {
+            continue;
+        }
+        sqlx::query(
+            "UPDATE item_feedback_score \
+             SET score_adjustment = score_adjustment - ?, \
+                 feedback_count = GREATEST(feedback_count - 1, 0) \
+             WHERE user_id = ? AND item_name = ?",
+        )
+        .bind(item_delta)
+        .bind(user_id)
+        .bind(item)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    let reasons: Vec<(String, String)> =
+        sqlx::query_as("SELECT reason_tag, polarity FROM feedback_reason WHERE feedback_id = ?")
+            .bind(&id)
+            .fetch_all(&mut *tx)
+            .await?;
+    for (tag, polarity) in &reasons {
+        let tag_delta = if polarity == "positive" { 3 } else { -3 };
+        sqlx::query(
+            "UPDATE user_preference_score \
+             SET score = score - ?, count = GREATEST(count - 1, 0) \
+             WHERE user_id = ? AND reason_tag = ?",
+        )
+        .bind(tag_delta)
+        .bind(user_id)
+        .bind(tag)
+        .execute(&mut *tx)
+        .await?;
+    }
+    sqlx::query("DELETE FROM feedback_reason WHERE feedback_id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM outfit_feedback WHERE id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(true)
+}

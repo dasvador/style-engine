@@ -84,5 +84,9 @@ export const api = {
       apiDelete<{ id: string }>(`/lookbook/${id}${reason ? `?reason=${reason}` : ''}`),
     best: (id: string, request_id: string) =>
       apiPost<{ id: string }>(`/lookbook/${id}/best`, { request_id }),
+    unbest: (id: string, request_id: string) =>
+      apiDelete<{ id: string }>(
+        `/lookbook/${id}/best?request_id=${encodeURIComponent(request_id)}`,
+      ),
   },
 };

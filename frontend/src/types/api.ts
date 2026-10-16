@@ -345,6 +345,9 @@ export interface SavedLook {
   created_at: string;
   /** 이미 만들어 둔 그림. 없으면 아직 생성되지 않은 코디다. */
   image_path: string | null;
+  /** 이 코디가 나온 가장 최근 홈 추천과, 그 묶음에서 "제일" 로 골랐는지(1). */
+  request_id: string | null;
+  best: number;
 }
 
 /** 룩북에서 지우는 이유. 코디가 별로인 것만 취향 비교에서 진 쪽으로 센다. */

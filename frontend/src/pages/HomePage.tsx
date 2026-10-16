@@ -131,6 +131,8 @@ export function HomePage({
             recommendation: v.recommendation ?? '',
             liked: v.liked,
             worn: v.worn,
+            requestId: v.request_id ?? undefined,
+            best: v.best === 1,
           })),
         );
       } catch {
@@ -285,8 +287,21 @@ export function HomePage({
     }
   };
 
-  /** 취향 신호. 카드를 넘겨 본 것과 구분해, 버튼을 눌렀을 때만 보낸다. */
+  /** 취향 신호. 카드를 넘겨 본 것과 구분해, 버튼을 눌렀을 때만 보낸다.
+   *  이미 켜진 것을 다시 누르면 취소한다 — 잘못 누른 것을 되돌릴 길이 없었다.
+   *  취소는 서버가 그때 남긴 피드백까지 되돌린다. */
   const sendFeedback = async (look: Look, type: 'like' | 'worn') => {
+    const on = type === 'like' ? look.liked : look.worn;
+    if (on) {
+      const off = type === 'like' ? { liked: false } : { worn: false };
+      setLooks((prev) => prev.map((l) => (l.key === look.key ? { ...l, ...off } : l)));
+      try {
+        if (look.savedId) await api.lookbook.mark(look.savedId, off);
+      } catch {
+        // 취소 실패로 화면을 되돌리지는 않는다.
+      }
+      return;
+    }
     const slot = (category: string) => look.outfit.find((o) => o.category === category)?.name;
     setLooks((prev) =>
       prev.map((l) =>
@@ -317,6 +332,16 @@ export function HomePage({
   /** 추천 묶음에서 하나만 "제일" 로 고른다. 다시 고르면 바뀐다. */
   const pickBest = async (look: Look) => {
     if (!look.requestId || !look.savedId) return;
+    if (look.best) {
+      // 다시 누르면 취소 — 그 묶음에는 고른 코디가 없게 된다.
+      setLooks((prev) => prev.map((l) => (l.key === look.key ? { ...l, best: false } : l)));
+      try {
+        await api.lookbook.unbest(look.savedId, look.requestId);
+      } catch {
+        // 기록 실패로 화면을 되돌리지는 않는다.
+      }
+      return;
+    }
     setLooks((prev) =>
       prev.map((l) => (l.requestId === look.requestId ? { ...l, best: l.key === look.key } : l)),
     );

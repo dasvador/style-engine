@@ -160,14 +160,16 @@ export function LookbookStack({
         <button
           className={`chip-action${active.liked ? ' on' : ''}`}
           onClick={() => onLike(active)}
-          disabled={active.liked}
+          aria-pressed={active.liked}
+          title={active.liked ? '다시 누르면 취소돼요' : undefined}
         >
           {active.liked ? '마음에 들어요 ✓' : '마음에 들어요'}
         </button>
         <button
           className={`chip-action${active.worn ? ' on' : ''}`}
           onClick={() => onWearToday(active)}
-          disabled={active.worn}
+          aria-pressed={active.worn}
+          title={active.worn ? '다시 누르면 취소돼요' : undefined}
         >
           {active.worn ? '오늘 입을래요 ✓' : '오늘 입을래요'}
         </button>
@@ -175,8 +177,13 @@ export function LookbookStack({
           <button
             className={`chip-action${active.best ? ' on' : ''}`}
             onClick={() => onBest(active)}
-            disabled={active.best || !active.savedId}
-            title={`같이 나온 ${siblings}개 중 하나만 고를 수 있어요`}
+            disabled={!active.savedId}
+            aria-pressed={active.best}
+            title={
+              active.best
+                ? '다시 누르면 취소돼요'
+                : `같이 나온 ${siblings}개 중 하나만 고를 수 있어요`
+            }
           >
             {active.best ? '이번엔 이게 제일 ✓' : '이번엔 이게 제일'}
           </button>
