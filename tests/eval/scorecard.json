@@ -12,11 +12,11 @@
     }
   },
   "today_fit": {
-    "accuracy_pct": 79.7,
+    "accuracy_pct": 76.4,
     "confusion": {
-      "Borderline→Fail": 2,
-      "Borderline→Pass": 14,
-      "Fail→Borderline": 1,
+      "Borderline→Fail": 3,
+      "Borderline→Pass": 16,
+      "Fail→Borderline": 2,
       "Fail→Pass": 7,
       "Pass→Borderline": 1
     }
@@ -27,7 +27,7 @@
     "reject_mean_score": 91.3,
     "separation": 4.7
   },
-  "combined_accuracy_pct": 77.2,
+  "combined_accuracy_pct": 74.8,
   "human_pairs": {
     "pairs": 16,
     "production_agree_pct": 68.8,

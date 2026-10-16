@@ -30,6 +30,16 @@ impl FeedbackContext {
 }
 
 /// 조합에서 피드백 태그를 자동 감지
+/// 값이 있는 것만으로 낸 평균. 하나도 없으면 `None` 이다.
+///
+/// 값이 없는 슬롯을 0 으로 세면 "판단할 정보가 없다" 가 "가장 낮다" 로 바뀐다. 여성 옷은
+/// 질감·접지 값이 전부 비어 있어서, 평균이 늘 0 이 되어 모든 여성 코디가 `too_flat`
+/// (사용자 아쉬워요 7회 누적 −21)을 받았다(2026-10-17 확인).
+pub fn known_mean(values: impl Iterator<Item = Option<i8>>) -> Option<f32> {
+    let known: Vec<f32> = values.flatten().map(f32::from).collect();
+    (!known.is_empty()).then(|| known.iter().sum::<f32>() / known.len() as f32)
+}
+
 pub fn detect_outfit_tags_pub(outfit: &[&Clothing]) -> Vec<String> {
     detect_outfit_tags(outfit)
 }
@@ -58,17 +68,14 @@ fn detect_outfit_tags(outfit: &[&Clothing]) -> Vec<String> {
         tags.push("too_light".to_string());
     }
 
-    let avg_td = outfit
-        .iter()
-        .filter_map(|i| i.texture_depth_v2)
-        .map(|t| t as f32)
-        .sum::<f32>()
-        / outfit.len().max(1) as f32;
-    if avg_td < 3.0 {
-        tags.push("too_flat".to_string());
-    }
-    if avg_td >= 5.0 {
-        tags.push("good_texture_balance".to_string());
+    // 질감 값이 있는 옷만으로 판단한다. 전부 없으면 질감 태그를 붙이지 않는다.
+    if let Some(avg_td) = known_mean(outfit.iter().map(|i| i.texture_depth_v2)) {
+        if avg_td < 3.0 {
+            tags.push("too_flat".to_string());
+        }
+        if avg_td >= 5.0 {
+            tags.push("good_texture_balance".to_string());
+        }
     }
 
     let has_denim = outfit
@@ -78,17 +85,21 @@ fn detect_outfit_tags(outfit: &[&Clothing]) -> Vec<String> {
         tags.push("good_denim_bridge".to_string());
     }
 
-    let grounding: i32 = outfit
+    // 접지도 같다 — 신발·가방에 값이 하나도 없으면 "떠 보인다" 고 판단할 근거가 없다.
+    let grounding_known: Vec<i32> = outfit
         .iter()
         .filter(|i| i.category == "신발" || i.category == "가방")
         .filter_map(|i| i.grounding_score)
-        .map(|g| g as i32)
-        .sum();
-    if grounding >= 8 {
-        tags.push("good_grounding".to_string());
-    }
-    if grounding <= 3 {
-        tags.push("floating_balance".to_string());
+        .map(i32::from)
+        .collect();
+    if !grounding_known.is_empty() {
+        let grounding: i32 = grounding_known.iter().sum();
+        if grounding >= 8 {
+            tags.push("good_grounding".to_string());
+        }
+        if grounding <= 3 {
+            tags.push("floating_balance".to_string());
+        }
     }
 
     let color_groups: Vec<&str> = outfit
@@ -1382,5 +1393,84 @@ mod color_group_tests {
         ] {
             assert_eq!(color_group(c), "other", "{c}");
         }
+    }
+}
+
+#[cfg(test)]
+mod missing_value_tests {
+    use super::*;
+    use crate::models::style_vocab::Thickness;
+
+    fn item(category: &str, texture: Option<i8>, grounding: Option<i8>) -> Clothing {
+        let now = chrono::NaiveDateTime::default();
+        Clothing {
+            id: "x".into(),
+            name: "x".into(),
+            category: category.into(),
+            color: None,
+            thickness: Thickness::Medium,
+            image_url: None,
+            tone: None,
+            saturation: None,
+            style: None,
+            weight: None,
+            role: None,
+            color_temperature: None,
+            versatility: None,
+            statement_level: None,
+            formality_level: None,
+            gender: None,
+            style_mood: None,
+            visual_weight: None,
+            texture_depth: None,
+            visual_weight_v2: None,
+            texture_depth_v2: texture,
+            grounding_score: grounding,
+            shadow_tone: None,
+            silhouette_volume: None,
+            material_primary: None,
+            sub_category: None,
+            floating_score: None,
+            strong_style_score: None,
+            texture_keywords: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[test]
+    fn known_mean_ignores_missing_values() {
+        assert_eq!(known_mean([Some(2), None, Some(4)].into_iter()), Some(3.0));
+        assert_eq!(known_mean([None, None].into_iter()), None);
+    }
+
+    /// 질감·접지 값이 전부 없는 코디(지금의 여성 옷 전부)는 밋밋하다·떠 보인다로 읽지 않는다.
+    #[test]
+    fn missing_texture_and_grounding_add_no_tags() {
+        let (t, b, s, g) = (
+            item("상의", None, None),
+            item("하의", None, None),
+            item("신발", None, None),
+            item("가방", None, None),
+        );
+        let tags = detect_outfit_tags(&[&t, &b, &s, &g]);
+        assert!(!tags.iter().any(|x| x == "too_flat"), "{tags:?}");
+        assert!(!tags.iter().any(|x| x == "floating_balance"), "{tags:?}");
+    }
+
+    /// 값이 있는 옷은 예전처럼 판단한다 — 비어 있는 옷이 섞여도 있는 값으로만 평균을 낸다.
+    #[test]
+    fn known_values_still_decide_the_tags() {
+        let flat = item("상의", Some(2), None);
+        let blank = item("하의", None, None);
+        let shoes = item("신발", None, Some(1));
+        let bag = item("가방", None, Some(1));
+        let tags = detect_outfit_tags(&[&flat, &blank, &shoes, &bag]);
+        assert!(tags.iter().any(|x| x == "too_flat"), "{tags:?}");
+        assert!(tags.iter().any(|x| x == "floating_balance"), "{tags:?}");
+
+        let rich = item("상의", Some(6), None);
+        let tags = detect_outfit_tags(&[&rich, &blank]);
+        assert!(tags.iter().any(|x| x == "good_texture_balance"), "{tags:?}");
     }
 }

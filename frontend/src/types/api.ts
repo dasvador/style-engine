@@ -117,11 +117,15 @@ export interface OutfitItem {
   reason: string;
   image_url: string | null;
   material: string | null;
+  /** 착용 상태(영문). 추운 날 여며 입는 코트처럼 판정에 쓴 상태 — 이미지 입력에 붙는다. */
+  wear?: string | null;
 }
 
 export interface ScoringDetail {
   style_score: number;
   recency_penalty: number;
+  /** 오늘 날씨에 경계인 착장의 감점. */
+  weather_penalty?: number;
   diversity_bonus: number;
   dormant_bonus: number;
   final_score: number;
@@ -146,6 +150,8 @@ export interface ModeRecommendation {
   /** shadow 엔진 점수. 순서에는 쓰지 않고 룩 저장 때 돌려보낸다. */
   shadow_score?: number | null;
   silhouette_delta?: number | null;
+  /** 무드 shadow 가 되돌렸을 감점의 합. */
+  mood_waiver?: number | null;
   /** `scoring_detail.style_score` 중 피드백 보정분. */
   feedback_bonus?: number;
 }
@@ -153,6 +159,8 @@ export interface ModeRecommendation {
 export interface MultiModeRecommendation {
   modes: ModeRecommendation[];
   weather_summary: string;
+  /** 후보가 모자랐을 때 서버가 알리는 한 줄(날씨에 맞는 후보 없음·무드 요소 부족). */
+  notice?: string;
 }
 
 export interface RecommendationBody {
@@ -233,6 +241,7 @@ export interface ChatItem {
   name: string;
   owned: boolean;
   material?: string | null;
+  wear?: string | null;
 }
 
 export interface ChatResponse {

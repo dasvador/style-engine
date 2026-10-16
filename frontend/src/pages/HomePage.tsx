@@ -62,6 +62,7 @@ function scoringOf(
     feedback_bonus: m.feedback_bonus ?? null,
     shadow_score: m.shadow_score ?? null,
     silhouette_delta: m.silhouette_delta ?? null,
+    mood_waiver: m.mood_waiver ?? null,
     // 오늘 입기 판정은 기온으로 갈린다. 요약 문장만으로는 다시 잴 수 없다.
     temperature,
   };
@@ -110,8 +111,8 @@ export function HomePage({
   useEffect(() => {
     void (async () => {
       try {
-        // 서버는 최신순으로 준다. 화면은 만든 순서대로 쌓이므로 뒤집는다.
-        const saved = (await api.lookbook.list()).slice().reverse();
+        // 서버는 최신순으로 준다. 화면도 최신이 앞이다(2026-10-17 사용자 요청).
+        const saved = await api.lookbook.list();
         if (saved.length === 0) return;
         // 룩북에서 특정 코디를 눌러 들어왔으면 그 자리로 맞춘다.
         if (openLookId) {
@@ -226,20 +227,20 @@ export function HomePage({
         added.push(l);
       }
       // 전부 이미 본 코디였다면 아무 일도 없던 것처럼 보이지 않게 알린다.
+      // 서버가 후보 부족을 알렸으면 그 문장이 먼저다 — 빈 결과를 "이미 본 코디" 로 읽으면
+      // 날씨에 맞는 옷이 없다는 사실이 가려진다.
       setRecNotice(
-        added.length === 0
-          ? '이번에는 이미 보여 드린 코디와 같은 조합만 나왔어요. 다른 무드를 고르거나 한 번 더 눌러 보세요.'
-          : null,
+        r.notice ??
+          (added.length === 0
+            ? '이번에는 이미 보여 드린 코디와 같은 조합만 나왔어요. 다른 무드를 고르거나 한 번 더 눌러 보세요.'
+            : null),
       );
       if (added.length > 0) {
-        // 새 코디는 뒤에 붙인다.
-        //
-        // 앞에 넣으면 먼저 만든 코디가 뒤로 밀려, 보고 있던 카드가 매번 다른 번호로
-        // 옮겨 간다. 룩북은 앞에서부터 채워지는 편이 읽기 쉽다 — 01번은 계속 01번이다.
-        // 대신 새로 만든 첫 장으로 바로 넘겨 늘어난 것이 눈에 보이게 한다.
-        const firstNew = looksRef.current.length;
-        setLooks((prev) => [...prev, ...added]);
-        setActiveLook(firstNew);
+        // 새 코디는 앞에 붙인다 — 최신이 01번이다(2026-10-17 사용자 요청, 예전에는 뒤에
+        // 붙여 만든 순서였다). 한 번에 만든 코디끼리는 오늘의 추천·변주·안 입은 옷 순서를
+        // 지킨다. 새로 만든 첫 장으로 바로 넘겨 늘어난 것이 눈에 보이게 한다.
+        setLooks((prev) => [...added, ...prev]);
+        setActiveLook(0);
       }
 
       // 새로 쌓인 카드의 이미지를 미리 받아 둔다. 썸네일이 비어 있으면 비교할 수가

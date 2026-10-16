@@ -115,6 +115,33 @@ pub struct GroupedClothes {
     pub bags: Vec<String>,
 }
 
+/// 후보 생성의 기본 원칙 3~5. 무드가 없거나 글램이 아닌 무드에 쓴다.
+const DEFAULT_PRINCIPLES: &str = "3. 강한 포인트 아이템은 1개 이하로 유지하세요.
+4. 하의는 안정적인 역할(베이스/구조템/연결템) 우선.
+5. 이너는 중립적이고 활용도 높은 아이템 우선.";
+
+/// 글램의 원칙 3~5. 기본 원칙의 "중립적인 이너·안정적인 하의" 와 부딪쳐서 바꿔 끼운다.
+/// 중심은 옷 한 곳 — 어느 슬롯이어도 된다. 가방·신발은 중심이 되지 못한다.
+const GLAM_PRINCIPLES: &str = "3. 각 후보는 옷(상의·하의·아우터) 한 곳에 시선이 모이는 중심을 두세요. 중심은 빛을 받는 소재(새틴·벨벳·메탈릭)나 형태(원숄더·드레이프·비대칭), 선명한 색으로 만듭니다. 노출이나 광택이 꼭 있어야 하는 것은 아닙니다.
+4. 중심이 아닌 옷은 담백한 아이템으로 중심을 받치세요. 옷 두 곳을 동시에 강하게 만들지 마세요(예: 강한 상의 + 강한 아우터).
+5. 가방·신발은 작은 보조 포인트일 뿐 중심이 되지 못합니다. 기본 티셔츠·데님에 가방만 빛나는 조합은 글램 후보로 내지 마세요.";
+
+/// 글램 후보의 방향. 날씨와 옷장이 허락하는 만큼만 — 없는 방향을 억지로 만들지 않는다.
+const GLAM_TASKS: &str = "- 글램: 날씨와 후보 목록이 허락하면 5개 중 상의가 중심인 후보, 하의가 중심인 후보, 아우터가 중심인 후보를 각각 1개 이상 넣으세요. 그런 옷이 목록에 없으면 억지로 만들지 마세요.
+- 글램: 각 후보의 \"focus\" 에 시선이 모이는 옷의 슬롯(상의·하의·아우터 중 하나)을 적으세요.
+";
+
+/// 이 기온 미만의 글램은 "실내 착장 + 이동용 두꺼운 코트" 로 짠다.
+pub const GLAM_COVER_COAT_BELOW_C: f64 = 12.0;
+
+/// 추운 날 글램의 장면. 한겨울에 글램 착장을 아우터까지 맞춰 입고 걷지는 않는다 — 실내에서
+/// 보여 줄 착장 위에 두꺼운 코트를 걸치고 택시로 이동한다(2026-10-17 사용자). 짧은 하의와
+/// 맨다리도 이 장면에서는 자연스럽다.
+const GLAM_COLD_TASK: &str = "- 글램(추운 날): 오늘 밖에서 입고 다니는 착장입니다. 코트는 소매에 팔을 넣고 여며 입는다고 보고 고르세요. [아우터 후보] 중 두께가 thick 인 글램 코트(퍼·시어링·아워글라스 실루엣·선명한 색)를 넣고, 단정한 무광 코트로 대신하지 마세요. 5°C 아래에서는 보온 안감(insulated lining, shearling lining 등)이 적힌 아우터를 고르고, 안감이 적히지 않은 라이더·크롭 재킷에 기대지 마세요.
+- 글램(추운 날): 미니처럼 짧은 하의는 니하이 부츠와 무릎을 덮는 롱코트가 함께일 때만 고르세요. 그렇지 않으면 롱·미디 스커트나 팬츠로 하의를 정하세요. 목록에 없는 스타킹·타이츠를 더하지 마세요.
+- 글램(추운 날): 코트가 중심이면 안의 옷은 슬림한 상의·스트레이트 팬츠처럼 담백하게, 상의가 중심이면 코트는 몸의 선과 비율로 받쳐 주는 코트로 고르세요. 퍼·가죽·새틴을 한 착장에서 한꺼번에 강조하지 말고 착장마다 중심 소재를 하나 정하세요. 후보마다 같은 이너를 반복하지 마세요.
+";
+
 /// 슬롯별 후보 목록에서 5가지 코디 초안을 받는다.
 ///
 /// 아우터 규칙을 온도로 못박고 응답 예시에도 아우터를 넣어 둔 이유: 예시에 아우터 줄이
@@ -128,7 +155,42 @@ pub async fn get_outfit_candidates(
     occasion: Option<&str>,
     style_preference: Option<&str>,
     recent_items_hint: &str,
+    mood: Option<crate::models::style_vocab::StyleGenre>,
 ) -> anyhow::Result<AiMultiRecommendation> {
+    let today = chrono::Local::now().format("%Y-%m-%d (%A)").to_string();
+    let (system_prompt, user_prompt) = outfit_candidate_prompts(
+        weather,
+        clothes,
+        occasion,
+        style_preference,
+        recent_items_hint,
+        &today,
+        mood,
+    );
+    Ok(llm
+        .chat_json::<AiMultiRecommendation>(
+            LlmTask::OutfitCandidates,
+            ChatRequest::new(vec![Message::user_text(user_prompt)])
+                .system(&system_prompt)
+                .json(),
+        )
+        .await?)
+}
+
+/// 후보 생성 프롬프트(시스템, 사용자). 호출과 떼어 두어 문장을 테스트로 확인한다.
+pub fn outfit_candidate_prompts(
+    weather: &CurrentWeather,
+    clothes: &GroupedClothes,
+    occasion: Option<&str>,
+    style_preference: Option<&str>,
+    recent_items_hint: &str,
+    today: &str,
+    mood: Option<crate::models::style_vocab::StyleGenre>,
+) -> (String, String) {
+    // 글램은 기본 원칙 3~5(강한 포인트 1개 이하·안정적인 하의·중립적인 이너)를 글램의
+    // 원칙으로 바꾼다. 두 원칙을 함께 두면 모델이 한쪽을 무시한다. 다른 무드의 문장은
+    // 예전과 같다.
+    let glam = mood == Some(crate::models::style_vocab::StyleGenre::Glam);
     let clothes_grouped = format!(
         "[상의 후보]\n{tops}\n\n[하의 후보]\n{bottoms}\n\n[아우터 후보]\n{outers}\n\n[신발 후보]\n{shoes}\n\n[가방 후보]\n{bags}",
         tops = if clothes.tops.is_empty() {
@@ -161,9 +223,13 @@ pub async fn get_outfit_candidates(
     let occasion_text = occasion.unwrap_or("일상");
     let style_text = style_preference.unwrap_or("편한 스타일");
 
-    let today = chrono::Local::now().format("%Y-%m-%d (%A)").to_string();
-
-    let system_prompt = r#"당신은 다양한 현대 남녀 패션 스타일과 의류 구성에 익숙한 코디 보조 AI입니다.
+    let principles = if glam {
+        GLAM_PRINCIPLES
+    } else {
+        DEFAULT_PRINCIPLES
+    };
+    let system_prompt = format!(
+        r#"당신은 다양한 현대 남녀 패션 스타일과 의류 구성에 익숙한 코디 보조 AI입니다.
 
 역할:
 - 주어진 슬롯별 후보 목록에서만 아이템을 골라 코디를 구성하는 "초안 생성기"입니다.
@@ -187,13 +253,12 @@ pub async fn get_outfit_candidates(
    - 15~20°C: 이너가 얇으면 넣고, 이너가 두꺼우면 생략해도 됩니다.
    - 15°C 미만: 기본적으로 넣으세요. 생략하려면 이너 자체가 그만큼 두꺼워야 합니다.
    아우터를 넣는 후보는 이너를 얇게 골라도 됩니다 — 보온은 조합 전체로 맞추면 됩니다.
-3. 강한 포인트 아이템은 1개 이하로 유지하세요.
-4. 하의는 안정적인 역할(베이스/구조템/연결템) 우선.
-5. 이너는 중립적이고 활용도 높은 아이템 우선.
+{principles}
 6. 같은 색/무드로 몰리지 마세요.
 
 5가지 서로 다른 후보 코디를 제안하세요.
-반드시 JSON 형식으로 응답하세요."#;
+반드시 JSON 형식으로 응답하세요."#
+    );
 
     let user_prompt = format!(
         r#"오늘 날짜: {today}
@@ -204,7 +269,7 @@ pub async fn get_outfit_candidates(
 - 바람: {wind} km/h
 - 날씨: {desc}
 - 상황: {occasion}
-- 선호 스타일: {style}
+- 선호 스타일: {style}{mood_line}
 {recent_section}
 {clothes}
 
@@ -214,7 +279,7 @@ pub async fn get_outfit_candidates(
 - 상의와 하의 중 최소 하나는 후보마다 달라야 합니다.
 - 기온이 20°C 미만이면 아우터를 넣은 후보와 넣지 않은 후보를 **둘 다** 포함하세요.
   어느 쪽이 나은지는 규칙 엔진이 고릅니다. 한쪽으로만 5개를 채우지 마세요.
-- 신발은 반드시 [신발 후보]에서만 고르세요.
+{mood_tasks}- 신발은 반드시 [신발 후보]에서만 고르세요.
 - 가방은 반드시 [가방 후보]에서만 고르세요.
 
 응답 JSON 형식:
@@ -229,7 +294,7 @@ pub async fn get_outfit_candidates(
         {{ "category": "신발", "name": "정확한 아이템명", "reason": "선택 이유" }},
         {{ "category": "가방", "name": "정확한 아이템명", "reason": "선택 이유" }}
       ],
-      "weather_summary": "날씨 요약 한 줄",
+{focus_field}      "weather_summary": "날씨 요약 한 줄",
       "tips": ["팁"]
     }},
     {{
@@ -261,6 +326,24 @@ pub async fn get_outfit_candidates(
         occasion = occasion_text,
         style = style_text,
         today = today,
+        mood_line = if glam {
+            "\n- 선택한 무드: 글램 — 빛나는 소재와 선명한 실루엣으로 존재감을 주는 스타일. \
+             저녁 약속·파티·분위기 있는 장소에서 시선을 끄는 착장을 만듭니다."
+        } else {
+            ""
+        },
+        mood_tasks = if !glam {
+            String::new()
+        } else if weather.temperature < GLAM_COVER_COAT_BELOW_C {
+            format!("{GLAM_TASKS}{GLAM_COLD_TASK}")
+        } else {
+            GLAM_TASKS.to_string()
+        },
+        focus_field = if glam {
+            "      \"focus\": \"상의|하의|아우터 중 시선이 모이는 곳\",\n"
+        } else {
+            ""
+        },
         recent_section = if recent_items_hint.is_empty() {
             String::new()
         } else {
@@ -271,14 +354,7 @@ pub async fn get_outfit_candidates(
         },
     );
 
-    Ok(llm
-        .chat_json::<AiMultiRecommendation>(
-            LlmTask::OutfitCandidates,
-            ChatRequest::new(vec![Message::user_text(user_prompt)])
-                .system(system_prompt)
-                .json(),
-        )
-        .await?)
+    (system_prompt, user_prompt)
 }
 
 // ─── 2) analyze_clothing_image (fallback, no RAG) ───
@@ -427,7 +503,8 @@ name 작성 원칙:
   classic(셔츠·재킷·트렌치의 단정한 핏), romantic(부드러운 소재와 곡선),
   modern_chic(선명한 실루엣과 강한 대비), bohemian(자연 소재와 느슨한 레이어링),
   street(오버사이즈와 그래픽, 데님·카고), mannish(테일러링과 넓은 어깨),
-  sporty_casual(기능성 소재와 운동복 요소), amekaji(아메리칸 캐주얼),
+  sporty_casual(기능성 소재와 운동복 요소), glam(새틴·메탈릭·벨벳처럼 빛을 받는 소재나
+  원숄더·드레이프 같은 조형적인 실루엣), amekaji(아메리칸 캐주얼),
   preppy(아이비리그), workwear(작업복), outdoor_casual(기능성 아웃도어).
   확신이 서는 것만 고르고, 애매하면 비워 두세요 — 틀린 장르에 들어가면 그 장르의
   추천이 전부 어긋납니다.
@@ -623,7 +700,8 @@ name 작성 원칙:
   classic(셔츠·재킷·트렌치의 단정한 핏), romantic(부드러운 소재와 곡선),
   modern_chic(선명한 실루엣과 강한 대비), bohemian(자연 소재와 느슨한 레이어링),
   street(오버사이즈와 그래픽, 데님·카고), mannish(테일러링과 넓은 어깨),
-  sporty_casual(기능성 소재와 운동복 요소), amekaji(아메리칸 캐주얼),
+  sporty_casual(기능성 소재와 운동복 요소), glam(새틴·메탈릭·벨벳처럼 빛을 받는 소재나
+  원숄더·드레이프 같은 조형적인 실루엣), amekaji(아메리칸 캐주얼),
   preppy(아이비리그), workwear(작업복), outdoor_casual(기능성 아웃도어).
   확신이 서는 것만 고르고, 애매하면 비워 두세요 — 틀린 장르에 들어가면 그 장르의
   추천이 전부 어긋납니다.
@@ -753,4 +831,61 @@ pub async fn generate_outfit_explanation(
         .await?;
 
     Ok(resp.text_or_empty().to_string())
+}
+
+#[cfg(test)]
+mod outfit_candidate_prompt_tests {
+    use super::*;
+    use crate::models::style_vocab::StyleGenre;
+
+    fn prompts(mood: Option<StyleGenre>) -> (String, String) {
+        let w = CurrentWeather {
+            temperature: 17.0,
+            apparent_temperature: 16.0,
+            humidity: 50.0,
+            wind_speed: 3.0,
+            weather_code: 0,
+            weather_description: "맑음".into(),
+        };
+        let g = GroupedClothes {
+            tops: vec!["- 티 | role:베이스 | tone:밝음 | style:베이직".into()],
+            bottoms: vec!["- 데님".into()],
+            outers: vec![],
+            shoes: vec!["- 스니커".into()],
+            bags: vec![],
+        };
+        outfit_candidate_prompts(
+            &w,
+            &g,
+            Some("일상"),
+            None,
+            "- 티",
+            "2026-10-17 (Saturday)",
+            mood,
+        )
+    }
+
+    /// 글램이 아닌 무드는 예전 문장 그대로다 — 무드 전달이 다른 무드의 후보를 바꾸지 않는다.
+    #[test]
+    fn other_moods_get_the_unchanged_prompt() {
+        let base = prompts(None);
+        for g in StyleGenre::ALL.iter().filter(|g| **g != StyleGenre::Glam) {
+            assert_eq!(prompts(Some(*g)), base, "{g}");
+        }
+        assert!(base.0.contains(DEFAULT_PRINCIPLES));
+        assert!(!base.0.contains("글램") && !base.1.contains("글램"));
+    }
+
+    /// 글램은 기본 원칙(강한 포인트 1개 이하·중립적인 이너)을 글램 원칙으로 바꾼다 — 두
+    /// 원칙을 함께 두지 않는다. 무드와 방향 요청, focus 칸이 들어간다.
+    #[test]
+    fn glam_swaps_the_conflicting_principles() {
+        let (sys, user) = prompts(Some(StyleGenre::Glam));
+        assert!(sys.contains(GLAM_PRINCIPLES));
+        assert!(!sys.contains("5. 이너는 중립적이고 활용도 높은 아이템 우선."));
+        assert!(!sys.contains("3. 강한 포인트 아이템은 1개 이하로 유지하세요."));
+        assert!(user.contains("선택한 무드: 글램"));
+        assert!(user.contains("상의가 중심인 후보, 하의가 중심인 후보, 아우터가 중심인 후보"));
+        assert!(user.contains("\"focus\""));
+    }
 }

@@ -145,6 +145,23 @@ struct ChatItem {
     owned: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     material: Option<String>,
+    /// 착용 상태(영문, 이미지 입력에 붙는다). 추운 날 코트는 여며 입은 상태로 보온을
+    /// 판정하므로(`serving_ranker::outer_wear`) 그림도 같은 상태로 그린다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    wear: Option<String>,
+}
+
+/// 기온을 알면 아우터 칸에 착용 상태를 붙인다. 바꾸기(`tool_swap_item`)로 들어온 아우터도
+/// 같은 기준을 받도록 응답 직전에 한 번 더 부른다.
+fn apply_wear(items: &mut [ChatItem], clothes: &[Clothing], temperature: Option<f64>) {
+    let Some(t) = temperature else { return };
+    for item in items.iter_mut().filter(|i| i.slot == "outer") {
+        item.wear = clothes
+            .iter()
+            .find(|c| c.name == item.name)
+            .and_then(|c| crate::services::serving_ranker::outer_wear(c, t))
+            .map(str::to_string);
+    }
 }
 
 /// 옷장 카테고리 → 상담 카드의 슬롯 이름. 화면(`lib/lookbook.ts` 의 `CATEGORY_TO_SLOT`)과 같다.
@@ -168,6 +185,7 @@ impl ChatItem {
             name: c.name.clone(),
             owned,
             material: c.image_material(),
+            wear: None,
         })
     }
 }
@@ -183,13 +201,9 @@ async fn chat(
         .map_err(|e| AppError::BadRequest(e.to_string()))?;
 
     let user_id = &auth.user_id;
+    let mood = crate::routes::parse_genre(body.style_mood.as_deref())?;
     let clothes = if body.gender.is_some() || body.style_mood.is_some() {
-        clothing_repo::list_clothing_filtered(
-            &state.db,
-            body.gender.as_deref(),
-            crate::routes::parse_genre(body.style_mood.as_deref())?,
-        )
-        .await?
+        clothing_repo::list_clothing_filtered(&state.db, body.gender.as_deref(), mood).await?
     } else {
         clothing_repo::list_clothing(&state.db).await?
     };
@@ -476,6 +490,7 @@ async fn chat(
                                 temperature,
                                 feedback: &feedback_ctx,
                                 recent: &recent,
+                                mood,
                             },
                             &state.embedding,
                         )
@@ -570,7 +585,7 @@ async fn chat(
                                     .collect()
                             })
                             .unwrap_or_default();
-                        tool_evaluate_outfit(&names, &clothes, user_profile.as_ref())
+                        tool_evaluate_outfit(&names, &clothes, user_profile.as_ref(), mood)
                     }
                     "submit_feedback" => {
                         let fb_type = fn_args["feedback_type"].as_str().unwrap_or("dislike");
@@ -739,6 +754,7 @@ async fn chat(
         .await;
     }
 
+    apply_wear(&mut final_items, &clothes, temperature);
     save_exchange(&state.db, user_id, &body, &final_reply, &final_items).await;
 
     Ok(Json(ChatResponse {
@@ -1450,6 +1466,12 @@ fn genre_backdrop(genre: StyleGenre) -> &'static str {
         G::Bohemian => "warm, sun-worn materials and a lived-in feel",
         G::Street => "colour, light and a sense of space in the city, not only rough grey",
         G::SportyCasual => "a bright, polished city day, nothing to do with training",
+        // 글램은 밤·클럽·네온으로 굳히지 않는다. 배경은 결이 있는 재료 하나로 조용히 두고,
+        // 빛을 받는 것은 옷이 맡는다.
+        G::Glam => {
+            "one quietly textured material — stone, glass or warm lamplight — kept calm \
+             so the fabric of the clothes is what catches the light"
+        }
         _ => "a material and colour that suit the clothes",
     }
 }
@@ -1643,6 +1665,18 @@ fn genre_setting(genre: StyleGenre) -> (&'static [&'static str], &'static str) {
             ],
             "cool overcast light from one side",
         ),
+        // 장소는 시간을 정하지 않는다 — 저녁인지 낮인지는 빛이 정한다(`pick_light`).
+        // 장소에 "dusk" 를 박아 두면 공통 빛(한낮)과 짝이 맞지 않는 사진이 나온다.
+        G::Glam => (
+            &[
+                "a city street of stone facades with warm shopfront light behind her",
+                "the warmly lit entrance of a contemporary gallery",
+                "a textured stone building with a terrace in front of it",
+                "a covered arcade open to the street at one end",
+            ],
+            "the last warm light of early evening, low from the side, with a few lamps \
+             already lit in the background",
+        ),
         G::Amekaji => (
             &[
                 "a narrow alley with old brick and a parked bicycle",
@@ -1770,6 +1804,15 @@ fn genre_hair(genre: StyleGenre) -> &'static [(&'static str, u32)] {
             ("low ponytail", 2),
             ("two low braids", 1),
         ],
+        // 정돈은 하되 볼륨과 컬은 키우지 않는다. 목선·어깨가 디테일인 옷이 많아서
+        // 어깨 위로 흘러내리는 머리는 뒤로 넘기거나 묶는 쪽에 무게를 둔다.
+        G::Glam => &[
+            ("sleek straight hair tucked behind the ears", 3),
+            ("polished soft waves brushed back off the shoulders", 3),
+            ("smooth low bun", 2),
+            ("jaw-length bob with a neat side part", 2),
+            ("low ponytail, smooth at the crown", 1),
+        ],
         // 남성 장르의 코디를 여성 모델로 그릴 때. 특정 무드 없이 일상적인 헤어로 둔다.
         _ => &[
             (
@@ -1802,6 +1845,29 @@ fn pick_hair(genre: StyleGenre, hash: u64) -> &'static str {
         slot -= w;
     }
     choices[0].0
+}
+
+/// 글램의 메이크업 포인트. 눈 또는 입술 중 한 곳에만 둔다. 둘을 모델에 맡기면 두
+/// 표현이 겹쳐 짙은 화장이 된다. 해시의 56번째 비트로 고른다 — 다른 선택이 쓰는 자리
+/// (장소 0~15, 헤어 16~31, 빛 40~47, 자세 48~55)와 겹치지 않는다.
+fn glam_makeup(hash: u64) -> &'static str {
+    if (hash >> 56) & 1 == 0 {
+        "a refined eye look — softly defined lashes and a little warm shadow — with bare, \
+         natural lips"
+    } else {
+        "a clear but soft lip colour, with the eyes left nearly bare"
+    }
+}
+
+/// 빛을 받는 소재가 목록에 있는가. 있으면 반사를 살리는 문장을, 없으면 무광을 지키는
+/// 문장을 넣는다 — 글램이라고 무광 옷을 반짝이게 그리면 안 된다.
+fn has_sheen_fabric(items: &str) -> bool {
+    let lower = items.to_lowercase();
+    [
+        "satin", "metallic", "lurex", "velvet", "sequin", "lustrous", "sheen",
+    ]
+    .iter()
+    .any(|w| lower.contains(w))
 }
 
 fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
@@ -1837,15 +1903,32 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
     // 나왔다. 그걸 걷어낸 뒤에는 질감만 요구하고 건강함을 요구하지 않아서, 이번엔
     // 피부가 칙칙하게 나왔다. 두 실패가 반대 방향이므로 양쪽을 다 적는다 —
     // 모공과 비대칭은 남기되, 윤기 없고 얼룩진 피부는 명시적으로 막는다.
+    // 나이·메이크업·표정은 무드가 고른다. 글램은 "주목받는 것이 편한" 인물이라, 공통
+    // 문장("not posed for anyone", "minimal everyday makeup")을 두고 반대 지시를 덧붙이면
+    // 모델이 둘 중 하나를 무시한다. 그래서 그 자리만 갈아 끼운다. 다른 무드의 문장은
+    // 예전과 한 글자도 같다 — 바뀌면 그 무드의 이미지 캐시가 통째로 어긋난다.
+    let (age, makeup, expression) = match genre {
+        StyleGenre::Glam => (
+            "between her mid-twenties and mid-thirties",
+            glam_makeup(hash),
+            "She is comfortable being looked at: a relaxed, self-assured gaze and at most a \
+             slight smile — present and at ease, never performing.",
+        ),
+        _ => (
+            "in her twenties",
+            "minimal everyday makeup, natural lips",
+            "Her expression is relaxed and spontaneous, not posed for anyone.",
+        ),
+    };
     let base_face = format!(
-        "a real adult {} woman in her twenties with distinctive individual facial features \
+        "a real adult {} woman {age} with distinctive individual facial features \
          and natural facial asymmetry — a particular person rather than a generic type. \
          Realistic skin texture: visible pores, fine facial hair and baby hairs at the \
          hairline, small variations in skin tone, subtle imperfections. The skin is healthy \
          and well-rested — even in tone and warm in colour, never sallow, grey, blotchy or \
-         tired — but it is never smoothed. Groomed natural brows, minimal everyday makeup, \
-         natural lips, realistic eyes with subtle reflections and a clear catchlight. \
-         Her expression is relaxed and spontaneous, not posed for anyone. \
+         tired — but it is never smoothed. Groomed natural brows, {makeup}, \
+         realistic eyes with subtle reflections and a clear catchlight. \
+         {expression} \
          Hairstyle: {}, individual strands and a few loose hairs visible.",
         model_origin(hash),
         hair
@@ -1883,29 +1966,64 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
 
     // 사진을 찍고 있다는 상황 자체를 적어 준다. 이게 빠지면 카메라를 의식한
     // 스톡 사진 자세가 나온다.
-    let base_composition = "Candid editorial photography: she is going about her own \
-         business and is not aware of the camera, photographed from across the pavement. \
+    //
+    // 글램은 카메라를 의식하지 않는 장면이 아니라, 의식하면서도 편안한 장면이다. 첫
+    // 문장만 무드가 고르고 구도 조건은 같이 쓴다.
+    let candid = match genre {
+        StyleGenre::Glam => {
+            "Candid editorial photography: she is out in the city, aware of the camera and \
+             at ease with it, photographed from across the pavement."
+        }
+        _ => {
+            "Candid editorial photography: she is going about her own business and is not \
+             aware of the camera, photographed from across the pavement."
+        }
+    };
+    let base_composition = format!(
+        "{candid} \
          Slightly imperfect framing, off-centre composition with some negative space, \
          relaxed natural posture, and a believable spatial relationship between her and \
          the background. Full-length framing: her whole body is inside the frame with \
          visible ground beneath her feet and a clear margin of space below the shoes — \
-         the bottom edge never cuts across her legs, ankles or feet.";
+         the bottom edge never cuts across her legs, ankles or feet."
+    );
 
     // 색은 과하게 올리지 않는다. 채도를 눌러야 옷의 실제 색이 읽힌다.
-    let base_color = "Natural cinematic colour grading with realistic skin tones, \
-         subtle contrast, restrained saturation and a fine film-like grain. \
-         Balanced exposure with no blown highlights.";
+    //
+    // 글램은 예외다. 에메랄드 새틴·메탈릭 니트를 주면서 "채도를 누른 중립색 팔레트" 를
+    // 요구하면 문장부터 옷과 부딪친다(2026-10-17 사용자 지적). 글램은 옷의 원래 색과
+    // 채도를 지키고, 배경이 그 색을 받쳐 주게 한다. 다른 무드의 문장은 그대로다 —
+    // 바뀌면 그 무드의 저장된 사진이 캐시에서 빗나간다.
+    let (saturation, palette, moment) = match genre {
+        StyleGenre::Glam => (
+            "true-to-life saturation",
+            "every garment keeps its own colour and saturation, and the colours of the \
+             background support the clothes rather than compete with them",
+            "photorealistic, natural",
+        ),
+        _ => (
+            "restrained saturation",
+            "a muted neutral palette and slightly desaturated tones",
+            "photorealistic, understated",
+        ),
+    };
+    let base_color = format!(
+        "Natural cinematic colour grading with realistic skin tones, \
+         subtle contrast, {saturation} and a fine film-like grain. \
+         Balanced exposure with no blown highlights."
+    );
 
     // 지향점. "평범한 일상 스냅" 이 아니라 "실제로 있을 법한, 감각적으로 촬영한 화보".
-    let base_style = "Contemporary fashion lookbook photography — the kind of premium \
+    let base_style = format!(
+        "Contemporary fashion lookbook photography — the kind of premium \
          online editorial that shows how real clothes are actually worn. The styling reads \
          current, wearable and effortless rather than expensive or ceremonial. \
-         An authentic candid moment, photorealistic, understated. \
+         An authentic candid moment, {moment}. \
          Choose a real location whose colours and materials suit the clothes, and let the \
          texture and light of the background carry the mood quietly. The frame as a whole \
-         feels deliberately composed, with a muted neutral palette and slightly desaturated \
-         tones. \
-         A real person photographed on location, not a digitally created fashion avatar.";
+         feels deliberately composed, with {palette}. \
+         A real person photographed on location, not a digitally created fashion avatar."
+    );
 
     // 사진에 나오는 옷은 추천된 옷이어야 한다.
     //
@@ -1950,7 +2068,28 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
     // 특히 "ordinary pedestrian look" 을 금지하면 현실에서 볼 법한 사람의 특징을
     // 모델이 의도적으로 지운다. 대신 실제로 걸러야 할 것 — 3D 렌더, 뷰티 필터,
     // 인위적인 신체 비율 — 을 명시한다.
-    let base_avoid = "male model, masculine face, masculine bone structure, \
+    //
+    // 화장·자세·광택을 막는 세 항목은 무드가 고른다. 글램에서 "excessive makeup" 과
+    // "fashion-model posing" 을 그대로 두면 정돈된 포인트 메이크업과 편안한 눈맞춤까지
+    // 막히고, "excessive gloss" 는 새틴의 자연스러운 반사까지 지운다. 그래서 글램은 막을
+    // 것을 구체적으로 적는다 — 과장된 유혹 표정, 눈·입술을 함께 진하게 한 화장, 번들거리는
+    // 피부, 하얗게 날아간 광택.
+    let (makeup_avoid, posing_avoid, gloss_avoid) = match genre {
+        StyleGenre::Glam => (
+            "heavy contouring, strong eye makeup and strong lip colour together, glitter \
+             makeup, false lashes",
+            "exaggerated runway posing, pouting lips, sultry or seductive expression, fixed \
+             advertising smile",
+            "oily or shiny skin, blown-out highlights on satin or metallic fabric",
+        ),
+        _ => (
+            "excessive makeup",
+            "fashion-model posing",
+            "excessive gloss",
+        ),
+    };
+    let base_avoid = format!(
+        "male model, masculine face, masculine bone structure, \
          3D render, CGI, video game character, fashion game avatar, \
          anime face, doll-like face, porcelain skin, plastic skin, \
          beauty filter, excessive skin smoothing, oversized eyes, \
@@ -1960,8 +2099,8 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
          sallow or grey skin, blotchy or muddy complexion, tired dull face, \
          heavy under-eye shadows, flat shadowless light on the face, \
          high camera angle looking down at the subject, wide-angle facial distortion, \
-         waxy face, unnatural HDR, oversharpening, excessive makeup, \
-         generic stock-photo smile, fashion-model posing, perfectly posed stock photo, \
+         waxy face, unnatural HDR, oversharpening, {makeup_avoid}, \
+         generic stock-photo smile, {posing_avoid}, perfectly posed stock photo, \
          catalog pose, ecommerce posture, stiff standing, symmetrical front pose, \
          cropped body, cropped legs, tight framing, oversaturated colors, harsh lighting, \
          hair clips, jewellery, props or accessories that are not part of the listed outfit, \
@@ -1971,12 +2110,13 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
          cheap-looking materials, plastic-looking leather, low-detail fabrics, \
          blurry or poorly defined bag, mushy undefined shoes, cropped or hidden footwear, \
          generic fashion details, flat untextured garments, \
-         waxy leather, fake metallic reflections, excessive gloss, \
+         waxy leather, fake metallic reflections, {gloss_avoid}, \
          melted or deformed shoe shapes, incorrect shoelaces, warped accessories, \
          floating straps, impossible garment seams, overly perfect fabric surfaces, \
          luxury-campaign stiffness, ceremonial posing, clothes that look unworn, \
          real brand logos, band names or album artwork, recognisable trademarks, \
-         readable text on garments";
+         readable text on garments"
+    );
 
     match genre {
         StyleGenre::Minimal => format!(
@@ -2060,6 +2200,47 @@ Style: {base_style}
 
 Avoid: {base_avoid}, casual sneakers, oversized baggy fit, vintage distressing, romantic frills, sporty elements."#
         ),
+        // 글램: 빛을 받는 소재나 조형적인 선 하나가 코디를 이끌고, 인물은 그 옷을 입고
+        // 주목받는 것을 편하게 즐긴다. 무대 의상·클럽·인형 같은 얼굴로 가지 않는다.
+        // 나이·메이크업·표정·구도 첫 문장·회피 세 항목은 위에서 무드별로 골랐다.
+        StyleGenre::Glam => {
+            let surface = if has_sheen_fabric(items) {
+                "Let the light model each listed fabric as it really is: satin, velvet and \
+                 metallic pieces show soft, natural reflections that follow the drape and \
+                 the folds, with their colour and detail still readable — never blown out \
+                 to white. Matte pieces stay matte."
+            } else {
+                "Every listed fabric keeps its own surface: matte fabrics stay matte, with \
+                 no sheen added."
+            };
+            format!(
+                r#"Fashion editorial photograph of a woman between her mid-twenties and mid-thirties, dressed to be noticed and at ease with it. She must be female.
+
+Face: {base_face}
+
+Body: {base_body}
+
+Outfit: The female model is wearing {items} — worn so that one or two pieces carry the look, through a fabric that catches the light or a sculpted line, while the plainer pieces hold it steady. Nothing is shortened, opened up or embellished: every neckline, hem, slit and surface stays exactly as listed. Her hair stays clear of the neckline and the shoulder line. {base_fidelity}
+
+Garments: {base_garments}
+
+Pose: {pose}. {base_pose_rule}
+
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
+
+Lighting: {light}. {surface} Her skin keeps a natural finish, never oily or plastic. {base_light}
+
+Camera: {base_camera}
+
+Composition: {base_composition}
+
+Colour: {base_color}
+
+Style: {base_style}
+
+Avoid: {base_avoid}, nightclub interior, neon lighting, stage costume, red-carpet styling, added sequins, crystals or embellishment that the listed garments do not have, a hemline shorter or a neckline lower than listed, necklaces, earrings, bracelets, sunglasses, scarves, bandanas, champagne glasses, doll-like glamour face."#
+            )
+        }
         StyleGenre::Bohemian => format!(
             r#"Fashion editorial photograph of a woman in her 20s, dressed in a loose, bohemian way. She must be female.
 
@@ -2640,6 +2821,7 @@ async fn tool_get_outfit(
                     name: display_anchor_name.clone(),
                     owned: anchor_owned,
                     material: None,
+                    wear: None,
                 });
             }
 
@@ -2648,8 +2830,9 @@ async fn tool_get_outfit(
                 .map(|i| format!("{}: {}", i.slot, i.name))
                 .collect::<Vec<_>>()
                 .join("\n");
+            apply_wear(&mut items, clothes, ctx.temperature);
             let items_json: Vec<serde_json::Value> = items.iter().map(|i| {
-                json!({"slot": i.slot, "name": i.name, "category": i.category, "owned": i.owned})
+                json!({"slot": i.slot, "name": i.name, "category": i.category, "owned": i.owned, "wear": i.wear})
             }).collect();
             let response = json!({ "outfit": desc, "items": items_json });
             (response.to_string(), items, chosen_ids)
@@ -2954,6 +3137,7 @@ fn tool_evaluate_outfit(
     names: &[String],
     clothes: &[Clothing],
     _user: Option<&crate::models::user_profile::UserStyleProfile>,
+    mood: Option<StyleGenre>,
 ) -> String {
     let items: Vec<&Clothing> = names
         .iter()
@@ -2976,6 +3160,17 @@ fn tool_evaluate_outfit(
         issues.push("too_military: 강한 스타일 아이템이 3개 이상".to_string());
     }
 
+    // 글램에서 어두운 색이 겹쳐도 옷의 소재·형태로 대비가 있으면 문제로 보지 않는다 —
+    // 홈의 글램 규칙(`mood_rules::dark_look_has_contrast`)과 같은 판단이다. 이걸 문제로
+    // 돌려주면 상담 모델이 get_outfit 을 다시 불러 기본 코디로 되돌아갔다.
+    let garments: Vec<&Clothing> = items
+        .iter()
+        .copied()
+        .filter(|c| matches!(c.category.as_str(), "상의" | "하의" | "아우터"))
+        .collect();
+    let dark_ok = mood == Some(StyleGenre::Glam)
+        && crate::services::mood_rules::dark_look_has_contrast(&garments);
+
     // 같은 색상군 3+
     let mut cg_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
     for i in &items {
@@ -2985,47 +3180,41 @@ fn tool_evaluate_outfit(
         }
     }
     for (cg, count) in &cg_counts {
-        if *count >= 3 {
+        if *count >= 3 && !(dark_ok && *cg == "dark") {
             issues.push(format!("color_repetition: {} 색상이 {}개 반복", cg, count));
         }
     }
 
     // 전부 어두움
     let dark_count = items.iter().filter(|i| i.tone == Some(Tone::Dark)).count();
-    if dark_count >= 3 {
+    if dark_count >= 3 && !dark_ok {
         issues.push("too_dark: 어두운 톤이 3개 이상".to_string());
     }
 
     // floating
-    let avg_float: f32 = items
-        .iter()
-        .filter_map(|i| i.floating_score)
-        .map(|f| f as f32)
-        .sum::<f32>()
-        / items.len().max(1) as f32;
-    if avg_float >= 5.0 {
+    // 값이 없는 옷은 평균에서 뺀다(`outfit_scorer::known_mean`). 여성 옷은 이 값들이 전부
+    // 비어 있어, 0 으로 세면 모든 코디가 "밋밋함"·"접지감 부족" 으로 나왔다.
+    let avg_float = outfit_scorer::known_mean(items.iter().map(|i| i.floating_score));
+    if avg_float.is_some_and(|f| f >= 5.0) {
         issues.push("floating_balance: 전체적으로 떠보임".to_string());
     }
 
     // texture 단조
-    let avg_tex: f32 = items
-        .iter()
-        .filter_map(|i| i.texture_depth_v2)
-        .map(|t| t as f32)
-        .sum::<f32>()
-        / items.len().max(1) as f32;
-    if avg_tex < 2.5 {
+    let avg_tex = outfit_scorer::known_mean(items.iter().map(|i| i.texture_depth_v2));
+    if avg_tex.is_some_and(|t| t < 2.5) {
         issues.push("too_flat: 질감이 너무 밋밋함".to_string());
     }
 
     // grounding 부족 (신발+가방)
-    let grounding: i32 = items
+    let grounding_known: Vec<i32> = items
         .iter()
         .filter(|i| i.category == "신발" || i.category == "가방")
         .filter_map(|i| i.grounding_score)
-        .map(|g| g as i32)
-        .sum();
-    if grounding <= 3 {
+        .map(i32::from)
+        .collect();
+    let grounding: Option<i32> =
+        (!grounding_known.is_empty()).then(|| grounding_known.iter().sum());
+    if grounding.is_some_and(|g| g <= 3) {
         issues.push("low_grounding: 접지감 부족".to_string());
     }
 
@@ -3051,11 +3240,13 @@ struct OutfitContext<'a> {
     temperature: Option<f64>,
     feedback: &'a outfit_scorer::FeedbackContext,
     recent: &'a outfit_scorer::RecentHistory,
+    /// 고른 무드. 무드를 읽을 요소가 있는 조합을 먼저 고르는 데 쓴다(`mood_gate`).
+    mood: Option<StyleGenre>,
 }
 
-fn build_final_outfit(
-    anchor: &Clothing,
-    clothes: &[Clothing],
+fn build_final_outfit<'a>(
+    anchor: &'a Clothing,
+    clothes: &'a [Clothing],
     ctx: &OutfitContext<'_>,
 ) -> Option<(String, Vec<ChatItem>, Vec<String>)> {
     let anchor_cat = &anchor.category;
@@ -3089,20 +3280,36 @@ fn build_final_outfit(
         result
     };
 
+    // 글램이면 옷 슬롯마다 글램 옷을 두 벌까지 후보에 더한다. 궁합 점수 상위 몇 벌만
+    // 보면 글램 옷이 한 벌도 들지 못해, 아래 무드 게이트가 고를 것이 없었다.
+    let with_glam = |mut v: Vec<&'a Clothing>, cat: &str| -> Vec<&'a Clothing> {
+        if ctx.mood == Some(StyleGenre::Glam) {
+            let extra: Vec<&Clothing> = clothes
+                .iter()
+                .filter(|c| c.category == cat && c.id != anchor.id)
+                .filter(|c| is_weather_appropriate(c, temp))
+                .filter(|c| crate::services::mood_gate::is_glam_piece(c))
+                .filter(|c| !v.iter().any(|x| x.id == c.id))
+                .take(2)
+                .collect();
+            v.extend(extra);
+        }
+        v
+    };
     let tops = if anchor_cat == "상의" {
         vec![anchor]
     } else {
-        slot_candidates("상의", 5)
+        with_glam(slot_candidates("상의", 5), "상의")
     };
     let bottoms = if anchor_cat == "하의" {
         vec![anchor]
     } else {
-        slot_candidates("하의", 5)
+        with_glam(slot_candidates("하의", 5), "하의")
     };
     let outers_pool = if anchor_cat == "아우터" {
         vec![anchor]
     } else {
-        slot_candidates("아우터", 4)
+        with_glam(slot_candidates("아우터", 4), "아우터")
     };
     let shoes = if anchor_cat == "신발" {
         vec![anchor]
@@ -3154,8 +3361,37 @@ fn build_final_outfit(
         }
     }
 
+    // 홈과 같은 오늘 입기 판정(`serving_ranker::compute_today_fit`). 기온을 알면 실패한
+    // 조합은 빼고, 경계인 조합은 홈과 같은 만큼 깎는다. 남는 조합이 없으면 코디를 내지
+    // 않는다 — 날씨에 맞지 않는 코디를 대신 내보내지 않는다. 상황(occasion)은 없으므로
+    // 상황별 규칙(운동복 등)은 여기서 보지 않고, 보온·하체 노출만 본다.
+    if let Some(t) = ctx.temperature {
+        use crate::services::style_engine_v2::TodayFitLevel;
+        combos = combos
+            .into_iter()
+            .filter_map(|(o, score)| match today_fit_of(&o, t) {
+                TodayFitLevel::Fail => None,
+                TodayFitLevel::Borderline => Some((
+                    o,
+                    score - crate::services::serving_ranker::WEATHER_BORDERLINE_PENALTY,
+                )),
+                _ => Some((o, score)),
+            })
+            .collect();
+    }
     combos.sort_by_key(|a| std::cmp::Reverse(a.1));
-    let (best_outfit, best_score) = combos.first()?;
+    // 홈과 같은 무드 게이트(`services::mood_gate`). 글램이면 빛을 받는 소재나 조형적인
+    // 실루엣이 하나라도 있는 조합 중 최고점을 고른다. 그런 조합이 없으면 원래 최고점이다
+    // — 빈 답보다 낫다.
+    let reads = |o: &Vec<&Clothing>| {
+        ctx.mood
+            .and_then(|m| crate::services::mood_gate::reads_as(m, o))
+            .unwrap_or(true)
+    };
+    let (best_outfit, best_score) = combos
+        .iter()
+        .find(|(o, _)| reads(o))
+        .or_else(|| combos.first())?;
 
     tracing::info!(
         "final outfit (score={}): {}",
@@ -3188,9 +3424,44 @@ fn build_final_outfit(
             name: anchor.name.clone(),
             owned: clothes.iter().any(|c| c.name == anchor.name),
             material: anchor.image_material(),
+            wear: None,
         });
     }
     Some((desc_parts.join("\n"), items, chosen_ids))
+}
+
+/// 상담 코디 한 벌의 오늘 입기 판정. 홈의 후보와 같은 함수를 쓴다.
+fn today_fit_of(
+    outfit: &[&Clothing],
+    temperature: f64,
+) -> crate::services::style_engine_v2::TodayFitLevel {
+    use crate::models::outfit::{OutfitContext, OutfitSlot, SlotKind};
+    let slots = outfit
+        .iter()
+        .filter_map(|c| {
+            let slot = match c.category.as_str() {
+                "상의" => SlotKind::Top,
+                "하의" => SlotKind::Bottom,
+                "아우터" => SlotKind::Outer,
+                "신발" => SlotKind::Shoes,
+                "가방" => SlotKind::Bag,
+                _ => return None,
+            };
+            Some(OutfitSlot {
+                slot,
+                clothing: (*c).clone(),
+                seasons: Vec::new(),
+                texture_worlds: Vec::new(),
+            })
+        })
+        .collect();
+    crate::services::serving_ranker::compute_today_fit(
+        &OutfitContext {
+            slots,
+            situation: None,
+        },
+        temperature,
+    )
 }
 
 /// DB 아이템의 이름/sub_category와 매칭해서 카테고리를 동적으로 추출
@@ -3259,11 +3530,18 @@ fn extract_category_from_wardrobe(query: &str, clothes: &[Clothing]) -> Option<S
 }
 
 fn is_weather_appropriate(item: &Clothing, temp: f64) -> bool {
+    if crate::services::shortlist::shoe_weather(item, temp)
+        == crate::services::shortlist::ShoeWeather::Unsuitable
+    {
+        return false;
+    }
     let weight = item.weight.unwrap_or(Weight::Mid);
     let mat = item.material_primary.as_deref().unwrap_or("");
     let name = &item.name;
     if temp >= 20.0 {
-        if mat == "wool" || mat == "flannel" {
+        // 벨벳은 울처럼 보온·무게가 있는 원단이다. 글램 시드에서 처음 들어왔고, 빠져 있으면
+        // 27°C 에 벨벳 탑이 후보에 오른다.
+        if mat == "wool" || mat == "flannel" || mat == "velvet" {
             return false;
         }
         if name.contains("니트") && !name.contains("가벼") {
@@ -3296,6 +3574,290 @@ fn is_weather_appropriate(item: &Clothing, temp: f64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn chat_item(id: &str, name: &str, category: &str, material: &str, keywords: &str) -> Clothing {
+        let now = chrono::NaiveDateTime::default();
+        Clothing {
+            id: id.into(),
+            name: name.into(),
+            category: category.into(),
+            color: Some("블랙".into()),
+            thickness: crate::models::style_vocab::Thickness::Medium,
+            image_url: None,
+            tone: None,
+            saturation: None,
+            style: None,
+            weight: None,
+            role: None,
+            color_temperature: None,
+            versatility: None,
+            statement_level: None,
+            formality_level: None,
+            gender: None,
+            style_mood: None,
+            visual_weight: None,
+            texture_depth: None,
+            visual_weight_v2: None,
+            texture_depth_v2: None,
+            grounding_score: None,
+            shadow_tone: None,
+            silhouette_volume: None,
+            material_primary: Some(material.into()),
+            // 같은 세부 종류는 두 벌까지만 후보에 오르므로 아이템마다 다르게 둔다.
+            sub_category: Some(id.into()),
+            floating_score: None,
+            strong_style_score: None,
+            texture_keywords: Some(keywords.into()),
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    /// 상담의 코디도 홈과 같은 무드 게이트를 지난다. 글램이면 기본 아이템만 있는 조합
+    /// 대신 글램 요소가 있는 조합을 고르고, 다른 무드는 원래 최고점 그대로다.
+    #[test]
+    fn chat_outfit_prefers_a_glam_piece_for_glam() {
+        let clothes = vec![
+            chat_item("t", "화이트 티", "상의", "cotton", "cotton jersey"),
+            chat_item("b1", "블랙 슬랙스", "하의", "polyester", "wide leg"),
+            chat_item("b2", "블랙 데님", "하의", "denim", "washed denim"),
+            chat_item("b3", "블랙 새틴 스커트", "하의", "satin", "satin, midi"),
+            chat_item("s", "블랙 앵클부츠", "신발", "leather", "ankle boot"),
+            chat_item("g", "블랙 숄더백", "가방", "leather", "shoulder bag"),
+        ];
+        let feedback = outfit_scorer::FeedbackContext {
+            item_adj: Default::default(),
+            preference: Default::default(),
+        };
+        let recent = outfit_scorer::RecentHistory {
+            item_freq: Default::default(),
+        };
+        let pick = |mood| {
+            let ctx = OutfitContext {
+                user: None,
+                temperature: Some(18.0),
+                feedback: &feedback,
+                recent: &recent,
+                mood,
+            };
+            build_final_outfit(&clothes[0], &clothes, &ctx)
+                .unwrap()
+                .1
+                .into_iter()
+                .map(|i| i.name)
+                .collect::<Vec<_>>()
+        };
+        assert!(pick(Some(StyleGenre::Glam)).contains(&"블랙 새틴 스커트".to_string()));
+        assert_eq!(pick(Some(StyleGenre::Minimal)), pick(None));
+        // 게이트가 없으면 이 옷장의 최고점은 새틴 스커트가 아니다 — 위 판정이 게이트 덕이다.
+        assert!(!pick(None).contains(&"블랙 새틴 스커트".to_string()));
+    }
+
+    /// 상담도 홈과 같은 오늘 입기 판정을 지난다. 1°C 에 미니·앵클부츠는 하체가 드러나 빠지고
+    /// 같은 상체·코트의 슬랙스를 고른다. 코트에는 여며 입는 착용 상태가 붙는다. 날씨에 맞는
+    /// 조합이 없으면 코디를 내지 않는다.
+    #[test]
+    fn chat_outfit_passes_the_same_weather_check() {
+        use crate::models::style_vocab::Thickness;
+        let mut coat = chat_item(
+            "o",
+            "블랙 아워글라스 롱 울 코트",
+            "아우터",
+            "wool",
+            "hourglass silhouette, nipped waist, mid-calf length, insulated lining",
+        );
+        coat.thickness = Thickness::Thick;
+        coat.sub_category = Some("롱코트".into());
+        let mut top = chat_item(
+            "t",
+            "블랙 원숄더 저지 탑",
+            "상의",
+            "jersey",
+            "one-shoulder neckline",
+        );
+        top.thickness = Thickness::Thin;
+        let mini = chat_item(
+            "m",
+            "블랙 랩 미니스커트",
+            "하의",
+            "satin",
+            "satin, mini length",
+        );
+        let slacks = chat_item("b", "블랙 와이드 슬랙스", "하의", "wool", "wide leg");
+        let boots = chat_item("s", "블랙 앵클부츠", "신발", "leather", "ankle boot");
+        let bag = chat_item("g", "블랙 새틴 클러치", "가방", "satin", "satin clutch");
+        let feedback = outfit_scorer::FeedbackContext {
+            item_adj: Default::default(),
+            preference: Default::default(),
+        };
+        let recent = outfit_scorer::RecentHistory {
+            item_freq: Default::default(),
+        };
+        let ctx = OutfitContext {
+            user: None,
+            temperature: Some(1.0),
+            feedback: &feedback,
+            recent: &recent,
+            mood: Some(StyleGenre::Glam),
+        };
+        let clothes = vec![
+            coat.clone(),
+            top.clone(),
+            mini.clone(),
+            slacks,
+            boots.clone(),
+            bag.clone(),
+        ];
+        let (_, mut items, _) = build_final_outfit(&clothes[0], &clothes, &ctx).unwrap();
+        let names: Vec<&str> = items.iter().map(|i| i.name.as_str()).collect();
+        assert!(names.contains(&"블랙 와이드 슬랙스"), "{names:?}");
+        assert!(!names.contains(&"블랙 랩 미니스커트"));
+        apply_wear(&mut items, &clothes, ctx.temperature);
+        let outer = items.iter().find(|i| i.slot == "outer").unwrap();
+        assert!(
+            outer
+                .wear
+                .as_deref()
+                .is_some_and(|w| w.contains("arms in the sleeves"))
+        );
+        assert!(items.iter().filter(|i| i.wear.is_some()).count() == 1);
+
+        let only_mini = vec![coat, top, mini, boots, bag];
+        assert!(build_final_outfit(&only_mini[0], &only_mini, &ctx).is_none());
+    }
+
+    const GLAM_ITEMS: &str = "top/inner: 에메랄드 새틴 드레이프 블라우스 (satin, fluid satin, draped cowl neckline), \
+         pants: 블랙 와이드 슬랙스 (polyester, wide leg)";
+
+    /// 글램 프롬프트의 나이·메이크업·표정·회피 조건이 서로 부딪치지 않는다. 공통 문장을 둔
+    /// 채 반대 지시를 덧붙이지 않고, 그 자리를 무드가 고른 문장으로 바꿨는지 본다.
+    #[test]
+    fn glam_prompt_has_no_conflicting_face_or_avoid_terms() {
+        for h in [0u64, 1, 42, 1 << 56, u64::MAX, 0x1234_5678_9abc_def0] {
+            let p = build_image_prompt(StyleGenre::Glam, GLAM_ITEMS, h);
+            for gone in [
+                "in her twenties",
+                "minimal everyday makeup",
+                "not posed for anyone",
+                "not aware of the camera",
+                "excessive makeup",
+                "fashion-model posing",
+                "excessive gloss",
+                "muted neutral palette",
+                "slightly desaturated",
+                "restrained saturation",
+                "understated",
+            ] {
+                assert!(!p.contains(gone), "{h}: {gone}");
+            }
+            assert!(p.contains("every garment keeps its own colour and saturation"));
+            assert!(p.contains("between her mid-twenties and mid-thirties"));
+            assert!(p.contains("aware of the camera and at ease with it"));
+            // 메이크업 포인트는 한 곳뿐이다.
+            let eyes = p.contains("refined eye look");
+            let lips = p.contains("soft lip colour");
+            assert!(eyes ^ lips, "{h}: 눈 {eyes} 입술 {lips}");
+            // 과한 화장·연출을 막는 조건은 구체적으로 남아 있다.
+            assert!(p.contains("strong eye makeup and strong lip colour together"));
+            assert!(p.contains("pouting lips"));
+            assert!(p.contains("blown-out highlights on satin or metallic fabric"));
+            // 소품과 노출을 더하지 않는다.
+            assert!(p.contains("necklaces"));
+            assert!(p.contains("a hemline shorter or a neckline lower than listed"));
+        }
+    }
+
+    /// 메이크업 선택은 해시로 정해져 같은 입력에서 늘 같고, 두 가지가 모두 나온다.
+    #[test]
+    fn glam_makeup_choice_is_stable_and_both_occur() {
+        assert_eq!(glam_makeup(7), glam_makeup(7));
+        assert_ne!(glam_makeup(0), glam_makeup(1 << 56));
+        let p1 = build_image_prompt(StyleGenre::Glam, GLAM_ITEMS, 99);
+        let p2 = build_image_prompt(StyleGenre::Glam, GLAM_ITEMS, 99);
+        assert_eq!(p1, p2);
+    }
+
+    /// 광택 문장은 빛을 받는 소재가 목록에 있을 때만 들어간다. 무광 코디를 글램이라고
+    /// 반짝이게 그리면 안 된다.
+    #[test]
+    fn glam_sheen_line_follows_the_listed_fabrics() {
+        let shiny = build_image_prompt(StyleGenre::Glam, GLAM_ITEMS, 5);
+        assert!(shiny.contains("soft, natural reflections that follow the drape"));
+        let matte = build_image_prompt(
+            StyleGenre::Glam,
+            "top/inner: 블랙 원숄더 저지 탑 (jersey, matte stretch jersey, one-shoulder neckline)",
+            5,
+        );
+        assert!(!matte.contains("natural reflections"));
+        assert!(matte.contains("matte fabrics stay matte, with no sheen added"));
+    }
+
+    /// 글램을 밤·클럽·네온으로 굳히지 않는다. 장소는 시간을 말하지 않고, 빛은 저녁과 낮이
+    /// 모두 나온다.
+    #[test]
+    fn glam_scenes_are_not_fixed_to_night() {
+        let (places, own_light) = genre_setting(StyleGenre::Glam);
+        for p in places {
+            for w in ["night", "club", "neon", "dusk", "evening"] {
+                assert!(!p.contains(w), "{p}");
+            }
+        }
+        let lights: std::collections::HashSet<&str> = (0..256u64)
+            .map(|i| pick_light(StyleGenre::Glam, i << 40))
+            .collect();
+        assert!(lights.contains(own_light));
+        assert!(lights.contains("bright open daylight"));
+    }
+
+    /// 글램은 같은 옷이라도 다른 무드와 캐시 키가 갈린다. 같은 입력이면 같은 키다.
+    #[test]
+    fn glam_has_its_own_cache_key() {
+        let glam = image_cache_keys(GLAM_ITEMS, StyleGenre::Glam);
+        let chic = image_cache_keys(GLAM_ITEMS, StyleGenre::ModernChic);
+        assert_eq!(glam.0, chic.0, "착장 해시는 무드와 무관하다");
+        assert_ne!(glam.1, chic.1, "프롬프트 해시는 갈린다");
+        assert_eq!(glam, image_cache_keys(GLAM_ITEMS, StyleGenre::Glam));
+    }
+
+    /// 다른 무드의 얼굴·구도·회피 문장은 글램 작업 전과 같다. 이 문장이 바뀌면 그 무드의
+    /// 저장된 사진이 캐시에서 전부 빗나간다(2026-10-16 12개 무드 × 8개 입력 대조로 확인).
+    #[test]
+    fn other_moods_keep_their_shared_face_and_avoid_text() {
+        for g in StyleGenre::ALL.iter().filter(|g| **g != StyleGenre::Glam) {
+            let p = build_image_prompt(*g, GLAM_ITEMS, 42);
+            assert!(p.contains("woman in her twenties with distinctive"), "{g}");
+            assert!(
+                p.contains(
+                    "Groomed natural brows, minimal everyday makeup, natural lips, realistic eyes"
+                ),
+                "{g}"
+            );
+            assert!(
+                p.contains(
+                    "Her expression is relaxed and spontaneous, not posed for anyone. Hairstyle:"
+                ),
+                "{g}"
+            );
+            assert!(
+                p.contains("going about her own business and is not aware of the camera"),
+                "{g}"
+            );
+            assert!(p.contains("oversharpening, excessive makeup, generic stock-photo smile, fashion-model posing,"), "{g}");
+            assert!(
+                p.contains("fake metallic reflections, excessive gloss,"),
+                "{g}"
+            );
+            assert!(
+                p.contains("subtle contrast, restrained saturation and a fine film-like grain."),
+                "{g}"
+            );
+            assert!(
+                p.contains("An authentic candid moment, photorealistic, understated."),
+                "{g}"
+            );
+            assert!(p.contains("feels deliberately composed, with a muted neutral palette and slightly desaturated tones. A real person"), "{g}");
+        }
+    }
 
     /// `verification_status` 는 DB ENUM 이다. Rust 쪽 문자열이 하나라도 어긋나면
     /// 그 상태의 이미지만 INSERT 가 실패하고, 증상은 "특정 경우에만 캐시가 안 걸림"

@@ -1339,6 +1339,7 @@ formality_level = 4
 [items.light_shirt]
 name = "라이트 셔츠"
 category = "상의"
+thickness = "thin"  # 이름이 두께를 말한다. 2026-10-17 보온 판정에서 시각적 무게를 빼며 채움
 style = "베이직"
 role = "베이스"
 tone = "밝음"
@@ -1350,6 +1351,7 @@ formality_level = 2
 [items.light_jacket]
 name = "라이트 자켓"
 category = "아우터"
+thickness = "thin"  # 이름이 두께를 말한다. 2026-10-17 보온 판정에서 시각적 무게를 빼며 채움
 style = "베이직"
 role = "연결템"
 tone = "밝음"
@@ -1374,6 +1376,7 @@ texture_worlds = ["sweat"]
 [items.heavy_chino]
 name = "두꺼운 치노"
 category = "하의"
+thickness = "thick"  # 이름이 두께를 말한다. 2026-10-17 보온 판정에서 시각적 무게를 빼며 채움
 style = "베이직"
 role = "구조템"
 tone = "중간"
@@ -1408,6 +1411,7 @@ formality_level = 2
 [items.heavy_wool_jacket]
 name = "두꺼운 울 자켓"
 category = "아우터"
+thickness = "thick"  # 이름이 두께를 말한다. 2026-10-17 보온 판정에서 시각적 무게를 빼며 채움
 style = "베이직"
 role = "구조템"
 tone = "어두움"

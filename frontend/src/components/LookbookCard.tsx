@@ -71,6 +71,7 @@ export function LookbookCard({ items, reply, weather, selectedMood, baseItems }:
           name: i.name,
           category: i.category,
           material: i.material ?? null,
+          wear: i.wear ?? null,
           reason: '',
           image_url: null,
         })),

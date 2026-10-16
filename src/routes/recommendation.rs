@@ -14,7 +14,7 @@ use crate::models::recommendation::{
     ModeRecommendation, MultiModeRecommendationResponse, OutfitCandidate, OutfitItem,
     RecommendationRequest, RecommendationResponse, ScoringDetail,
 };
-use crate::models::style_vocab::{Role, Style, Tone};
+use crate::models::style_vocab::{Role, Style, StyleGenre, Tone};
 use crate::services::cross_mood;
 use crate::services::llm::LlmTask;
 use crate::services::recommendation_diversity;
@@ -81,6 +81,7 @@ async fn get_recommendation(
         body.occasion.as_deref(),
         body.style_preference.as_deref(),
         &recent_hint,
+        None,
     )
     .await;
 
@@ -100,6 +101,7 @@ async fn get_recommendation(
                     current_season.as_deref(),
                     i,
                     &feedback,
+                    None,
                 )
                 .await
                 {
@@ -166,6 +168,7 @@ async fn get_recommendation(
                 reason: ai_item.reason.clone(),
                 image_url: matched.image_url.clone(),
                 material: matched.image_material(),
+                wear: None,
             })
         })
         .collect();
@@ -224,7 +227,7 @@ async fn get_multi_recommendation(
             AppError::NotFound("No region configured. Set a region first.".to_string())
         })?;
 
-    let weather = weather_service::fetch_weather(
+    let mut weather = weather_service::fetch_weather(
         &state.http_client,
         &state.kma_api_key,
         region.latitude,
@@ -232,6 +235,16 @@ async fn get_multi_recommendation(
     )
     .await
     .map_err(AppError::Internal)?;
+    // 개발용: 같은 옷장·피드백으로 기온만 바꿔 추천 경로를 비교한다. 서버를
+    // `ALLOW_DEBUG_WEATHER=1` 로 띄웠을 때만 받는다 — 운영에서는 무시된다.
+    if let Some(t) = debug_temperature(
+        body.debug_temperature,
+        std::env::var("ALLOW_DEBUG_WEATHER").ok().as_deref(),
+    ) {
+        tracing::warn!(temperature = t, "debug_temperature 로 기온을 덮어쓴다");
+        weather.temperature = t;
+        weather.apparent_temperature = t;
+    }
 
     let mood = crate::routes::parse_genre(body.style_mood.as_deref())?;
     let mut clothes = if body.gender.is_some() || body.style_mood.is_some() {
@@ -307,16 +320,24 @@ async fn get_multi_recommendation(
     };
     let shortlist = crate::services::shortlist::build_all_shortlists(&clothes, &sl_ctx);
     tracing::info!("{}", shortlist.summary());
-    let grouped = shortlist.to_grouped();
+    // 글램은 소재·실루엣·두께·특징까지 넘긴다. 다른 무드는 예전과 같은 줄이다.
+    let grouped = if mood == Some(StyleGenre::Glam) {
+        shortlist.to_grouped_detailed()
+    } else {
+        shortlist.to_grouped()
+    };
 
-    // LLM: 5후보 생성 (shortlist 기반 카테고리별 그룹 입력)
-    let ai_candidates = prompts::get_outfit_candidates(
+    // LLM: 5후보 생성 (shortlist 기반 카테고리별 그룹 입력). 고른 무드를 함께 넘긴다 —
+    // 예전에는 무드가 옷장을 거르는 데만 쓰여, 모델은 무드를 모른 채 "편한 스타일" 로
+    // 코디를 짰다.
+    let mut ai_candidates = prompts::get_outfit_candidates(
         &state.llm,
         &weather,
         &grouped,
         body.occasion.as_deref(),
         body.style_preference.as_deref(),
         &recent_hint,
+        mood,
     )
     .await
     .map_err(AppError::Internal)?;
@@ -349,11 +370,31 @@ async fn get_multi_recommendation(
             current_season.as_deref(),
             i,
             &feedback,
+            mood,
         )
         .await
         {
             scored_candidates.push(oc);
         }
+    }
+
+    // 제한된 후보 보완 — 날씨에 맞는 후보가 하나도 없거나, 글램인데 옷에 글램 요소가 있는
+    // 후보가 하나도 없을 때만. 추가 LLM 호출 없이 옷장 안에서 한 슬롯만 바꾼다.
+    let supplemented = supplement_candidates(
+        &mut ai_candidates.candidates,
+        &mut scored_candidates,
+        &shortlist,
+        &clothes,
+        &state.db,
+        body.occasion.as_deref(),
+        current_season.as_deref(),
+        &feedback,
+        mood,
+        weather.temperature,
+    )
+    .await;
+    if !supplemented.is_empty() {
+        tracing::info!(added = ?supplemented, "후보를 옷장 안에서 보완했다");
     }
 
     let reranked = recommendation_service::rerank_candidates_with_history(
@@ -391,11 +432,18 @@ async fn get_multi_recommendation(
         .map(|c| c.weather_summary.clone())
         .unwrap_or_default();
 
-    // 오늘 입기에 "실패" 인 후보는 세 추천 자리 모두에서 뺀다. 후보가 전부 실패면
-    // 그대로 둔다(빈 추천을 내지 않는다). 아래 shadow 로그는 거르기 전 목록으로 남긴다.
+    // 오늘 입기에 "실패" 인 후보는 세 추천 자리 모두에서 뺀다. 전부 실패여도 되돌려
+    // 넣지 않는다 — 위의 보완으로도 없으면 후보 부족으로 알린다. 아래 shadow 로그는
+    // 거르기 전 목록으로 남긴다.
     let mut unfit = Vec::with_capacity(reranked.len());
     let mut silhouette_delta = Vec::with_capacity(reranked.len());
+    // 오늘 날씨에 경계인 후보. 빼지는 않고 순위에서 민다(`WEATHER_BORDERLINE_PENALTY`).
+    let mut borderline: Vec<usize> = Vec::new();
     let mut shadow_scores: Vec<(usize, i32)> = Vec::with_capacity(reranked.len());
+    // 무드별 격식 범위·아우터 안의 강한 상의 shadow(`services::mood_shadow`). 운영 점수에
+    // 더할 값만 모은다 — 응답 순서에는 쓰지 않는다.
+    let mut mood_waivers: Vec<(usize, crate::services::mood_shadow::Waiver)> =
+        Vec::with_capacity(reranked.len());
     for c in &reranked {
         let (fail, silhouette) = match crate::services::candidate_pipeline::rebuild_context(
             c,
@@ -406,15 +454,28 @@ async fn get_multi_recommendation(
         .await
         {
             Some(ctx) => {
+                // S2(조용한 아우터 안의 강한 상의) shadow 는 글램 밖의 무드만 잰다. 글램은
+                // `mood_rules` 가 이미 운영 점수에 반영했다.
+                if mood != Some(StyleGenre::Glam) {
+                    let eval = style_engine::evaluate(&ctx, current_season.as_deref());
+                    mood_waivers.push((
+                        c.ai_candidate_index,
+                        crate::services::mood_shadow::waiver(&ctx, &eval, mood),
+                    ));
+                }
                 let sub = crate::services::style_engine_v2::compute_subscores(&ctx, None);
                 shadow_scores.push((
                     c.ai_candidate_index,
                     crate::services::style_engine_v2::compute_style_score(&sub)
                         + crate::services::serving_ranker::compute_serving_adjustment(&ctx).0,
                 ));
+                let level =
+                    crate::services::serving_ranker::compute_today_fit(&ctx, weather.temperature);
+                if level == crate::services::style_engine_v2::TodayFitLevel::Borderline {
+                    borderline.push(c.ai_candidate_index);
+                }
                 (
-                    crate::services::serving_ranker::compute_today_fit(&ctx, weather.temperature)
-                        == crate::services::style_engine_v2::TodayFitLevel::Fail,
+                    level == crate::services::style_engine_v2::TodayFitLevel::Fail,
                     crate::services::style_engine_v2::silhouette_balance(&ctx),
                 )
             }
@@ -423,7 +484,7 @@ async fn get_multi_recommendation(
         unfit.push((c.ai_candidate_index, fail));
         silhouette_delta.push((c.ai_candidate_index, silhouette));
     }
-    let (servable, dropped) = unfit_gate::keep_wearable(reranked.clone(), |c| {
+    let (mut servable, dropped) = unfit_gate::keep_wearable_strict(reranked.clone(), |c| {
         unfit
             .iter()
             .any(|(i, fail)| *i == c.ai_candidate_index && *fail)
@@ -431,6 +492,62 @@ async fn get_multi_recommendation(
     if dropped > 0 {
         tracing::info!(dropped, "오늘 입기 실패 후보를 추천 자리에서 뺐다");
     }
+    // 경계 판정을 순위에 반영한다. 예전에는 실패만 뺐고 경계는 아무 영향이 없어, 2°C 의
+    // 니트 + 일반 라이더(경계)가 겨울 외투 조합과 같은 자리에서 겨뤘다.
+    for c in &mut servable {
+        if borderline.contains(&c.ai_candidate_index) {
+            c.weather_penalty = WEATHER_BORDERLINE_PENALTY;
+            c.final_score -= WEATHER_BORDERLINE_PENALTY;
+        }
+    }
+    servable.sort_by(|a, b| {
+        b.final_score
+            .cmp(&a.final_score)
+            .then_with(|| b.style_score.cmp(&a.style_score))
+    });
+    if servable.is_empty() {
+        tracing::warn!(
+            candidates = reranked.len(),
+            temperature = weather.temperature,
+            "오늘 날씨에 맞는 후보가 없다 — 보완 후에도 없어 후보 부족으로 알린다"
+        );
+        return Ok(Json(MultiModeRecommendationResponse {
+            modes: Vec::new(),
+            weather_summary: shared_weather,
+            notice: Some(
+                "오늘 날씨에 맞는 코디 후보가 부족해요. 다른 무드를 고르거나 옷장에 날씨에 맞는 옷을 더해 보세요."
+                    .to_string(),
+            ),
+        }));
+    }
+
+    // 무드를 읽을 수 없는 후보를 뺀다(지금은 글램만 — `services::mood_gate`). 오늘 입기
+    // 게이트를 지난 뒤에 걸어, 입을 수 있는 후보 안에서만 고른다.
+    let (servable, off_mood) = match mood {
+        Some(m) => unfit_gate::keep_wearable(servable, |c| {
+            let items: Vec<&Clothing> =
+                [&c.top_id, &c.bottom_id, &c.outer_id, &c.shoes_id, &c.bag_id]
+                    .iter()
+                    .filter_map(|id| id.as_ref())
+                    .filter_map(|id| clothes.iter().find(|x| &x.id == id))
+                    .collect();
+            crate::services::mood_gate::reads_as(m, &items) == Some(false)
+        }),
+        None => (servable, 0),
+    };
+    if off_mood > 0 {
+        tracing::info!(dropped = off_mood, mood = ?mood, "무드 요소가 없는 후보를 추천 자리에서 뺐다");
+    }
+    // 무드 요소가 있는 후보가 하나도 없으면 게이트는 그대로 통과시킨다(빈 추천보다 낫다).
+    // 대신 그 사실을 화면에 알린다 — 기본 코디를 글램이라고 내세우지 않는다.
+    let mood_shortfall = mood.is_some_and(|m| {
+        !servable.iter().any(|c| {
+            crate::services::mood_gate::reads_as(m, &candidate_items(c, &clothes)) != Some(false)
+        })
+    });
+    let notice = mood_shortfall.then(|| {
+        "옷에 이 무드를 살릴 아이템이 있는 후보가 부족해 기본에 가까운 코디가 섞였어요.".to_string()
+    });
 
     // ─── 순차 모드 선택 (하드 필터링) ───
 
@@ -482,9 +599,69 @@ async fn get_multi_recommendation(
 
     // Step 3: 안 입은 옷 — 휴면 아이템 포함 후보
     let dormant = match &todays {
-        Some(t) => recommendation_service::select_dormant(&servable, &dormant_ids, &t.candidate),
+        Some(t) => {
+            let mut chosen = vec![&t.candidate];
+            if let Some(v) = &variation {
+                chosen.push(&v.candidate);
+            }
+            recommendation_service::select_dormant(&servable, &dormant_ids, &chosen)
+        }
         None => None,
     };
+
+    // ─── shadow: 조용한 아우터 안의 강한 상의(S2, `services::mood_shadow`) ───
+    //
+    // 글램 밖의 무드에서 이 감점을 되돌렸을 때의 오늘의 추천. 응답에는 쓰지 않는다. 모든
+    // 무드에 걸리는 규칙이라 실제 반응으로 따로 판단한다.
+    let waiver_of = |idx: usize| {
+        mood_waivers
+            .iter()
+            .find(|(i, _)| *i == idx)
+            .map(|(_, w)| *w)
+            .unwrap_or_default()
+    };
+    let mut s2_pool: Vec<_> = servable
+        .iter()
+        .cloned()
+        .map(|mut c| {
+            let w = waiver_of(c.ai_candidate_index).total();
+            c.style_score += w;
+            c.final_score += w;
+            c
+        })
+        .collect();
+    s2_pool.sort_by(|a, b| {
+        b.final_score
+            .cmp(&a.final_score)
+            .then_with(|| b.style_score.cmp(&a.style_score))
+    });
+    let s2_todays =
+        recommendation_service::select_todays_pick(&s2_pool, weather.temperature, &clothes);
+    let idx_of = |r: &Option<recommendation_service::ModeSelectionResult>| {
+        r.as_ref().map(|t| t.candidate.ai_candidate_index)
+    };
+    let servable_idx: Vec<usize> = servable.iter().map(|c| c.ai_candidate_index).collect();
+    tracing::info!(
+        "mood_shadow={}",
+        serde_json::json!({
+            "mood": mood.map(|m| m.as_str()),
+            "temperature": weather.temperature,
+            "season": current_season,
+            "candidates": reranked.iter().map(|c| serde_json::json!({
+                "idx": c.ai_candidate_index,
+                "items": ids(c),
+                "style": c.style_score,
+                "final": c.final_score,
+                "feedback": c.feedback_bonus,
+                "recency": c.recency_penalty,
+                "s2": waiver_of(c.ai_candidate_index).inner,
+                "servable": servable_idx.contains(&c.ai_candidate_index),
+                "focus": ai_candidates.candidates.get(c.ai_candidate_index).and_then(|a| a.focus.clone()),
+            })).collect::<Vec<_>>(),
+            "production": [idx_of(&todays), idx_of(&variation), idx_of(&dormant)],
+            "s2_todays": idx_of(&s2_todays),
+        })
+    );
 
     // 결과 조립
     let mode_defs = [
@@ -527,62 +704,17 @@ async fn get_multi_recommendation(
     for (key, label, description, result) in &mode_defs {
         let (winner, scoring) = match result {
             Some(r) => (&r.candidate, &r.scoring),
-            None => {
-                // 안 입은 옷 활용은 옵셔널 카드 — 조건 미달 시 노출하지 않음
-                if *key == "dormant_revival" {
-                    continue;
-                }
-                // 폴백: 첫 번째 후보
-                let c = match reranked.first() {
-                    Some(c) => c,
-                    None => continue,
-                };
-                // 인라인 폴백 — 다음 반복에서 사용 안 되므로 임시 할당
-                let fallback = recommendation_service::ModeSelectionResult {
-                    candidate: c.clone(),
-                    scoring: ScoringDetail {
-                        style_score: c.style_score,
-                        recency_penalty: c.recency_penalty,
-                        diversity_bonus: c.diversity_bonus,
-                        dormant_bonus: 0,
-                        final_score: c.final_score,
-                    },
-                };
-                // 임시 reference 문제 → 직접 빌드
-                let ai_idx = c.ai_candidate_index;
-                let ai_result = &ai_candidates.candidates[ai_idx];
-                let outfit = build_outfit_items(ai_result, &clothes);
-                let verdict = Verdict::from_score(c.final_score);
-                let revival_items = recommendation_diversity::find_dormant_items_in_candidate(
-                    c,
-                    &dormant_ids,
-                    &clothes,
-                );
-                let reason = "추천 가능한 코디예요".to_string();
-                modes.push(ModeRecommendation {
-                    mode: key.to_string(),
-                    mode_label: label.to_string(),
-                    mode_description: description.to_string(),
-                    outfit,
-                    recommendation: ai_result.recommendation.clone(),
-                    weather_summary: ai_result.weather_summary.clone(),
-                    tips: ai_result.tips.clone(),
-                    score: fallback.scoring.final_score,
-                    verdict: verdict.label().to_string(),
-                    reason,
-                    revival_items,
-                    scoring_detail: fallback.scoring,
-                    shadow_score: shadow_of(ai_idx),
-                    silhouette_delta: silhouette_of(ai_idx),
-                    feedback_bonus: c.feedback_bonus,
-                });
-                continue;
-            }
+            // 고를 후보가 없는 자리는 카드를 내지 않는다. 예전에는 재정렬 목록의 첫
+            // 후보로 채웠는데, 그 후보는 날씨·무드 게이트를 거치지 않은 것이었다.
+            None => continue,
         };
 
         let ai_idx = winner.ai_candidate_index;
         let ai_result = &ai_candidates.candidates[ai_idx];
-        let outfit = build_outfit_items(ai_result, &clothes);
+        // 응답 아이템은 채점한 구성(후보의 id) 그대로다. 서버가 채운 신발·가방도 들어가고,
+        // 옷장에서 찾지 못한 이름은 빠진다 — 이력·이미지가 같은 구성을 쓴다.
+        let outfit = outfit_items_for(winner, ai_result, &clothes, weather.temperature);
+        let tips = tips_for(ai_result, &outfit);
         let verdict = Verdict::from_score(scoring.final_score);
         let revival_items = recommendation_diversity::find_dormant_items_in_candidate(
             winner,
@@ -599,7 +731,7 @@ async fn get_multi_recommendation(
             outfit,
             recommendation: ai_result.recommendation.clone(),
             weather_summary: ai_result.weather_summary.clone(),
-            tips: ai_result.tips.clone(),
+            tips,
             score: scoring.final_score,
             verdict: verdict.label().to_string(),
             reason,
@@ -607,6 +739,7 @@ async fn get_multi_recommendation(
             scoring_detail: scoring.clone(),
             shadow_score: shadow_of(ai_idx),
             silhouette_delta: silhouette_of(ai_idx),
+            mood_waiver: Some(waiver_of(ai_idx).total()),
             feedback_bonus: winner.feedback_bonus,
         });
     }
@@ -637,7 +770,14 @@ async fn get_multi_recommendation(
     Ok(Json(MultiModeRecommendationResponse {
         modes,
         weather_summary: shared_weather,
+        notice,
     }))
+}
+
+/// 개발용 기온 덮어쓰기를 받을지. 서버가 `ALLOW_DEBUG_WEATHER=1` 로 떠 있을 때만이다 —
+/// 운영에서 요청 본문 하나로 날씨 판정이 바뀌면 안 된다.
+fn debug_temperature(requested: Option<f64>, allow: Option<&str>) -> Option<f64> {
+    requested.filter(|_| allow == Some("1"))
 }
 
 fn build_mode_reason(
@@ -676,31 +816,367 @@ fn build_mode_reason(
     }
 }
 
-/// 응답에 실을 착장 아이템. 옷장에서 찾지 못한 이름은 버린다.
+/// 후보가 실제로 입는 옷(상의·하의·아우터·신발·가방 순).
+fn candidate_items<'a>(c: &OutfitCandidate, clothes: &'a [Clothing]) -> Vec<&'a Clothing> {
+    [&c.top_id, &c.bottom_id, &c.outer_id, &c.shoes_id, &c.bag_id]
+        .iter()
+        .filter_map(|id| id.as_ref())
+        .filter_map(|id| clothes.iter().find(|x| &x.id == id))
+        .collect()
+}
+
+use crate::services::serving_ranker::WEATHER_BORDERLINE_PENALTY;
+
+/// 서버가 채우거나 바꾼 아이템의 설명. 모델이 쓴 이유가 없는 자리다.
+const SERVER_FILLED_REASON: &str = "코디를 완성하려고 옷장에서 골라 넣은 아이템이에요.";
+
+/// 응답 아이템을 **채점한 구성** 으로 만든다.
 ///
-/// 점수 계산(`build_outfit_candidate`)은 이미 해석 못 한 이름을 건너뛰는데 응답은
-/// 그대로 실어 보냈다. 그래서 LLM 이 아우터를 빈 문자열로 비워 보내면 점수에는
-/// 아우터가 없는데 화면에는 이름도 사진도 없는 빈 칸이 하나 떴다. 옷장에 없는
-/// 이름이라면 사용자가 입을 수 없는 옷이므로 보여 줄 이유도 없다.
-fn build_outfit_items(
+/// 예전 `build_outfit_items` 는 모델의 원래 응답을 다시 읽었다. 그래서 점수를 낼 때 서버가
+/// 채운 신발·가방(`select_best_shoe` · `select_best_bag`)이 응답·이미지에서 빠지고,
+/// 이력에는 남는 어긋남이 있었다. 이유 문장은 모델이 같은 옷에 쓴 것을 쓰고, 없으면
+/// 서버가 채웠다고 적는다.
+fn outfit_items_for(
+    c: &OutfitCandidate,
     ai_result: &crate::models::recommendation::AiRecommendation,
     clothes: &[Clothing],
+    temperature: f64,
 ) -> Vec<OutfitItem> {
+    candidate_items(c, clothes)
+        .into_iter()
+        .map(|item| {
+            let mut reason = ai_result
+                .outfit
+                .iter()
+                .find(|a| find_matching_clothing(clothes, &a.name).is_some_and(|m| m.id == item.id))
+                .map(|a| a.reason.clone())
+                .unwrap_or_else(|| SERVER_FILLED_REASON.to_string());
+            // 판정에 쓴 착용 상태를 설명과 이미지에 같이 넘긴다.
+            let wear = crate::services::serving_ranker::outer_wear(item, temperature);
+            if wear.is_some() {
+                // 모델의 설명이 마침표 없이 끝나기도 한다("…강조하기 때문").
+                let trimmed = reason.trim_end().to_string();
+                reason = if trimmed.is_empty() || trimmed.ends_with(['.', '!', '?']) {
+                    trimmed
+                } else {
+                    format!("{trimmed}.")
+                };
+                reason.push_str(" 추운 날이라 여며 입는 것을 기준으로 골랐어요.");
+                reason = reason.trim_start().to_string();
+            }
+            OutfitItem {
+                id: item.id.clone(),
+                category: item.category.clone(),
+                name: item.name.clone(),
+                reason,
+                image_url: item.image_url.clone(),
+                material: item.image_material(),
+                wear: wear.map(str::to_string),
+            }
+        })
+        .collect()
+}
+
+/// 모델이 썼지만 최종 구성에 없는 옷의 이름.
+fn dropped_names(
+    ai_result: &crate::models::recommendation::AiRecommendation,
+    outfit: &[OutfitItem],
+) -> Vec<String> {
     ai_result
         .outfit
         .iter()
-        .filter_map(|ai_item| {
-            let matched = find_matching_clothing(clothes, &ai_item.name)?;
-            Some(OutfitItem {
-                id: matched.id.clone(),
-                category: ai_item.category.clone(),
-                name: ai_item.name.clone(),
-                reason: ai_item.reason.clone(),
-                image_url: matched.image_url.clone(),
-                material: matched.image_material(),
-            })
+        .map(|a| a.name.trim().to_string())
+        .filter(|n| !n.is_empty() && !outfit.iter().any(|o| &o.name == n))
+        .collect()
+}
+
+/// 팁 중 최종 구성에 없는 옷을 말하는 것은 뺀다.
+fn tips_for(
+    ai_result: &crate::models::recommendation::AiRecommendation,
+    outfit: &[OutfitItem],
+) -> Vec<String> {
+    let gone = dropped_names(ai_result, outfit);
+    ai_result
+        .tips
+        .iter()
+        .filter(|t| !gone.iter().any(|g| t.contains(g.as_str())))
+        .cloned()
+        .collect()
+}
+
+/// 후보를 다시 모델 응답 모양으로 적는다. 보완한 후보를 응답·채점 경로에 그대로 태우기
+/// 위해서다. 이유 문장은 원래 후보의 것을 옷 이름으로 찾아 쓴다.
+fn ai_items_of(
+    c: &OutfitCandidate,
+    source: &crate::models::recommendation::AiRecommendation,
+    clothes: &[Clothing],
+) -> Vec<crate::models::recommendation::AiOutfitItem> {
+    candidate_items(c, clothes)
+        .into_iter()
+        .map(|item| crate::models::recommendation::AiOutfitItem {
+            category: item.category.clone(),
+            name: item.name.clone(),
+            reason: source
+                .outfit
+                .iter()
+                .find(|a| a.name == item.name)
+                .map(|a| a.reason.clone())
+                .unwrap_or_else(|| SERVER_FILLED_REASON.to_string()),
         })
         .collect()
+}
+
+fn slot_name(kind: SlotKind) -> &'static str {
+    match kind {
+        SlotKind::Top => "상의",
+        SlotKind::Bottom => "하의",
+        SlotKind::Outer => "아우터",
+        SlotKind::Shoes => "신발",
+        SlotKind::Bag => "가방",
+    }
+}
+
+/// 후보 하나의 한 슬롯을 다른 옷으로 바꾼 모델 응답.
+fn swapped_ai(
+    base: &OutfitCandidate,
+    source: &crate::models::recommendation::AiRecommendation,
+    clothes: &[Clothing],
+    kind: SlotKind,
+    to: &Clothing,
+    why: &str,
+) -> crate::models::recommendation::AiRecommendation {
+    let mut items: Vec<_> = ai_items_of(base, source, clothes)
+        .into_iter()
+        .filter(|a| category_to_slot(&a.category) != Some(kind))
+        .collect();
+    let removed: Vec<String> = ai_items_of(base, source, clothes)
+        .into_iter()
+        .filter(|a| category_to_slot(&a.category) == Some(kind))
+        .map(|a| a.name)
+        .collect();
+    items.push(crate::models::recommendation::AiOutfitItem {
+        category: to.category.clone(),
+        name: to.name.clone(),
+        reason: why.to_string(),
+    });
+    crate::models::recommendation::AiRecommendation {
+        recommendation: format!(
+            "{} 자리를 {}(으)로 바꾼 코디예요. {}",
+            slot_name(kind),
+            to.name,
+            why
+        ),
+        outfit: items,
+        weather_summary: source.weather_summary.clone(),
+        // 바뀐 옷을 말하는 팁은 남기지 않는다.
+        tips: source
+            .tips
+            .iter()
+            .filter(|t| !removed.iter().any(|r| t.contains(r.as_str())))
+            .cloned()
+            .collect(),
+        focus: Some(slot_name(kind).to_string()),
+    }
+}
+
+/// 보완 한 번에 더할 후보 수의 상한. 후보 수를 늘려 문제를 덮지 않도록 작게 둔다.
+const MAX_SUPPLEMENTS: usize = 2;
+
+/// 제한된 후보 보완. 더한 후보의 설명을 돌려준다(로그용).
+///
+/// 1. 날씨: 입을 수 있는 후보가 하나도 없으면, 점수가 높은 실패 후보부터 아우터를
+///    shortlist 의 다른 아우터로 바꿔 본다(보온이 모자란 실패가 대부분이다). 최대 2개.
+/// 2. 글램: 입을 수 있는 후보 중 옷에 글램 요소가 있는 것이 없으면, 가장 점수가 높은
+///    입을 수 있는 후보의 상의·하의·아우터 한 곳을 shortlist 의 글램 옷으로 바꿔 본다.
+///    슬롯마다 가장 점수가 높은 것 하나씩, 최대 2개. 특정 상품을 고정하지 않는다.
+///
+/// 추가 LLM 호출은 하지 않는다. 바꾼 후보도 같은 채점(`build_outfit_candidate`)을 지난다.
+#[allow(clippy::too_many_arguments)]
+async fn supplement_candidates(
+    ai: &mut Vec<crate::models::recommendation::AiRecommendation>,
+    scored: &mut Vec<OutfitCandidate>,
+    shortlist: &crate::services::shortlist::ShortlistResult<'_>,
+    clothes: &[Clothing],
+    db: &sqlx::MySqlPool,
+    occasion: Option<&str>,
+    current_season: Option<&str>,
+    feedback: &crate::services::outfit_scorer::FeedbackContext,
+    mood: Option<StyleGenre>,
+    temperature: f64,
+) -> Vec<String> {
+    let mut added = Vec::new();
+    let fits = |ctx: &OutfitContext| {
+        crate::services::serving_ranker::compute_today_fit(ctx, temperature)
+            != crate::services::style_engine_v2::TodayFitLevel::Fail
+    };
+    let mut status = Vec::new();
+    for c in scored.iter() {
+        let ctx =
+            crate::services::candidate_pipeline::rebuild_context(c, clothes, db, occasion).await;
+        status.push(ctx.as_ref().is_some_and(&fits));
+    }
+
+    // 바꾼 후보를 만들어 입을 수 있으면 돌려준다.
+    #[allow(clippy::too_many_arguments)]
+    async fn build_variant(
+        ai_item: &crate::models::recommendation::AiRecommendation,
+        index: usize,
+        clothes: &[Clothing],
+        db: &sqlx::MySqlPool,
+        occasion: Option<&str>,
+        current_season: Option<&str>,
+        feedback: &crate::services::outfit_scorer::FeedbackContext,
+        mood: Option<StyleGenre>,
+        temperature: f64,
+    ) -> Option<OutfitCandidate> {
+        let c = build_outfit_candidate(
+            &ai_item.outfit,
+            clothes,
+            db,
+            occasion,
+            current_season,
+            index,
+            feedback,
+            mood,
+        )
+        .await?;
+        let ctx =
+            crate::services::candidate_pipeline::rebuild_context(&c, clothes, db, occasion).await?;
+        (crate::services::serving_ranker::compute_today_fit(&ctx, temperature)
+            != crate::services::style_engine_v2::TodayFitLevel::Fail)
+            .then_some(c)
+    }
+
+    // 1. 날씨
+    if !status.iter().any(|f| *f) {
+        let mut order: Vec<usize> = (0..scored.len()).collect();
+        order.sort_by_key(|&i| std::cmp::Reverse(scored[i].style_score));
+        for i in order {
+            if added.len() >= MAX_SUPPLEMENTS {
+                break;
+            }
+            let base = scored[i].clone();
+            let source = ai[base.ai_candidate_index].clone();
+            for outer in &shortlist.outers {
+                if base.outer_id.as_deref() == Some(outer.id.as_str()) {
+                    continue;
+                }
+                let variant = swapped_ai(
+                    &base,
+                    &source,
+                    clothes,
+                    SlotKind::Outer,
+                    outer,
+                    "오늘 기온에 맞게 겉옷을 더했어요.",
+                );
+                if let Some(c) = build_variant(
+                    &variant,
+                    ai.len(),
+                    clothes,
+                    db,
+                    occasion,
+                    current_season,
+                    feedback,
+                    mood,
+                    temperature,
+                )
+                .await
+                {
+                    added.push(format!("날씨: {} 아우터", outer.name));
+                    ai.push(variant);
+                    scored.push(c);
+                    status.push(true);
+                    break;
+                }
+            }
+        }
+    }
+
+    // 2. 글램 — 옷에 글램 요소가 있는 입을 수 있는 후보가 없을 때
+    if mood == Some(StyleGenre::Glam) {
+        let reads = |c: &OutfitCandidate| {
+            crate::services::mood_gate::reads_as(StyleGenre::Glam, &candidate_items(c, clothes))
+                == Some(true)
+        };
+        let has_glam = scored.iter().zip(&status).any(|(c, ok)| *ok && reads(c));
+        let base = scored
+            .iter()
+            .zip(&status)
+            .filter(|(_, ok)| **ok)
+            .map(|(c, _)| c)
+            .max_by_key(|c| c.style_score)
+            .cloned();
+        if let (false, Some(base)) = (has_glam, base) {
+            let source = ai[base.ai_candidate_index].clone();
+            let mut best: Vec<(
+                i32,
+                SlotKind,
+                crate::models::recommendation::AiRecommendation,
+                OutfitCandidate,
+            )> = Vec::new();
+            for (kind, pool) in [
+                (SlotKind::Top, &shortlist.tops),
+                (SlotKind::Bottom, &shortlist.bottoms),
+                (SlotKind::Outer, &shortlist.outers),
+            ] {
+                // 아우터가 없는 후보에 아우터를 새로 얹지는 않는다 — 날씨가 정한 일이다.
+                if kind == SlotKind::Outer && base.outer_id.is_none() {
+                    continue;
+                }
+                let mut slot_best: Option<(
+                    i32,
+                    crate::models::recommendation::AiRecommendation,
+                    OutfitCandidate,
+                )> = None;
+                for item in pool
+                    .iter()
+                    .filter(|c| crate::services::mood_gate::is_glam_piece(c))
+                {
+                    let variant = swapped_ai(
+                        &base,
+                        &source,
+                        clothes,
+                        kind,
+                        item,
+                        "시선이 모이는 중심을 옷에 두려고 바꿨어요.",
+                    );
+                    if let Some(c) = build_variant(
+                        &variant,
+                        ai.len() + best.len(),
+                        clothes,
+                        db,
+                        occasion,
+                        current_season,
+                        feedback,
+                        mood,
+                        temperature,
+                    )
+                    .await
+                        && slot_best
+                            .as_ref()
+                            .is_none_or(|(s, _, _)| c.style_score > *s)
+                    {
+                        slot_best = Some((c.style_score, variant, c));
+                    }
+                }
+                if let Some((score, v, c)) = slot_best {
+                    best.push((score, kind, v, c));
+                }
+            }
+            best.sort_by_key(|b| std::cmp::Reverse(b.0));
+            for (_, kind, variant, mut c) in best.into_iter().take(MAX_SUPPLEMENTS) {
+                c.ai_candidate_index = ai.len();
+                added.push(format!(
+                    "글램: {} → {}",
+                    slot_name(kind),
+                    variant.outfit.last().map(|o| o.name.as_str()).unwrap_or("")
+                ));
+                ai.push(variant);
+                scored.push(c);
+            }
+        }
+    }
+    added
 }
 
 // ─── Helper: AI 후보 → OutfitCandidate (style_engine 점수 포함) ───
@@ -751,6 +1227,7 @@ async fn load_feedback(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn build_outfit_candidate(
     ai_outfit: &[crate::models::recommendation::AiOutfitItem],
     clothes: &[Clothing],
@@ -759,6 +1236,7 @@ async fn build_outfit_candidate(
     current_season: Option<&str>,
     ai_index: usize,
     feedback: &crate::services::outfit_scorer::FeedbackContext,
+    mood: Option<StyleGenre>,
 ) -> Option<OutfitCandidate> {
     let mut top_id = None;
     let mut bottom_id = None;
@@ -860,7 +1338,8 @@ async fn build_outfit_candidate(
         situation: occasion.map(|s| s.to_string()),
     };
 
-    let eval = style_engine::evaluate(&ctx, current_season);
+    // 무드가 바꾸는 규칙 해석(`services::mood_rules`). 글램이 아니면 운영 평가 그대로다.
+    let eval = crate::services::mood_rules::evaluate_for_mood(&ctx, current_season, mood);
 
     let mut candidate =
         OutfitCandidate::new(top_id, bottom_id, outer_id, shoes_id, bag_id, ai_index);
@@ -1229,6 +1708,183 @@ fn build_flat_descriptions(clothes: &[Clothing]) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+
+    fn wardrobe_item(id: &str, name: &str, category: &str) -> Clothing {
+        let now = chrono::NaiveDateTime::default();
+        Clothing {
+            id: id.into(),
+            name: name.into(),
+            category: category.into(),
+            color: None,
+            thickness: crate::models::style_vocab::Thickness::Medium,
+            image_url: None,
+            tone: None,
+            saturation: None,
+            style: None,
+            weight: None,
+            role: None,
+            color_temperature: None,
+            versatility: None,
+            statement_level: None,
+            formality_level: None,
+            gender: None,
+            style_mood: None,
+            visual_weight: None,
+            texture_depth: None,
+            visual_weight_v2: None,
+            texture_depth_v2: None,
+            grounding_score: None,
+            shadow_tone: None,
+            silhouette_volume: None,
+            material_primary: None,
+            sub_category: None,
+            floating_score: None,
+            strong_style_score: None,
+            texture_keywords: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    fn ai_item(
+        category: &str,
+        name: &str,
+        reason: &str,
+    ) -> crate::models::recommendation::AiOutfitItem {
+        crate::models::recommendation::AiOutfitItem {
+            category: category.into(),
+            name: name.into(),
+            reason: reason.into(),
+        }
+    }
+
+    /// 서버가 채운 가방은 응답에 들어가고, 모델이 쓴 없는 옷은 빠진다. 응답 아이템은
+    /// 채점한 구성(후보의 id)과 같고, 사라진 옷을 말하는 팁도 남지 않는다.
+    #[test]
+    fn response_items_match_the_scored_outfit() {
+        let clothes = vec![
+            wardrobe_item("t", "화이트 티", "상의"),
+            wardrobe_item("b", "블랙 새틴 스커트", "하의"),
+            wardrobe_item("s", "블랙 앵클부츠", "신발"),
+            wardrobe_item("g", "블랙 새틴 클러치", "가방"),
+        ];
+        let ai = crate::models::recommendation::AiRecommendation {
+            recommendation: "티에 새틴 스커트".into(),
+            outfit: vec![
+                ai_item("상의", "화이트 티", "기본"),
+                ai_item("하의", "블랙 새틴 스커트", "광택"),
+                ai_item("신발", "블랙 앵클부츠", "마무리"),
+                // 옷장에 없는 이름 — 채점에서 빠졌다.
+                ai_item("가방", "골드 체인 백", "포인트"),
+            ],
+            weather_summary: String::new(),
+            tips: vec!["골드 체인 백으로 포인트".into(), "부츠로 마무리".into()],
+            focus: None,
+        };
+        // 채점 단계에서 서버가 가방을 채운 후보.
+        let c = OutfitCandidate::new(
+            Some("t".into()),
+            Some("b".into()),
+            None,
+            Some("s".into()),
+            Some("g".into()),
+            0,
+        );
+        let items = outfit_items_for(&c, &ai, &clothes, 20.0);
+        let names: Vec<&str> = items.iter().map(|i| i.name.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "화이트 티",
+                "블랙 새틴 스커트",
+                "블랙 앵클부츠",
+                "블랙 새틴 클러치"
+            ]
+        );
+        assert_eq!(items[1].reason, "광택");
+        assert_eq!(items[3].reason, SERVER_FILLED_REASON);
+        assert_eq!(tips_for(&ai, &items), vec!["부츠로 마무리".to_string()]);
+    }
+
+    /// 추운 날 코트는 여며 입은 상태로 판정했으므로, 응답의 코트 칸에 그 상태가 실려
+    /// 설명과 이미지 입력에 함께 간다. 따뜻한 날이나 코트가 아닌 칸에는 붙지 않는다.
+    #[test]
+    fn a_cold_day_coat_carries_its_wear_state() {
+        let mut coat = wardrobe_item("o", "블랙 아워글라스 롱 울 코트", "아우터");
+        coat.sub_category = Some("롱코트".into());
+        coat.texture_keywords = Some("hourglass silhouette, insulated lining".into());
+        let clothes = vec![
+            wardrobe_item("t", "블랙 원숄더 탑", "상의"),
+            wardrobe_item("b", "블랙 와이드 슬랙스", "하의"),
+            coat,
+        ];
+        let ai = crate::models::recommendation::AiRecommendation {
+            recommendation: "코트".into(),
+            outfit: vec![ai_item("아우터", "블랙 아워글라스 롱 울 코트", "선")],
+            weather_summary: String::new(),
+            tips: vec![],
+            focus: None,
+        };
+        let c = OutfitCandidate::new(
+            Some("t".into()),
+            Some("b".into()),
+            Some("o".into()),
+            None,
+            None,
+            0,
+        );
+        let cold = outfit_items_for(&c, &ai, &clothes, 2.0);
+        let coat = cold.iter().find(|i| i.category == "아우터").unwrap();
+        assert!(coat.wear.as_deref().unwrap().contains("buttoned closed"));
+        assert_eq!(
+            coat.reason,
+            "선. 추운 날이라 여며 입는 것을 기준으로 골랐어요."
+        );
+        assert!(cold.iter().filter(|i| i.wear.is_some()).count() == 1);
+        let warm = outfit_items_for(&c, &ai, &clothes, 15.0);
+        assert!(warm.iter().all(|i| i.wear.is_none()));
+        assert_eq!(
+            warm.iter().find(|i| i.category == "아우터").unwrap().reason,
+            "선"
+        );
+    }
+
+    /// 보완한 후보의 설명에는 바뀐 옷이 남지 않는다.
+    #[test]
+    fn a_swapped_candidate_drops_the_old_item_from_its_text() {
+        let clothes = vec![
+            wardrobe_item("t", "화이트 티", "상의"),
+            wardrobe_item("d", "블랙 데님", "하의"),
+            wardrobe_item("k", "블랙 새틴 스커트", "하의"),
+        ];
+        let ai = crate::models::recommendation::AiRecommendation {
+            recommendation: "티에 데님".into(),
+            outfit: vec![
+                ai_item("상의", "화이트 티", "기본"),
+                ai_item("하의", "블랙 데님", "편함"),
+            ],
+            weather_summary: String::new(),
+            tips: vec!["블랙 데님은 밑단을 접어요".into(), "소매를 걷어요".into()],
+            focus: None,
+        };
+        let base = OutfitCandidate::new(Some("t".into()), Some("d".into()), None, None, None, 0);
+        let v = swapped_ai(&base, &ai, &clothes, SlotKind::Bottom, &clothes[2], "중심");
+        assert!(!v.recommendation.contains("블랙 데님"));
+        assert!(v.outfit.iter().all(|o| o.name != "블랙 데님"));
+        assert!(v.outfit.iter().any(|o| o.name == "블랙 새틴 스커트"));
+        assert_eq!(v.tips, vec!["소매를 걷어요".to_string()]);
+        assert_eq!(v.focus.as_deref(), Some("하의"));
+    }
+
+    /// 기온 덮어쓰기는 환경변수가 켜졌을 때만 받는다.
+    #[test]
+    fn debug_temperature_needs_the_env_switch() {
+        assert_eq!(debug_temperature(Some(8.0), None), None);
+        assert_eq!(debug_temperature(Some(8.0), Some("0")), None);
+        assert_eq!(debug_temperature(Some(8.0), Some("1")), Some(8.0));
+        assert_eq!(debug_temperature(None, Some("1")), None);
+    }
+
     use super::*;
     use crate::models::style_vocab::Thickness;
     use chrono::NaiveDateTime;

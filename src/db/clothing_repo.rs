@@ -304,7 +304,8 @@ fn genre_predicate(genre: StyleGenre) -> Option<&'static str> {
         StyleGenre::Romantic
         | StyleGenre::ModernChic
         | StyleGenre::Bohemian
-        | StyleGenre::Mannish => return None,
+        | StyleGenre::Mannish
+        | StyleGenre::Glam => return None,
     })
 }
 

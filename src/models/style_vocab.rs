@@ -259,6 +259,9 @@ style_vocab! {
         ModernChic => "modern_chic",
         Bohemian => "bohemian",
         Mannish => "mannish",
+        /// 빛을 받는 소재(새틴·메탈릭·절제된 시퀸)나 조형적인 실루엣(원숄더·드레이프·
+        /// 비대칭)이 코디의 중심. 파티·나이트아웃은 상황이지 이 무드의 정의가 아니다.
+        Glam => "glam",
     }
 }
 
@@ -361,6 +364,8 @@ impl StyleGenre {
             "streetwear" | "street_style" | "스트릿" | "스트리트" => StyleGenre::Street,
             // 매니시
             "boyish" | "보이시" | "매니시" => StyleGenre::Mannish,
+            // 글램
+            "glamour" | "glamorous" | "글램" | "글래머러스" => StyleGenre::Glam,
             // 스포티 캐주얼
             "athleisure" | "sporty" | "sportswear" | "애슬레저" | "스포티" | "스포티_캐주얼" => {
                 StyleGenre::SportyCasual
@@ -434,6 +439,9 @@ mod tests {
             ("streetwear", StyleGenre::Street),
             ("boyish", StyleGenre::Mannish),
             ("athleisure", StyleGenre::SportyCasual),
+            ("glam", StyleGenre::Glam),
+            ("Glamour", StyleGenre::Glam),
+            ("글램", StyleGenre::Glam),
         ];
         for (raw, expected) in cases {
             assert_eq!(StyleGenre::from_alias(raw), Some(expected), "{raw}");
@@ -510,7 +518,7 @@ mod tests {
         );
     }
 
-    /// 남성 8개 · 여성 8개가 모두 표준값으로 존재해야 한다. 목록이 빠지면
+    /// 남성 8개 · 여성 9개가 모두 표준값으로 존재해야 한다. 목록이 빠지면
     /// `style_mood` 시드가 넣은 키를 서버가 디코딩하지 못한다.
     #[test]
     fn every_exposed_genre_is_a_canonical_value() {
@@ -533,6 +541,7 @@ mod tests {
             "street",
             "mannish",
             "sporty_casual",
+            "glam",
         ];
         for key in male.iter().chain(female.iter()) {
             assert!(key.parse::<StyleGenre>().is_ok(), "{key}");

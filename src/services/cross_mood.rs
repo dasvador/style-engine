@@ -81,6 +81,7 @@ mod tests {
             feedback_bonus: 0,
             recency_penalty: 0,
             diversity_bonus: 0,
+            weather_penalty: 0,
             final_score: score,
             ai_candidate_index: 0,
         }

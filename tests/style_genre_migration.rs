@@ -19,6 +19,10 @@ use style_engine::models::style_vocab::StyleGenre;
 const GENRE_MIGRATION: &str =
     include_str!("../migrations/20261006000001_split_minimal_and_classic.sql");
 
+/// 데모 시드가 넣는 무드 칩. 글램은 옷과 함께 시드로만 들어간다 — 옷 없이 칩만 운영에
+/// 뜨지 않게 하려는 것이다(`seeds/demo/glam.sql` 머리 주석).
+const DEMO_SEED_MOODS: &str = include_str!("../seeds/demo/glam.sql");
+
 /// `('male', 'preppy', ...` 같은 INSERT 행에서 두 번째 따옴표 값(장르 키)을 뽑는다.
 fn inserted_genre_keys(sql: &str) -> Vec<(String, String)> {
     let mut found = Vec::new();
@@ -125,12 +129,14 @@ fn legacy_values_the_migration_moves_are_still_accepted_by_the_server() {
     }
 }
 
-/// 화면에 나가는 8+8 목록과 enum 이 일치해야 한다. 어느 쪽에도 노출되지 않는
-/// 장르가 남으면 그 장르로 태깅된 아이템은 영영 후보에 들어가지 못한다.
+/// 화면에 나가는 목록(마이그레이션 8+8, 데모 시드의 글램)과 enum 이 일치해야 한다.
+/// 어느 쪽에도 노출되지 않는 장르가 남으면 그 장르로 태깅된 아이템은 영영 후보에
+/// 들어가지 못한다.
 #[test]
 fn exposed_genres_cover_the_whole_vocabulary() {
     let mut exposed: Vec<String> = inserted_genre_keys(GENRE_MIGRATION)
         .into_iter()
+        .chain(inserted_genre_keys(DEMO_SEED_MOODS))
         .map(|(_, key)| key)
         .collect();
     exposed.sort();

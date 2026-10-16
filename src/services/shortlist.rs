@@ -127,13 +127,60 @@ fn score_item(item: &Clothing, ctx: &ShortlistContext) -> i32 {
 }
 
 /// 온도 기반 아이템 필터 — 계절에 맞지 않는 아이템 제외
+/// 신발이 이 기온에 맞는가. 발을 얼마나 덮는지로 나눈다 — 두께 값은 신발을 가르지
+/// 못한다(옷장의 신발은 거의 다 medium 이다).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShoeWeather {
+    Fine,
+    /// 맞지는 않지만 입을 수는 있다. 순위에서 조금 밀 뿐 빼지는 않는다.
+    Borderline,
+    /// 확실히 맞지 않는다. 후보에서 뺀다.
+    Unsuitable,
+}
+
+/// 2026-10-17: 27°C 에 니하이 롱부츠와 앵클부츠가 오늘의 추천에 올랐다. 신발은 보온
+/// 판정(상의+아우터)에 들어가지 않아 기온을 전혀 보지 않았다. "27°C 면 부츠 금지" 같은
+/// 한 가지 규칙으로 막지 않고, 덮는 범위와 기온을 나눈다.
+pub fn shoe_weather(item: &Clothing, temp: f64) -> ShoeWeather {
+    if item.category != "신발" {
+        return ShoeWeather::Fine;
+    }
+    let sub = item.sub_category.as_deref().unwrap_or("");
+    let name = item.name.as_str();
+    let knee_high = sub == "롱부츠" || name.contains("롱부츠") || name.contains("니하이");
+    let boot = knee_high || sub.contains("부츠") || sub.contains("boots") || name.contains("부츠");
+    let open = sub.contains("샌들")
+        || sub == "뮬"
+        || name.contains("샌들")
+        || name.contains("뮬")
+        || name.contains("슬라이드");
+    if knee_high && temp >= 25.0 {
+        return ShoeWeather::Unsuitable;
+    }
+    if boot && temp >= 27.0 {
+        return ShoeWeather::Borderline;
+    }
+    if open && temp < 8.0 {
+        return ShoeWeather::Unsuitable;
+    }
+    if open && temp < 13.0 {
+        return ShoeWeather::Borderline;
+    }
+    ShoeWeather::Fine
+}
+
 fn is_temp_appropriate(item: &Clothing, temp: f64) -> bool {
+    if shoe_weather(item, temp) == ShoeWeather::Unsuitable {
+        return false;
+    }
     let weight = item.weight.unwrap_or(Weight::Mid);
     let mat = item.material_primary.as_deref().unwrap_or("");
     let name = &item.name;
 
     if temp >= 20.0 {
-        if mat == "wool" || mat == "flannel" {
+        // 벨벳은 울처럼 보온·무게가 있는 원단이다. 글램 시드에서 처음 들어왔고, 빠져 있으면
+        // 27°C 에 벨벳 탑이 후보에 오른다.
+        if mat == "wool" || mat == "flannel" || mat == "velvet" {
             return false;
         }
         if name.contains("니트") && !name.contains("가벼") {
@@ -256,6 +303,9 @@ fn mood_neighbors(mood: StyleGenre) -> &'static [StyleGenre] {
         OutdoorCasual => &[Workwear, SportyCasual],
         Romantic => &[Classic, Bohemian, Minimal],
         Bohemian => &[Romantic, Amekaji],
+        // 글램의 포인트를 받쳐 주는 쪽은 날렵한 모던 시크와 기본 아이템인 미니멀이다.
+        // 새틴 같은 소재를 공유하는 로맨틱은 그다음이다 — 먼저 빌리면 부드러운 인상이 섞인다.
+        Glam => &[ModernChic, Minimal, Romantic],
     }
 }
 
@@ -389,6 +439,36 @@ impl<'a> ShortlistResult<'a> {
                 c.role.map(|v| v.as_str()).unwrap_or("-"),
                 c.tone.map(|v| v.as_str()).unwrap_or("-"),
                 c.style.map(|v| v.as_str()).unwrap_or("-"),
+            )
+        };
+        crate::services::prompts::GroupedClothes {
+            tops: self.tops.iter().map(|c| fmt(c)).collect(),
+            bottoms: self.bottoms.iter().map(|c| fmt(c)).collect(),
+            outers: self.outers.iter().map(|c| fmt(c)).collect(),
+            shoes: self.shoes.iter().map(|c| fmt(c)).collect(),
+            bags: self.bags.iter().map(|c| fmt(c)).collect(),
+        }
+    }
+
+    /// 글램 후보 생성용. 이름·역할·톤·스타일에 소재·실루엣·두께·특징을 더한다. 글램은
+    /// 어떤 옷이 빛을 받는지, 어떤 형태인지가 판단의 중심인데 이름만으로는 모자라다.
+    /// 값이 없으면 "모름" 이라고 적는다 — 채워 넣지 않는다.
+    pub fn to_grouped_detailed(&self) -> crate::services::prompts::GroupedClothes {
+        let fmt = |c: &Clothing| {
+            let known = |v: Option<&str>| match v.map(str::trim) {
+                Some(v) if !v.is_empty() => v.to_string(),
+                _ => "모름".to_string(),
+            };
+            format!(
+                "- {} | role:{} | tone:{} | style:{} | 소재:{} | 실루엣:{} | 두께:{} | 특징:{}",
+                c.name,
+                c.role.map(|v| v.as_str()).unwrap_or("모름"),
+                c.tone.map(|v| v.as_str()).unwrap_or("모름"),
+                c.style.map(|v| v.as_str()).unwrap_or("모름"),
+                known(c.material_primary.as_deref()),
+                c.silhouette_volume.map(|v| v.as_str()).unwrap_or("모름"),
+                c.thickness.as_str(),
+                known(c.texture_keywords.as_deref()),
             )
         };
         crate::services::prompts::GroupedClothes {

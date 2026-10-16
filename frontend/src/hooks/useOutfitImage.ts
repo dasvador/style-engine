@@ -4,7 +4,12 @@ import { buildImagePrompt } from '../lib/lookbook';
 
 type ImageState = { status: 'loading' } | { status: 'ready'; url: string } | { status: 'failed' };
 
-type ImageItems = readonly { slot: string; name: string; material?: string | null }[];
+type ImageItems = readonly {
+  slot: string;
+  name: string;
+  material?: string | null;
+  wear?: string | null;
+}[];
 
 /**
  * 이번 세션에서 이미 받아 온 착장 이미지.

@@ -80,15 +80,22 @@ impl RecommendationHistoryRepo {
                 (now - row.recommended_at).num_days()
             };
 
-            let same_item = [
+            let same = |pairs: &[(Option<&str>, Option<&str>)]| {
+                pairs.iter().any(|(a, b)| a.is_some() && *a == *b)
+            };
+            // 옷과 보조 아이템을 나눈다(`OutfitHistorySummary` 주석).
+            let same_item = same(&[
                 (top_id, row.top_id.as_deref()),
                 (bottom_id, row.bottom_id.as_deref()),
                 (outer_id, row.outer_id.as_deref()),
+            ]);
+            let same_accessory = same(&[
                 (shoes_id, row.shoes_id.as_deref()),
                 (bag_id, row.bag_id.as_deref()),
-            ]
-            .iter()
-            .any(|(a, b)| a.is_some() && *a == *b);
+            ]);
+            if same_accessory && !same_item && days_ago <= 3 {
+                summary.accessory_used_within_3_days = true;
+            }
 
             if same_item && days_ago <= 1 {
                 summary.item_used_yesterday = true;
@@ -98,7 +105,10 @@ impl RecommendationHistoryRepo {
                 summary.item_used_within_3_days = true;
             }
 
+            // 상하의가 비어 있는 행끼리 "같다" 고 보지 않는다.
             if days_ago <= 7
+                && top_id.is_some()
+                && bottom_id.is_some()
                 && top_id == row.top_id.as_deref()
                 && bottom_id == row.bottom_id.as_deref()
             {

@@ -29,7 +29,7 @@ const DEDUCT_WORLD_OVERMATCH_SEVERE: i32 = 15;
 const DEDUCT_FLAT_OUTFIT: i32 = 7; // 베이스+연결템만으로 구성된 심심한 코디
 
 // 최대 점수 상한 (100은 너무 절대적)
-const SCORE_CEILING: i32 = 95;
+pub const SCORE_CEILING: i32 = 95;
 
 pub fn evaluate(ctx: &OutfitContext, current_season: Option<&str>) -> EvaluationResult {
     let mut score = SCORE_CEILING;
@@ -1192,7 +1192,7 @@ fn rule_season(
 
 // ─── 한 줄 총평 (규칙 기반, LLM 전에 결정론적으로 생성) ───
 
-fn generate_summary(
+pub(crate) fn generate_summary(
     ctx: &OutfitContext,
     _verdict: &Verdict,
     problems: &[RuleProblem],
@@ -1269,7 +1269,9 @@ fn generate_summary(
 
 // ─── 구조화된 suggestions 생성 ───
 
-fn generate_structured_suggestions(problems: &[RuleProblem]) -> Vec<StructuredSuggestion> {
+pub(crate) fn generate_structured_suggestions(
+    problems: &[RuleProblem],
+) -> Vec<StructuredSuggestion> {
     problems
         .iter()
         .map(|p| match &p.code {

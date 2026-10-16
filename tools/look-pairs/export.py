@@ -167,12 +167,20 @@ def report_scoring(pairs: list[dict]) -> None:
         return
     print(f"점수가 남은 쌍 {len(scored)}개 — 고른 쪽이 높음 / 같음 / 낮음")
     for key in ["final_score", "style_score", "recency_penalty", "diversity_bonus",
-                "dormant_bonus", "shadow_score", "silhouette_delta"]:
+                "dormant_bonus", "feedback_bonus", "shadow_score", "silhouette_delta",
+                "mood_waiver"]:
         pairs_k = [(b.get(key), w.get(key)) for b, w in scored
                    if b.get(key) is not None and w.get(key) is not None]
         hi = sum(b > w for b, w in pairs_k)
         eq = sum(b == w for b, w in pairs_k)
         print(f"  {key:16s} {hi:3d} / {eq:3d} / {len(pairs_k) - hi - eq:3d}")
+    # 무드 shadow(S1·S2)를 최종 점수에 더했을 때. 운영 순위와 비교하려고 둔다.
+    shadow = [(b["final_score"] + (b.get("mood_waiver") or 0),
+               w["final_score"] + (w.get("mood_waiver") or 0))
+              for b, w in scored if b.get("final_score") is not None and w.get("final_score") is not None]
+    hi = sum(b > w for b, w in shadow)
+    eq = sum(b == w for b, w in shadow)
+    print(f"  {'final+mood_shadow':16s} {hi:3d} / {eq:3d} / {len(shadow) - hi - eq:3d}")
 
 
 if __name__ == "__main__":

@@ -109,11 +109,19 @@ const IMAGE_SLOT_LABEL: Record<string, string> = {
   bag: 'bag',
 };
 
-export function buildImagePrompt(items: readonly { slot: string; name: string; material?: string | null }[]): string {
+/**
+ * 착용 상태(`wear`)가 있으면 소재 설명 뒤에 붙인다. 추운 날 코트는 여며 입은 상태로 보온을
+ * 판정하므로, 그림에도 같은 상태가 들어가야 한다. 착용 상태가 없는 아이템의 문자열은 예전과
+ * 같다 — 그 사진의 이미지 캐시가 그대로 맞는다.
+ */
+export function buildImagePrompt(
+  items: readonly { slot: string; name: string; material?: string | null; wear?: string | null }[],
+): string {
   return items
     .map((i) => {
       const slot = IMAGE_SLOT_LABEL[i.slot] ?? i.slot;
-      const mat = i.material ? ` (${i.material})` : '';
+      const detail = [i.material, i.wear].filter(Boolean).join('; ');
+      const mat = detail ? ` (${detail})` : '';
       return `${slot}: ${i.name}${mat}`;
     })
     .join(', ');
@@ -130,11 +138,12 @@ const CATEGORY_TO_SLOT: Record<string, string> = {
 
 export function outfitToImageItems(
   outfit: readonly OutfitItem[],
-): { slot: string; name: string; material: string | null }[] {
+): { slot: string; name: string; material: string | null; wear: string | null }[] {
   return outfit.map((o) => ({
     slot: CATEGORY_TO_SLOT[o.category] ?? o.category,
     name: o.name,
     material: o.material ?? null,
+    wear: o.wear ?? null,
   }));
 }
 

@@ -30,9 +30,9 @@ pub async fn rerank_candidates_with_history(
 
         candidate.recency_penalty = calculate_recency_penalty(&history);
         candidate.diversity_bonus = calculate_diversity_bonus(&history);
-        candidate.final_score =
-            candidate.style_score - candidate.recency_penalty + candidate.diversity_bonus;
     }
+
+    finalize_scores(&mut candidates);
 
     candidates.sort_by(|a, b| {
         b.final_score
@@ -41,6 +41,25 @@ pub async fn rerank_candidates_with_history(
     });
 
     Ok(candidates)
+}
+
+/// 반복 감점·다양성 가점을 얹어 최종 점수를 낸다.
+///
+/// 반복 감점은 후보끼리의 차이로만 쓴다. 다섯 후보가 모두 같은 가방·신발을 다시 쓰는
+/// 작은 옷장에서는 모두가 같은 몫을 잃고 순서는 그대로인데, 최종 점수만 낮아져 좋은
+/// 코디도 "아쉬워요" 로 보였다. 모두에게 공통인 몫을 빼고 남는 차이만 반영한다.
+pub fn finalize_scores(candidates: &mut [OutfitCandidate]) {
+    let shared = candidates
+        .iter()
+        .map(|c| c.recency_penalty)
+        .min()
+        .unwrap_or(0);
+    for candidate in candidates.iter_mut() {
+        candidate.recency_penalty -= shared;
+        candidate.final_score = candidate.style_score - candidate.recency_penalty
+            + candidate.diversity_bonus
+            - candidate.weather_penalty;
+    }
 }
 
 pub fn select_recommendation(candidates: &[OutfitCandidate]) -> Option<OutfitCandidate> {
@@ -118,6 +137,16 @@ fn evaluate_today_fitness(
     } else {
         true // 18도 이상: 제한 없음
     };
+
+    // 경계에 있는 신발(27°C 이상의 부츠, 13°C 미만의 샌들)은 조금 민다. 확실히 맞지
+    // 않는 신발은 후보 단계(`shortlist::shoe_weather`)에서 이미 빠졌다.
+    let shoes = find_clothing(&c.shoes_id, clothes);
+    if shoes.is_some_and(|s| {
+        crate::services::shortlist::shoe_weather(s, temperature)
+            == crate::services::shortlist::ShoeWeather::Borderline
+    }) {
+        penalty += 5;
+    }
 
     // ─── 2. 대비 충분성 ───
     let top_tone = top.and_then(|t| t.tone);
@@ -238,6 +267,7 @@ pub fn select_todays_pick(
             recency_penalty: c.recency_penalty + fitness.penalty,
             diversity_bonus: c.diversity_bonus,
             dormant_bonus: 0,
+            weather_penalty: c.weather_penalty,
             final_score: *adjusted,
         },
         candidate: (*c).clone(),
@@ -269,24 +299,25 @@ pub fn select_variation(
         return Some(best);
     }
 
-    // 3차 폴백: 두 번째 후보
-    candidates.get(1).map(|c| ModeSelectionResult {
-        scoring: build_variation_scoring(c),
-        candidate: c.clone(),
-    })
+    // 더 고를 것이 없다. 예전에는 "두 번째 후보" 를 그대로 냈는데, Today 가 첫 번째가
+    // 아닐 때 그 후보가 Today 와 같은 코디였다. 유효한 조합이 하나면 카드도 한 장이다.
+    None
 }
 
 /// Step 3: 안 입은 옷 — 휴면 아이템을 포함하면서 Today와 top+bottom이 다르고
 /// 품질 기준을 통과하는 후보가 있을 때만 추천. 없으면 None (옵셔널 카드)
+///
+/// 앞서 고른 카드 **전부**와 상하의가 달라야 한다. 예전에는 Today 만 봐서 '다른 조합' 과
+/// 같은 코디가 이 자리에 다시 나왔다(2026-10-17 연속 요청 4회 중 2회).
 pub fn select_dormant(
     candidates: &[OutfitCandidate],
     dormant_ids: &HashSet<String>,
-    todays_pick: &OutfitCandidate,
+    chosen: &[&OutfitCandidate],
 ) -> Option<ModeSelectionResult> {
     let pool: Vec<_> = candidates
         .iter()
         .filter(|c| contains_dormant_item(c, dormant_ids))
-        .filter(|c| !has_same_top_bottom(c, todays_pick))
+        .filter(|c| !chosen.iter().any(|p| has_same_top_bottom(c, p)))
         .collect();
 
     pick_best_dormant(&pool, dormant_ids)
@@ -320,7 +351,9 @@ pub fn contains_dormant_item(candidate: &OutfitCandidate, dormant_ids: &HashSet<
 fn pick_best_variation(pool: &[&OutfitCandidate]) -> Option<ModeSelectionResult> {
     pool.iter()
         .filter(|c| c.style_score >= 68)
-        .max_by_key(|c| c.style_score + c.diversity_bonus * 3 - c.recency_penalty)
+        .max_by_key(|c| {
+            c.style_score + c.diversity_bonus * 3 - c.recency_penalty - c.weather_penalty
+        })
         .or_else(|| pool.first())
         .map(|c| ModeSelectionResult {
             scoring: build_variation_scoring(c),
@@ -336,7 +369,7 @@ fn pick_best_dormant(
         .filter(|c| c.style_score >= 70)
         .max_by_key(|c| {
             let dormant = calculate_dormant_bonus(c, dormant_ids);
-            c.style_score + dormant
+            c.style_score + dormant - c.weather_penalty
         })
         .map(|c| {
             let dormant = calculate_dormant_bonus(c, dormant_ids);
@@ -346,7 +379,9 @@ fn pick_best_dormant(
                     recency_penalty: c.recency_penalty,
                     diversity_bonus: c.diversity_bonus,
                     dormant_bonus: dormant,
-                    final_score: c.style_score - c.recency_penalty + c.diversity_bonus + dormant,
+                    weather_penalty: c.weather_penalty,
+                    final_score: c.style_score - c.recency_penalty + c.diversity_bonus + dormant
+                        - c.weather_penalty,
                 },
                 candidate: (*c).clone(),
             }
@@ -355,12 +390,14 @@ fn pick_best_dormant(
 
 fn build_variation_scoring(c: &OutfitCandidate) -> ScoringDetail {
     let mode_score = c.style_score - (c.recency_penalty as f64 * 1.8).floor() as i32
-        + (c.diversity_bonus as f64 * 2.5).floor() as i32;
+        + (c.diversity_bonus as f64 * 2.5).floor() as i32
+        - c.weather_penalty;
     ScoringDetail {
         style_score: c.style_score,
         recency_penalty: c.recency_penalty,
         diversity_bonus: c.diversity_bonus,
         dormant_bonus: 0,
+        weather_penalty: c.weather_penalty,
         final_score: mode_score,
     }
 }

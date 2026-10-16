@@ -8,10 +8,10 @@
 | — false positive (엔진 거절 / 사람 수용) | 3 |
 | — false negative (엔진 통과 / 사람 거절) | 2 |
 | — 거절 정밀도 / 재현율 | 75.0% / 81.8% |
-| Today-fit 정확도 (3-class) | **79.7%** |
+| Today-fit 정확도 (3-class) | **76.4%** |
 | 선호도 순위 정확도 (Accept > Reject 쌍) | **74.7%** |
 | — Accept 평균 / Reject 평균 / 간격 | 96.0 / 91.3 / 4.7 |
-| Hard + fit 동시 일치 | **77.2%** |
+| Hard + fit 동시 일치 | **74.8%** |
 | 사람이 고른 쌍과 일치 — 운영 / shadow (16쌍, `preference_pairs.toml`) | **68.8%** / **50.0%** |
 | 반응으로 정해진 쌍과 일치 — 운영 / shadow / 화면 순서 (30쌍 · 지운 코디 26쌍, `usage_pairs.toml`) | **48.3%** / **50.0%** / 60.0% |
 
@@ -26,10 +26,10 @@
 
 | 전이 | 건수 |
 |---|---|
-| Borderline→Pass | 14 |
+| Borderline→Pass | 16 |
 | Fail→Pass | 7 |
-| Borderline→Fail | 2 |
-| Fail→Borderline | 1 |
+| Borderline→Fail | 3 |
+| Fail→Borderline | 2 |
 | Pass→Borderline | 1 |
 
 > `cargo test --test eval_scorecard`로 재생성됩니다. 기준선 대비 1.0%p 이상 하락하면 테스트가 실패합니다.

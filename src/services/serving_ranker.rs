@@ -9,7 +9,7 @@
 
 use crate::models::clothing::Clothing;
 use crate::models::outfit::{OutfitContext, OutfitSlot, SlotKind};
-use crate::models::style_vocab::{Style, Thickness, Weight};
+use crate::models::style_vocab::{Style, Thickness};
 use crate::services::style_engine_v2::TodayFitLevel;
 
 // ─── 온도 게이트 임계값 ───
@@ -23,6 +23,18 @@ const COLD_BORDERLINE_DEFICIT: i32 = 2;
 const HEAT_FAIL_C: f64 = 26.0;
 /// 아우터 가산점 — 같은 두께라도 겉옷이 체감에 더 기여한다.
 const OUTER_BONUS: i32 = 2;
+/// 이 기온 미만은 겨울 외출로 본다 — 겨울 외투가 있어야 통과하고, 하체 노출도 따진다.
+/// 운영의 보수적인 기준선이지, 이 기온에서 누구나 춥다는 과학적 경계가 아니다.
+const NEAR_FREEZING_C: f64 = 5.0;
+/// 이 기온 미만에서는 하체가 얼마나 드러나는지를 따로 본다(같은 성격의 운영 기준).
+const LEG_CHECK_BELOW_C: f64 = 10.0;
+/// 이 기온 미만에서 코트는 여며 입는 것을 기준으로 판정하고, 그 상태를 응답·이미지에 넘긴다.
+pub const CLOSED_COAT_BELOW_C: f64 = 12.0;
+
+/// 오늘 날씨에 경계인 착장의 감점. 홈 추천과 상담이 같이 쓴다. 보온·하체가 아슬아슬한
+/// 착장을 같은 점수의 다른 착장 뒤로 보낸다. 반복 감점(가방만 겹침 −3, 같은 상하의 −20)과
+/// 견줘, 같은 상하의를 다시 내는 것보다는 덜 피하고 신발·가방 재사용보다는 더 피하는 정도다.
+pub const WEATHER_BORDERLINE_PENALTY: i32 = 10;
 
 /// accessory 격식 gap 패널티가 이 값 이하이면 Pass 를 Borderline 으로 내린다.
 ///
@@ -96,10 +108,12 @@ pub fn compute_today_fit(ctx: &OutfitContext, temperature: f64) -> TodayFitLevel
     //   - 얇은 블라우스 + 얇은 윈드브레이커는 아우터가 있다는 이유만으로 통과했고,
     //   - 미디엄 니트 단독은 아우터가 없어도 영하까지 통과했다.
     // 보온은 한 장의 속성이 아니라 겹쳐 입은 결과이므로 합으로 본다.
+    // 보온·더위는 두께로 본다. `Weight` 는 시각적 무게라 보온 성능이 아니다(2026-10-17).
     let heavy_layer = |slot: SlotKind| {
-        ctx.slots.iter().filter(|s| s.slot == slot).any(|s| {
-            s.clothing.weight == Some(Weight::Heavy) || s.clothing.thickness == Thickness::Thick
-        })
+        ctx.slots
+            .iter()
+            .filter(|s| s.slot == slot)
+            .any(|s| s.clothing.thickness == Thickness::Thick)
     };
 
     // 더위 쪽은 추위보다 먼저 본다 — 28도에 두꺼운 상하의는 보온 과잉이 아니라 실패다.
@@ -107,6 +121,10 @@ pub fn compute_today_fit(ctx: &OutfitContext, temperature: f64) -> TodayFitLevel
         return TodayFitLevel::Fail;
     }
 
+    // 상체가 경계여도 여기서 끝내지 않는다 — 아래 하체 판정이 실패를 낼 수 있다. 2°C 에
+    // 니트 + 일반 라이더(상체 경계) + 미니(하체 실패)가 상체에서 먼저 경계로 끝나 오늘의
+    // 추천에 올랐다(2026-10-17 실측).
+    let mut torso_borderline = false;
     // 상의가 없는 후보(슬롯 해석 실패 등)는 보온을 따질 대상이 아니다.
     if let Some(top) = top {
         let warmth = torso_warmth(top, ctx);
@@ -116,8 +134,24 @@ pub fn compute_today_fit(ctx: &OutfitContext, temperature: f64) -> TodayFitLevel
         if deficit >= COLD_FAIL_DEFICIT {
             return TodayFitLevel::Fail;
         }
+        // 겨울 외출(5°C 미만): 합계가 맞아도 겨울 외투가 없으면 보온이 충분하다고 확정하지
+        // 않는다. 합계는 두께로만 셈해서, 중간 두께 니트 4 + 중간 두께 라이더 4 + 아우터 2 =
+        // 10 으로 2°C 요구치를 채운다 — 안감이 확인되지 않은 일반 재킷이다(2026-10-17).
+        // 얇은 이너 위에 일반 재킷이면 실패, 그보다 두꺼운 이너면 경계다.
+        if temperature < NEAR_FREEZING_C {
+            let outer = ctx.slots.iter().find(|s| s.slot == SlotKind::Outer);
+            let winter = outer.is_some_and(|o| is_winter_outer(&o.clothing));
+            if !winter {
+                if top.clothing.thickness == Thickness::Thin {
+                    return TodayFitLevel::Fail;
+                }
+                if outer.is_some() {
+                    torso_borderline = true;
+                }
+            }
+        }
         if deficit >= COLD_BORDERLINE_DEFICIT {
-            return TodayFitLevel::Borderline;
+            torso_borderline = true;
         }
         // 보온 과잉은 여기서 판정하지 않는다. 케이스 카탈로그의 라벨이 이 축에서
         // 갈리지 않는다 — 20도에 무거운 울자켓(TG008)은 경계인데 같은 20도에 파카를
@@ -125,6 +159,21 @@ pub fn compute_today_fit(ctx: &OutfitContext, temperature: f64) -> TodayFitLevel
         // 넣으면 한쪽을 맞히는 대가로 다른 쪽을 틀린다. 진짜 더위는 위의 HEAT_FAIL_C
         // 규칙이 잡는다.
     }
+    // ─── 2b. 하체 ───
+    // 상체가 따뜻하다고 드러난 다리가 상쇄되지 않는다. 상체와 따로 판정한다.
+    let item = |k: SlotKind| ctx.slots.iter().find(|s| s.slot == k).map(|s| &s.clothing);
+    match lower_body_fit(
+        item(SlotKind::Bottom),
+        item(SlotKind::Shoes),
+        item(SlotKind::Outer),
+        temperature,
+    ) {
+        TodayFitLevel::Fail => return TodayFitLevel::Fail,
+        TodayFitLevel::Borderline => return TodayFitLevel::Borderline,
+        TodayFitLevel::Pass if torso_borderline => return TodayFitLevel::Borderline,
+        TodayFitLevel::Pass => {}
+    }
+
     // ─── 3. Accessory 격식 gap ───
     // 온도·상황 게이트를 다 통과했어도, 신발/가방의 격식이 착장과 크게 어긋나면
     // "오늘 그대로 입기엔 애매한" 상태로 본다.
@@ -138,20 +187,181 @@ pub fn compute_today_fit(ctx: &OutfitContext, temperature: f64) -> TodayFitLevel
 
 /// 토르소 레이어 하나의 보온 점수.
 ///
-/// 원단 두께를 뼈대로 하고 시각적 무게로 보정한다. 두께가 비어 있으면 DB 기본값인
-/// `medium` 이 들어오므로 별도 분기는 두지 않는다.
+/// 원단 두께가 뼈대다. 아우터는 덮는 길이를 더한다 — 같은 두께라도 종아리까지 오는
+/// 롱코트와 허리까지 오는 크롭 재킷은 다르다. 길이는 세부 종류(롱코트·크롭자켓)에 적힌
+/// 옷만 본다.
+///
+/// 시각적 무게(`Weight`)는 쓰지 않는다. 예전에는 무거움 +2·가벼움 −1 을 보온으로 쳐서,
+/// 무거워 보이지만 안감 없는 레더 라이더가 2°C 에 통과했다(2026-10-17 사용자 지적).
+/// 두께가 비어 있으면 DB 기본값인 `medium` 이 들어온다.
 fn layer_warmth(c: &Clothing) -> i32 {
     let base = match c.thickness {
         Thickness::Thin => 2,
         Thickness::Medium => 4,
         Thickness::Thick => 7,
     };
-    let adj = match c.weight {
-        Some(Weight::Light) => -1,
-        Some(Weight::Heavy) => 2,
+    let length = match (c.category.as_str(), c.sub_category.as_deref()) {
+        ("아우터", Some("롱코트")) => 1,
+        // 허리까지만 덮는다. 얇은 티 위의 크롭 퍼 재킷은 0°C 에 경계, 니트 위면 통과.
+        ("아우터", Some("크롭자켓")) => -3,
         _ => 0,
     };
-    base + adj
+    base + length
+}
+
+/// 보온 안감·충전재가 **확인된** 옷인가. 설명(`texture_keywords`)이나 소재에 적혀 있을
+/// 때만 참이다. 적혀 있지 않은 것은 "없음" 이 아니라 "모름" 이다 — 그래서 저장하지 않고,
+/// 판정에서만 확인되지 않은 쪽으로 다룬다.
+pub fn has_confirmed_insulation(c: &Clothing) -> bool {
+    let m = c.material_primary.as_deref().unwrap_or("").to_lowercase();
+    let k = c.texture_keywords.as_deref().unwrap_or("").to_lowercase();
+    matches!(m.as_str(), "down" | "shearling")
+        || [
+            "insulated",
+            "shearling lining",
+            "padded",
+            "down fill",
+            "quilted",
+            "fleece lining",
+            "fleece-lined",
+            "thermal lining",
+        ]
+        .iter()
+        .any(|w| k.contains(w))
+}
+
+/// 겨울 외투인가 — 두껍고, 보온 안감·충전재가 확인되고, 허리까지만 오는 크롭이 아니다.
+/// 일반 레더 라이더(중간 두께, 안감 미확인)와 시어링 안감 재킷(두꺼움, 안감 확인)이 여기서
+/// 갈린다.
+pub fn is_winter_outer(c: &Clothing) -> bool {
+    c.category == "아우터"
+        && c.thickness == Thickness::Thick
+        && has_confirmed_insulation(c)
+        && c.sub_category.as_deref() != Some("크롭자켓")
+}
+
+/// 하의가 다리를 얼마나 덮는가.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LegCover {
+    /// 바지·롱스커트 — 발목 위까지 덮는다.
+    Full,
+    /// 미디 길이 — 정강이 아래가 드러난다.
+    Midi,
+    /// 미니 — 허벅지 아래가 드러난다.
+    Mini,
+}
+
+fn leg_cover(bottom: &Clothing) -> LegCover {
+    let n = bottom.name.as_str();
+    let k = bottom
+        .texture_keywords
+        .as_deref()
+        .unwrap_or("")
+        .to_lowercase();
+    if n.contains("미니") || k.contains("mini") {
+        LegCover::Mini
+    } else if (n.contains("미디") || k.contains("midi"))
+        && !(n.contains("롱") || k.contains("long"))
+    {
+        LegCover::Midi
+    } else {
+        LegCover::Full
+    }
+}
+
+/// 신발이 다리를 어디까지 덮는가 — 니하이·롱부츠면 무릎 아래, 부츠면 발목 위.
+fn shoe_cover(shoes: Option<&Clothing>) -> (bool, bool) {
+    let Some(s) = shoes else {
+        return (false, false);
+    };
+    let sub = s.sub_category.as_deref().unwrap_or("");
+    let knee = sub == "롱부츠" || s.name.contains("롱부츠") || s.name.contains("니하이");
+    let boot = knee || sub.contains("부츠") || sub.contains("boots") || s.name.contains("부츠");
+    (knee, boot)
+}
+
+/// 아우터가 무릎 아래까지 오는가(여며 입는 것을 기준으로 판정한다 — `CLOSED_COAT_BELOW_C`).
+fn outer_covers_knees(outer: Option<&Clothing>) -> bool {
+    outer.is_some_and(|o| {
+        let k = o.texture_keywords.as_deref().unwrap_or("").to_lowercase();
+        o.sub_category.as_deref() == Some("롱코트")
+            || ["mid-calf", "below-calf", "ankle-length", "knee-length"]
+                .iter()
+                .any(|w| k.contains(w))
+    })
+}
+
+/// 하체 판정. 운영의 보수적인 기준이다.
+///
+/// - 10°C 미만의 미니: 니하이·롱부츠가 있어야 통과(없으면 경계), 5°C 미만이면 롱부츠에 무릎
+///   아래까지 오는 코트까지 있어야 경계, 아니면 실패. 선택하지 않은 스타킹·타이츠는 셈하지
+///   않는다 — 그런 아이템은 옷장 구조에 없다.
+/// - 5°C 미만의 미디: 부츠로 발목·정강이를 덮지 않으면 경계.
+/// - 바지·롱스커트: 하체는 통과로 본다(상체 판정이 따로 있다).
+/// - 10°C 미만의 샌들·뮬: 8°C 이상이면 경계, 그 아래는 실패(`shortlist::shoe_weather`).
+pub fn lower_body_fit(
+    bottom: Option<&Clothing>,
+    shoes: Option<&Clothing>,
+    outer: Option<&Clothing>,
+    temperature: f64,
+) -> TodayFitLevel {
+    if temperature >= LEG_CHECK_BELOW_C {
+        return TodayFitLevel::Pass;
+    }
+    // 발이 드러나는 신발(샌들·뮬)은 하의와 무관하게 본다. 기준은 후보 목록과 같다
+    // (`shortlist::shoe_weather`: 8°C 미만 부적합, 13°C 미만 경계).
+    if let Some(s) = shoes {
+        use crate::services::shortlist::{ShoeWeather, shoe_weather};
+        match shoe_weather(s, temperature) {
+            ShoeWeather::Unsuitable => return TodayFitLevel::Fail,
+            ShoeWeather::Borderline => return TodayFitLevel::Borderline,
+            ShoeWeather::Fine => {}
+        }
+    }
+    let Some(bottom) = bottom else {
+        return TodayFitLevel::Pass;
+    };
+    let (knee_high, boots) = shoe_cover(shoes);
+    match leg_cover(bottom) {
+        LegCover::Full => TodayFitLevel::Pass,
+        LegCover::Midi if temperature < NEAR_FREEZING_C && !boots => TodayFitLevel::Borderline,
+        LegCover::Midi => TodayFitLevel::Pass,
+        LegCover::Mini if temperature < NEAR_FREEZING_C => {
+            if knee_high && outer_covers_knees(outer) {
+                TodayFitLevel::Borderline
+            } else {
+                TodayFitLevel::Fail
+            }
+        }
+        LegCover::Mini if knee_high => TodayFitLevel::Pass,
+        LegCover::Mini => TodayFitLevel::Borderline,
+    }
+}
+
+/// 추운 날 코트를 어떻게 입는지. 판정은 여며 입은 상태를 기준으로 하므로, 응답과 이미지에도
+/// 같은 상태를 넘긴다(2026-10-17 — 예전 이미지는 코트를 열어 어깨에 걸쳐 판정과 어긋났다).
+/// 원래 달린 여밈만 쓴다 — 없는 벨트나 장식을 만들지 않는다.
+pub fn outer_wear(outer: &Clothing, temperature: f64) -> Option<&'static str> {
+    if outer.category != "아우터" || temperature >= CLOSED_COAT_BELOW_C {
+        return None;
+    }
+    let sub = outer.sub_category.as_deref().unwrap_or("");
+    let k = outer
+        .texture_keywords
+        .as_deref()
+        .unwrap_or("")
+        .to_lowercase();
+    let coat_like = sub.contains("코트") || sub == "coat" || is_winter_outer(outer);
+    if !coat_like {
+        return None;
+    }
+    Some(if k.contains("belt") {
+        "worn closed with its own belt tied at the waist, arms in the sleeves"
+    } else if k.contains("hourglass") {
+        "worn buttoned closed, arms in the sleeves, so the nipped waist and flared hem show"
+    } else {
+        "worn closed with its own fastening, arms in the sleeves"
+    })
 }
 
 /// 상의 + 아우터를 합친 보온 점수.
@@ -314,7 +524,7 @@ mod tests {
     use super::*;
     use crate::models::clothing::Clothing;
     use crate::models::outfit::OutfitSlot;
-    use crate::models::style_vocab::Tone;
+    use crate::models::style_vocab::{Tone, Weight};
     use chrono::NaiveDateTime;
 
     fn ts() -> NaiveDateTime {
@@ -380,6 +590,155 @@ mod tests {
         }
     }
 
+    /// 같은 옷에 지정한 설명·세부 종류. 보온 안감 확인과 길이는 여기서 읽는다.
+    fn described(mut s: OutfitSlot, keywords: &str, sub: &str) -> OutfitSlot {
+        s.clothing.texture_keywords = Some(keywords.into());
+        s.clothing.sub_category = (!sub.is_empty()).then(|| sub.into());
+        s
+    }
+
+    fn with(slots: Vec<OutfitSlot>) -> OutfitContext {
+        OutfitContext {
+            slots,
+            situation: None,
+        }
+    }
+
+    /// 추운 날 코트는 여며 입는다. 벨트가 있으면 그 벨트를, 아워글라스면 단추를 채워 허리선을
+    /// 드러낸다. 코트가 아닌 재킷이나 12°C 이상에는 착용 상태를 정하지 않는다.
+    #[test]
+    fn a_cold_day_coat_is_worn_closed() {
+        let belted = described(
+            outer(Weight::Heavy, Thickness::Thick),
+            "heavy matte wool, self-fabric belt, insulated lining",
+            "롱코트",
+        )
+        .clothing;
+        let hourglass = described(
+            outer(Weight::Mid, Thickness::Thick),
+            "hourglass silhouette, nipped waist, insulated lining",
+            "롱코트",
+        )
+        .clothing;
+        let rider = described(
+            outer(Weight::Heavy, Thickness::Medium),
+            "smooth leather, zip front",
+            "라이더자켓",
+        )
+        .clothing;
+        let w = |c: &Clothing, t| outer_wear(c, t).unwrap_or("");
+        assert!(w(&belted, 2.0).contains("its own belt"));
+        assert!(w(&hourglass, 2.0).contains("buttoned closed"));
+        for t in [2.0, 8.0] {
+            assert!(w(&belted, t).contains("arms in the sleeves"));
+        }
+        assert!(!w(&belted, 2.0).contains("open"));
+        assert_eq!(outer_wear(&rider, 2.0), None);
+        assert_eq!(outer_wear(&belted, 15.0), None);
+    }
+
+    /// 2°C 에 중간 두께 니트 + 일반 레더 라이더는 두께 합계(4 + 4 + 아우터 2 = 10)로 요구치를
+    /// 채우지만, 안감이 확인되지 않은 일반 재킷이라 통과로 확정하지 않는다(경계). 얇은
+    /// 이너 위면 실패다. 두꺼운 시어링 안감 재킷이면 통과한다.
+    #[test]
+    fn a_plain_rider_is_not_a_winter_jacket() {
+        let rider = described(
+            outer(Weight::Heavy, Thickness::Medium),
+            "leather, cropped biker, silver hardware",
+            "라이더자켓",
+        );
+        let shearling = described(
+            outer(Weight::Heavy, Thickness::Thick),
+            "matte black leather, thick shearling lining, hip-length",
+            "시어링자켓",
+        );
+        let knit = top(Weight::Mid, Thickness::Medium);
+        let tank = top(Weight::Light, Thickness::Thin);
+        assert_eq!(
+            compute_today_fit(&with(vec![knit.clone(), rider.clone()]), 2.0),
+            TodayFitLevel::Borderline
+        );
+        assert_eq!(
+            compute_today_fit(&with(vec![tank.clone(), rider.clone()]), 2.0),
+            TodayFitLevel::Fail
+        );
+        assert_eq!(
+            compute_today_fit(&with(vec![knit, shearling.clone()]), 2.0),
+            TodayFitLevel::Pass
+        );
+        assert_eq!(
+            compute_today_fit(&with(vec![tank.clone(), shearling]), 2.0),
+            TodayFitLevel::Pass
+        );
+        // 8°C 는 겨울 외투 조건 밖이다 — 얇은 이너 + 라이더는 합계(2 + 6 = 8)로 통과.
+        assert_eq!(
+            compute_today_fit(&with(vec![tank, rider]), 8.0),
+            TodayFitLevel::Pass
+        );
+    }
+
+    /// 두께가 두꺼워도 보온 안감·충전재가 확인되지 않으면 겨울 외투로 보지 않는다 —
+    /// 적혀 있지 않은 것은 "없음" 이 아니라 "모름" 이다.
+    #[test]
+    fn an_unconfirmed_lining_is_not_assumed() {
+        let tank = top(Weight::Light, Thickness::Thin);
+        let unknown = outer(Weight::Heavy, Thickness::Thick);
+        let lined = described(
+            outer(Weight::Heavy, Thickness::Thick),
+            "wool, insulated lining",
+            "",
+        );
+        assert_eq!(
+            compute_today_fit(&with(vec![tank.clone(), unknown]), 2.0),
+            TodayFitLevel::Fail
+        );
+        assert_eq!(
+            compute_today_fit(&with(vec![tank, lined]), 2.0),
+            TodayFitLevel::Pass
+        );
+    }
+
+    /// 시각적 무게만 바꿔서는 판정이 바뀌지 않는다.
+    #[test]
+    fn visual_weight_does_not_change_warmth() {
+        for t in [-3.0, 2.0, 8.0, 13.0, 18.0, 27.0] {
+            let fits: Vec<TodayFitLevel> = [Weight::Light, Weight::Mid, Weight::Heavy]
+                .into_iter()
+                .map(|w| {
+                    compute_today_fit(
+                        &with(vec![top(w, Thickness::Medium), outer(w, Thickness::Medium)]),
+                        t,
+                    )
+                })
+                .collect();
+            assert!(fits.windows(2).all(|p| p[0] == p[1]), "{t}°C: {fits:?}");
+        }
+    }
+
+    /// 같은 두께라도 여민 롱코트와 크롭 재킷은 덮는 범위가 다르다.
+    #[test]
+    fn a_long_coat_covers_more_than_a_cropped_jacket() {
+        let tee = top(Weight::Light, Thickness::Thin);
+        let long = described(
+            outer(Weight::Mid, Thickness::Thick),
+            "wool, mid-calf length, insulated lining",
+            "롱코트",
+        );
+        let crop = described(
+            outer(Weight::Mid, Thickness::Thick),
+            "faux fur, cropped at the waist, insulated lining",
+            "크롭자켓",
+        );
+        assert_eq!(
+            compute_today_fit(&with(vec![tee.clone(), long]), 0.0),
+            TodayFitLevel::Pass
+        );
+        assert_ne!(
+            compute_today_fit(&with(vec![tee, crop]), 0.0),
+            TodayFitLevel::Pass
+        );
+    }
+
     /// 상의 한 장만으로는 보온을 판정할 수 없다는 것이 이 게이트의 전제다.
     /// 같은 상의가 기온에 따라 통과/경계/실패로 갈리는지 고정한다.
     #[test]
@@ -395,16 +754,19 @@ mod tests {
     /// 깃발로 보지 않고 점수로 보기 때문이다.
     #[test]
     fn a_thicker_top_alone_holds_out_longer() {
-        let thin = ctx(top(Weight::Light, Thickness::Thin)); // 1점
-        let medium = ctx(top(Weight::Light, Thickness::Medium)); // 3점
+        let thin = ctx(top(Weight::Light, Thickness::Thin)); // 2점
+        let medium = ctx(top(Weight::Light, Thickness::Medium)); // 4점
 
-        // 18도: 얇은 쪽은 경계, 중간 두께는 통과.
-        assert_eq!(compute_today_fit(&thin, 18.0), TodayFitLevel::Borderline);
-        assert_eq!(compute_today_fit(&medium, 18.0), TodayFitLevel::Pass);
+        // 16도: 얇은 쪽은 경계, 중간 두께는 통과.
+        assert_eq!(compute_today_fit(&thin, 16.0), TodayFitLevel::Borderline);
+        assert_eq!(compute_today_fit(&medium, 16.0), TodayFitLevel::Pass);
 
-        // 13도: 얇은 쪽은 실패, 중간 두께는 아직 경계.
+        // 13도: 얇은 쪽은 실패, 중간 두께는 1점 모자라 통과로 둔다.
+        //
+        // 2026-10-17 시각적 무게(가벼움 −1)를 보온에서 빼며 바뀌었다. 예전에는 "가벼운"
+        // 중간 두께가 3점이라 13도에 경계였다.
         assert_eq!(compute_today_fit(&thin, 13.0), TodayFitLevel::Fail);
-        assert_eq!(compute_today_fit(&medium, 13.0), TodayFitLevel::Borderline);
+        assert_eq!(compute_today_fit(&medium, 13.0), TodayFitLevel::Pass);
     }
 
     /// 아우터 없이 미디엄 니트 한 장으로 10도를 넘기는 것은 통과가 아니다.
@@ -440,18 +802,27 @@ mod tests {
     /// 얇은 이너에 얇은 윈드브레이커를 더해도 한겨울을 넘길 수는 없다.
     #[test]
     fn a_flimsy_outer_does_not_rescue_a_thin_inner() {
-        let mut c = ctx(top(Weight::Light, Thickness::Thin)); // 1점
-        c.slots.push(outer(Weight::Light, Thickness::Thin)); // 1+2점
-        assert_eq!(compute_today_fit(&c, 12.0), TodayFitLevel::Borderline);
+        let mut c = ctx(top(Weight::Light, Thickness::Thin)); // 2점
+        c.slots.push(outer(Weight::Light, Thickness::Thin)); // 2+2점
+        assert_eq!(compute_today_fit(&c, 7.0), TodayFitLevel::Borderline);
         assert_eq!(compute_today_fit(&c, 2.0), TodayFitLevel::Fail);
     }
 
-    /// 두꺼운 겉옷은 추위에서 게이트를 완전히 들어올린다.
+    /// 보온 안감이 확인된 두꺼운 겉옷은 추위에서 게이트를 들어올린다. 안감이 확인되지
+    /// 않은 두꺼운 겉옷은 10도에는 통과지만 영하의 겨울 외출은 넘기지 못한다.
     #[test]
-    fn a_heavy_outer_lifts_the_gate() {
+    fn a_lined_heavy_outer_lifts_the_gate() {
         let mut c = ctx(top(Weight::Light, Thickness::Thin));
-        c.slots.push(outer(Weight::Heavy, Thickness::Thick));
+        c.slots.push(described(
+            outer(Weight::Heavy, Thickness::Thick),
+            "down fill, padded",
+            "",
+        ));
         assert_eq!(compute_today_fit(&c, 10.0), TodayFitLevel::Pass);
         assert_eq!(compute_today_fit(&c, -5.0), TodayFitLevel::Pass);
+        let mut unknown = ctx(top(Weight::Light, Thickness::Thin));
+        unknown.slots.push(outer(Weight::Heavy, Thickness::Thick));
+        assert_eq!(compute_today_fit(&unknown, 10.0), TodayFitLevel::Pass);
+        assert_eq!(compute_today_fit(&unknown, -5.0), TodayFitLevel::Fail);
     }
 }

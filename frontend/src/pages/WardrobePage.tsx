@@ -351,6 +351,7 @@ const GENRE_CHOICES: { key: string; label: string }[] = [
   { key: 'street', label: '스트리트' },
   { key: 'mannish', label: '매니시' },
   { key: 'sporty_casual', label: '스포티 캐주얼' },
+  { key: 'glam', label: '글램' },
   { key: 'amekaji', label: '아메카지' },
   { key: 'preppy', label: '프레피' },
   { key: 'workwear', label: '워크웨어' },

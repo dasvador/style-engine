@@ -30,6 +30,19 @@ pub fn keep_wearable<T>(candidates: Vec<T>, is_unfit: impl Fn(&T) -> bool) -> (V
     (kept, dropped)
 }
 
+/// `is_unfit` 이 참인 후보를 뺀다. 전부 빠지면 빈 목록이다 — 날씨 실패를 "후보가 다
+/// 떨어졌다" 는 이유로 정상 추천에 되돌리지 않는다(2026-10-17 사용자 결정). 남은 후보가
+/// 없으면 호출자가 제한된 보완을 시도하고, 그래도 없으면 후보 부족으로 알린다.
+pub fn keep_wearable_strict<T>(
+    candidates: Vec<T>,
+    is_unfit: impl Fn(&T) -> bool,
+) -> (Vec<T>, usize) {
+    let total = candidates.len();
+    let kept: Vec<T> = candidates.into_iter().filter(|c| !is_unfit(c)).collect();
+    let dropped = total - kept.len();
+    (kept, dropped)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -47,6 +60,14 @@ mod tests {
         let (kept, dropped) = keep_wearable(vec![1, 2], |_| true);
         assert_eq!(kept, vec![1, 2]);
         assert_eq!(dropped, 0);
+    }
+
+    /// 날씨 판정은 엄격하다 — 전부 실패면 아무것도 남기지 않는다.
+    #[test]
+    fn strict_gate_returns_nothing_when_all_fail() {
+        let (kept, dropped) = keep_wearable_strict(vec![1, 2], |_| true);
+        assert!(kept.is_empty());
+        assert_eq!(dropped, 2);
     }
 
     #[test]

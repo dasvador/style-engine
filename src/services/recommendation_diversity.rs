@@ -23,6 +23,11 @@ pub fn calculate_recency_penalty(history: &OutfitHistorySummary) -> i32 {
         penalty += 25;
     }
 
+    // 신발·가방만 다시 든 새 옷 조합은 작게만 깎는다.
+    if history.accessory_used_within_3_days {
+        penalty += 3;
+    }
+
     penalty += (history.recent_usage_count_7d / 2).min(8);
 
     penalty
