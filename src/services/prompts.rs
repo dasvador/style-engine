@@ -113,12 +113,72 @@ pub struct GroupedClothes {
     pub outers: Vec<String>,
     pub shoes: Vec<String>,
     pub bags: Vec<String>,
+    /// 색 다양성 무드(`mood_palette::targets`)에서 목록의 색 있는 상의·아우터("이름(계열)").
+    /// 다른 무드는 비어 있다.
+    pub colour_items: Vec<String>,
 }
 
 /// 후보 생성의 기본 원칙 3~5. 무드가 없거나 글램이 아닌 무드에 쓴다.
 const DEFAULT_PRINCIPLES: &str = "3. 강한 포인트 아이템은 1개 이하로 유지하세요.
 4. 하의는 안정적인 역할(베이스/구조템/연결템) 우선.
 5. 이너는 중립적이고 활용도 높은 아이템 우선.";
+
+/// 색 다양성을 다루는 성별·무드(`mood_palette::targets` — 여성 스트리트·스포티 캐주얼, 남성
+/// 아메카지·프레피)의 원칙 5. 관찰: 2026-10-17 감사에서 남성 프레피 초안 15개는 후보 목록에
+/// 하늘색 셔츠가 있어도 기본색만 골랐다. 추론: 기본 원칙 5("이너는 중립적이고 활용도 높은
+/// 아이템 우선")가 색 있는 셔츠·후디·트랙재킷을 밀어내는 한 원인으로 보인다 — 이 문장만의
+/// 효과를 따로 잰 실험은 없다. 3·4 는 그대로 두고 5 만 장르의 색 조합으로 바꾼다. "기본색이어야
+/// 안정적" 같은 공식도, "모두 컬러" 같은 공식도 두지 않는다.
+fn palette_principles(mood: crate::models::style_vocab::StyleGenre) -> Option<&'static str> {
+    use crate::models::style_vocab::StyleGenre as G;
+    Some(match mood {
+        G::Street => "3. 강한 포인트 아이템은 1개 이하로 유지하세요.
+4. 하의는 안정적인 역할(베이스/구조템/연결템) 우선.
+5. 이너와 아우터에도 색을 쓸 수 있습니다. 스트리트는 그래픽 티·후디·봄버·코치 재킷의 색을 데님·블랙·그레이 하의가 받치는 조합이 자연스럽습니다. 색 없는 조합도 스트리트입니다.",
+        G::SportyCasual => "3. 강한 포인트 아이템은 1개 이하로 유지하세요.
+4. 하의는 안정적인 역할(베이스/구조템/연결템) 우선.
+5. 이너와 아우터에도 색을 쓸 수 있습니다. 스포티 캐주얼은 트랙재킷·윈드브레이커·기능성 탑의 색을 그레이·블랙·화이트 하의가 받치는 조합이 자연스럽습니다. 색 없는 조합도 스포티 캐주얼입니다.",
+        G::Amekaji => "3. 강한 포인트 아이템은 1개 이하로 유지하세요.
+4. 하의는 안정적인 역할(베이스/구조템/연결템) 우선.
+5. 이너와 아우터에도 색을 쓸 수 있습니다. 아메카지는 플란넬·워크 셔츠·코듀로이 같은 옷의 붉은 계열·러스트·블루를 데님·치노·카키·브라운이 받치는 조합이 자연스럽습니다. 색 없는 조합도 아메카지입니다.",
+        G::Preppy => "3. 강한 포인트 아이템은 1개 이하로 유지하세요.
+4. 하의는 안정적인 역할(베이스/구조템/연결템) 우선.
+5. 이너와 아우터에도 색을 쓸 수 있습니다. 프레피는 하늘색·블루 계열 셔츠 같은 색 있는 상의에 네이비·치노·그레이 하의를 맞추는 조합이 자연스럽습니다. 색 없는 조합도 프레피입니다.",
+        _ => return None,
+    })
+}
+
+/// 색 다양성 무드의 후보 방향. 목록에 색 있는 상의·아우터가 있을 때만 넣고, 그 옷들을 이름으로
+/// 알려 준다. 관찰: 2026-10-17 남성 프레피 실측에서 "목록에 기본색이 아닌 색의 옷이 있으면"
+/// 이라고만 쓴 문장으로는 초안 12개가 하늘색 셔츠를 한 번도 고르지 않았고, 이름 목록을 넣은 뒤
+/// 3회 모두 최종 카드에 블루 셔츠가 나왔다(각 3회의 작은 표본). 없는 색을 만들지 않는다.
+fn palette_tasks(
+    mood: Option<crate::models::style_vocab::StyleGenre>,
+    colour_items: &[String],
+) -> String {
+    if colour_items.is_empty() {
+        return String::new();
+    }
+    // 남성 아메카지: 목록에 색 계열이 둘 이상이면 색 후보끼리 다른 계열을 쓰게 한다. 관찰:
+    // 2026-10-17 최종 실측 3회의 색 초안 5개가 모두 같은 계열(러스트 셔츠·러스트 재킷)이었다 —
+    // "후보마다 다른 옷" 은 같은 색의 다른 옷으로 채워진다. 계열은 목록이 이미 "이름(계열)" 로
+    // 알려 준다. 다른 무드 문장은 그대로다.
+    let families: std::collections::HashSet<&str> = colour_items
+        .iter()
+        .filter_map(|n| n.rsplit_once('(').map(|(_, f)| f.trim_end_matches(')')))
+        .collect();
+    let distinct = if mood == Some(crate::models::style_vocab::StyleGenre::Amekaji)
+        && families.len() >= 2
+    {
+        "- 색: 색 후보끼리는 서로 다른 색 계열(괄호 안)을 쓰세요 — 같은 계열의 다른 옷 두 개로 채우지 마세요. 최근 추천된 아이템에 있는 색 옷을 다시 고르기보다 아직 쓰지 않은 계열을 먼저 쓰세요.\n"
+    } else {
+        ""
+    };
+    format!(
+        "- 색: 이번 목록의 색 있는 상의·아우터는 {} 입니다. 5개 중 2개 이상은 이 중 하나를 상의나 아우터에 넣고, 가능하면 후보마다 다른 옷을 쓰세요. 기본색(블랙·화이트·그레이·베이지·브라운·네이비·데님·올리브·카키)만으로 된 후보도 1개 이상 남기세요. 가방·신발만 색이 있는 조합은 색 후보로 세지 않습니다.\n",
+        colour_items.join(", ")
+    ) + distinct
+}
 
 /// 글램의 원칙 3~5. 기본 원칙의 "중립적인 이너·안정적인 하의" 와 부딪쳐서 바꿔 끼운다.
 /// 중심은 옷 한 곳 — 어느 슬롯이어도 된다. 가방·신발은 중심이 되지 못한다.
@@ -182,6 +242,7 @@ pub async fn get_outfit_candidates(
     recent_items_hint: &str,
     mood: Option<crate::models::style_vocab::StyleGenre>,
     colour_variety: bool,
+    palette: bool,
 ) -> anyhow::Result<AiMultiRecommendation> {
     let today = chrono::Local::now().format("%Y-%m-%d (%A)").to_string();
     let (system_prompt, user_prompt) = outfit_candidate_prompts(
@@ -193,6 +254,7 @@ pub async fn get_outfit_candidates(
         &today,
         mood,
         colour_variety,
+        palette,
     );
     Ok(llm
         .chat_json::<AiMultiRecommendation>(
@@ -216,6 +278,8 @@ pub fn outfit_candidate_prompts(
     mood: Option<crate::models::style_vocab::StyleGenre>,
     // 엣지에서 색 다양성 문장을 넣을지. 밝은색 비선호 사용자면 `false` 다.
     colour_variety: bool,
+    // 색 다양성 성별·무드(`mood_palette::targets`)인가. 밝은색 비선호 사용자면 `false` 다.
+    palette: bool,
 ) -> (String, String) {
     // 글램은 기본 원칙 3~5(강한 포인트 1개 이하·안정적인 하의·중립적인 이너)를 글램의
     // 원칙으로 바꾼다. 두 원칙을 함께 두면 모델이 한쪽을 무시한다. 다른 무드의 문장은
@@ -254,10 +318,13 @@ pub fn outfit_candidate_prompts(
     let occasion_text = occasion.unwrap_or("일상");
     let style_text = style_preference.unwrap_or("편한 스타일");
 
+    let palette_principle = mood.filter(|_| palette).and_then(palette_principles);
     let principles = if glam {
         GLAM_PRINCIPLES
     } else if edgy {
         EDGY_PRINCIPLES
+    } else if let Some(p) = palette_principle {
+        p
     } else {
         DEFAULT_PRINCIPLES
     };
@@ -365,6 +432,17 @@ pub fn outfit_candidate_prompts(
         } else if edgy {
             "\n- 선택한 무드: 엣지 — 비대칭과 구조적인 실루엣, 가죽과 니트·데님·직물의 대비로 \
              취향과 존재감을 드러내는 도시적인 스타일. 일상 외출에서 시선을 끄는 착장을 만듭니다."
+        } else if palette_principle.is_some() {
+            match mood {
+                Some(crate::models::style_vocab::StyleGenre::Street) => "\n- 선택한 무드: 스트리트",
+                Some(crate::models::style_vocab::StyleGenre::SportyCasual) => {
+                    "\n- 선택한 무드: 스포티 캐주얼"
+                }
+                Some(crate::models::style_vocab::StyleGenre::Amekaji) => {
+                    "\n- 선택한 무드: 아메카지"
+                }
+                _ => "\n- 선택한 무드: 프레피",
+            }
         } else {
             ""
         },
@@ -385,6 +463,8 @@ pub fn outfit_candidate_prompts(
             } else {
                 format!("{EDGY_TASKS}{colour}")
             }
+        } else if palette_principle.is_some() {
+            palette_tasks(mood, &clothes.colour_items)
         } else {
             String::new()
         },
@@ -904,6 +984,16 @@ mod outfit_candidate_prompt_tests {
         temperature: f64,
         colour_variety: bool,
     ) -> (String, String) {
+        prompts_full(mood, temperature, colour_variety, false, &[])
+    }
+
+    fn prompts_full(
+        mood: Option<StyleGenre>,
+        temperature: f64,
+        colour_variety: bool,
+        palette: bool,
+        colour_items: &[String],
+    ) -> (String, String) {
         let w = CurrentWeather {
             temperature,
             apparent_temperature: 16.0,
@@ -918,6 +1008,7 @@ mod outfit_candidate_prompt_tests {
             outers: vec![],
             shoes: vec!["- 스니커".into()],
             bags: vec![],
+            colour_items: colour_items.to_vec(),
         };
         outfit_candidate_prompts(
             &w,
@@ -928,6 +1019,7 @@ mod outfit_candidate_prompt_tests {
             "2026-10-17 (Saturday)",
             mood,
             colour_variety,
+            palette,
         )
     }
 
@@ -981,6 +1073,87 @@ mod outfit_candidate_prompt_tests {
             for g in [None, Some(StyleGenre::Glam), Some(StyleGenre::Minimal)] {
                 assert_eq!(prompts_with(g, t, true), prompts_with(g, t, false));
             }
+        }
+    }
+
+    /// 색 다양성 무드(여성 스트리트·스포티, 남성 아메카지·프레피)는 기본 원칙 5("이너는
+    /// 중립적")만 장르의 색 조합으로 바꾸고, 목록의 색 있는 옷을 이름으로 알린다. 색 있는 옷이
+    /// 없으면 색 지시를 넣지 않는다. 꺼져 있으면(밝은색 비선호) 예전 문장 그대로다.
+    #[test]
+    fn palette_moods_swap_only_the_neutral_inner_principle() {
+        let items = vec!["라이트블루 옥스포드 셔츠(블루)".to_string()];
+        for g in [
+            StyleGenre::Street,
+            StyleGenre::SportyCasual,
+            StyleGenre::Amekaji,
+            StyleGenre::Preppy,
+        ] {
+            let (sys, user) = prompts_full(Some(g), 19.6, true, true, &items);
+            assert!(
+                !sys.contains("5. 이너는 중립적이고 활용도 높은 아이템 우선."),
+                "{g}"
+            );
+            assert!(
+                sys.contains("3. 강한 포인트 아이템은 1개 이하로 유지하세요."),
+                "{g}"
+            );
+            assert!(sys.contains("색 없는 조합도"), "{g}");
+            assert!(user.contains("라이트블루 옥스포드 셔츠(블루)"), "{g}");
+            assert!(user.contains("선택한 무드"), "{g}");
+            let (_, empty) = prompts_full(Some(g), 19.6, true, true, &[]);
+            assert!(!empty.contains("- 색:"), "{g}");
+            assert_eq!(
+                prompts_full(Some(g), 19.6, true, false, &items),
+                prompts_full(None, 19.6, true, false, &[]),
+                "{g}"
+            );
+        }
+    }
+
+    /// 아메카지만, 목록에 색 계열이 둘 이상일 때 색 후보끼리 다른 계열을 쓰라고 한다. 계열이
+    /// 하나뿐이거나 다른 대상 무드면 이 문장이 없다.
+    #[test]
+    fn amekaji_asks_for_different_colour_families() {
+        let two = vec![
+            "러스트 셔츠(오렌지)".to_string(),
+            "블루 셔츠(블루)".to_string(),
+        ];
+        let one = vec![
+            "러스트 셔츠(오렌지)".to_string(),
+            "러스트 재킷(오렌지)".to_string(),
+        ];
+        let has = |g, items: &[String]| {
+            prompts_full(Some(g), 19.6, true, true, items)
+                .1
+                .contains("서로 다른 색 계열")
+        };
+        assert!(has(StyleGenre::Amekaji, &two));
+        assert!(!has(StyleGenre::Amekaji, &one));
+        for g in [
+            StyleGenre::Preppy,
+            StyleGenre::Street,
+            StyleGenre::SportyCasual,
+        ] {
+            assert!(!has(g, &two), "{g}");
+        }
+    }
+
+    /// 다른 무드는 색 다양성 값과 무관하게 예전 문장이다. 엣지·글램도 그대로다.
+    #[test]
+    fn palette_flag_does_not_touch_other_moods() {
+        let items = vec!["라벤더 니트(퍼플)".to_string()];
+        for g in [
+            StyleGenre::Romantic,
+            StyleGenre::Minimal,
+            StyleGenre::Bohemian,
+            StyleGenre::Edgy,
+            StyleGenre::Glam,
+        ] {
+            assert_eq!(
+                prompts_full(Some(g), 19.6, true, true, &items),
+                prompts_full(Some(g), 19.6, true, false, &items),
+                "{g}"
+            );
         }
     }
 

@@ -332,12 +332,12 @@ fn mood_affinity(mood: StyleGenre, item_genres: Option<&Vec<String>>) -> i32 {
 
 /// 슬롯별 shortlist를 생성.
 /// 단순 top-k가 아니라 role bucket을 섞어 다양성을 확보.
-pub fn build_shortlist<'a>(
+/// 이 슬롯에서 날씨·상황을 지난 옷과 점수. 점수 높은 순이다.
+fn eligible<'a>(
     clothes: &'a [Clothing],
     category: &str,
-    k: usize,
     ctx: &ShortlistContext,
-) -> Vec<&'a Clothing> {
+) -> Vec<(&'a Clothing, i32)> {
     let in_slot: Vec<&Clothing> = clothes
         .iter()
         .filter(|c| c.category == category)
@@ -357,6 +357,16 @@ pub fn build_shortlist<'a>(
         pool.into_iter().map(|c| (c, score_item(c, ctx))).collect();
 
     candidates.sort_by_key(|a| std::cmp::Reverse(a.1));
+    candidates
+}
+
+pub fn build_shortlist<'a>(
+    clothes: &'a [Clothing],
+    category: &str,
+    k: usize,
+    ctx: &ShortlistContext,
+) -> Vec<&'a Clothing> {
+    let candidates = eligible(clothes, category, ctx);
 
     if candidates.len() <= k {
         return candidates.into_iter().map(|(c, _)| c).collect();
@@ -430,6 +440,128 @@ pub fn build_all_shortlists<'a>(
     }
 }
 
+/// 후보 목록에 새로 넣을 수 있는 색 계열의 수(슬롯당). 기본색 옷이 밀려나지 않게 적게 둔다.
+const MAX_ADDED_COLOUR_FAMILIES: usize = 3;
+
+/// 색 다양성을 다루는 성별·무드(`mood_palette::targets`)의 후보 목록. 기본 목록을 그대로 만든
+/// 뒤, 상의·아우터에서 목록에 없는 색 계열을 계열마다 가장 점수 높은 옷 한 벌씩(슬롯당 최대
+/// `MAX_ADDED_COLOUR_FAMILIES`) 더한다.
+///
+/// 2026-10-17 남성 아메카지(감사 `mood-color-audit-20261017`): 옷장의 컬러 상의·아우터 9벌 중
+/// 19.6°C 첫 후보 목록에 4벌만 들어갔고, 브릭레드 플란넬·로얄블루 워크 셔츠는 빠졌다. 이 목록은
+/// 역할·베이직 스타일 우선 점수로 고르고 색은 보지 않는다.
+///
+/// 날씨·상황을 지난 옷(`eligible`)에서만 고른다. 목록이 차 있으면 점수가 가장 낮은 옷과
+/// 바꾸되, 그 역할의 유일한 옷과 그 색 계열의 유일한 옷은 빼지 않는다. 특정 옷을 지목하지
+/// 않는다. 색 있는 옷이 없으면 기본 목록 그대로다.
+pub fn build_all_shortlists_with_palette<'a>(
+    clothes: &'a [Clothing],
+    ctx: &ShortlistContext,
+) -> ShortlistResult<'a> {
+    let base = build_all_shortlists(clothes, ctx);
+    // 모델에 보내는 목록에서 깨진 이름의 옷을 빼고 다음 점수의 정상 옷으로 채운 뒤 색 계열을
+    // 보강한다. 이 순서라 깨진 옷이 색 계열 자리를 막지도 않는다.
+    let slot = |selected: Vec<&'a Clothing>, category: &str, k: usize| {
+        without_broken_names(selected, &eligible(clothes, category, ctx), k)
+    };
+    let tops = slot(base.tops, "상의", TOP_K_TOP);
+    let outers = slot(base.outers, "아우터", TOP_K_OUTER);
+    ShortlistResult {
+        tops: add_colour_families(tops, &eligible(clothes, "상의", ctx), TOP_K_TOP),
+        outers: add_colour_families(outers, &eligible(clothes, "아우터", ctx), TOP_K_OUTER),
+        bottoms: slot(base.bottoms, "하의", TOP_K_BOTTOM),
+        shoes: slot(base.shoes, "신발", TOP_K_SHOES),
+        bags: slot(base.bags, "가방", TOP_K_BAG),
+    }
+}
+
+/// 이름이 깨진 옷을 빼고, 빈 자리를 같은 슬롯의 다음 점수 정상 옷으로 채운다(색 다양성 대상만).
+///
+/// 2026-10-17 프레피·아메카지 실측: 이름에 깨진 글자가 있는 "슬레이트블루 럭비 셔츠" 를 모델이
+/// 고쳐 써서 돌려주고, 서버는 고친 이름을 옷장에서 찾지 못해 그 초안을 버렸다 — 색 목록에서만
+/// 빼도 일반 상의 목록에 남아 계속 골랐다. DB 원본과 다른 무드의 목록은 그대로다.
+fn without_broken_names<'a>(
+    selected: Vec<&'a Clothing>,
+    eligible: &[(&'a Clothing, i32)],
+    k: usize,
+) -> Vec<&'a Clothing> {
+    let mut kept: Vec<&Clothing> = selected
+        .into_iter()
+        .filter(|c| !has_broken_name(c))
+        .collect();
+    for (c, _) in eligible {
+        if kept.len() >= k {
+            break;
+        }
+        if !has_broken_name(c) && !kept.iter().any(|x| x.id == c.id) {
+            kept.push(c);
+        }
+    }
+    kept
+}
+
+/// 이름에 깨진 글자(U+FFFD)가 있는가. 모델이 그대로 돌려줄 수 없는 이름이다.
+fn has_broken_name(c: &Clothing) -> bool {
+    c.name.contains('\u{FFFD}')
+}
+
+fn add_colour_families<'a>(
+    mut selected: Vec<&'a Clothing>,
+    eligible: &[(&'a Clothing, i32)],
+    k: usize,
+) -> Vec<&'a Clothing> {
+    use crate::services::mood_palette::colour_family;
+    let score_of = |c: &Clothing| {
+        eligible
+            .iter()
+            .find(|(e, _)| e.id == c.id)
+            .map_or(i32::MIN, |(_, s)| *s)
+    };
+    let mut added = 0;
+    for (c, _) in eligible {
+        if added >= MAX_ADDED_COLOUR_FAMILIES {
+            break;
+        }
+        // 이름이 깨진 옷은 색 계열 대표로 고르지 않는다(`colour_items` 참고).
+        if has_broken_name(c) {
+            continue;
+        }
+        let Some(family) = colour_family(c) else {
+            continue;
+        };
+        // 대표는 모델이 고를 수 있는 옷만 친다 — 깨진 이름의 같은 계열 옷은 대표가 아니다.
+        if selected
+            .iter()
+            .any(|x| !has_broken_name(x) && colour_family(x) == Some(family))
+        {
+            continue;
+        }
+        if selected.len() >= k {
+            // 빼도 되는 옷: 같은 역할이 하나 더 있고, 색 계열이 없거나 같은 계열이 하나 더 있다.
+            let victim = selected
+                .iter()
+                .enumerate()
+                .filter(|(_, x)| {
+                    selected.iter().filter(|y| y.role == x.role).count() >= 2
+                        && colour_family(x).is_none_or(|f| {
+                            selected
+                                .iter()
+                                .filter(|y| colour_family(y) == Some(f))
+                                .count()
+                                >= 2
+                        })
+                })
+                .min_by_key(|(_, x)| score_of(x))
+                .map(|(i, _)| i);
+            let Some(i) = victim else { break };
+            selected.remove(i);
+        }
+        selected.push(c);
+        added += 1;
+    }
+    selected
+}
+
 pub struct ShortlistResult<'a> {
     pub tops: Vec<&'a Clothing>,
     pub bottoms: Vec<&'a Clothing>,
@@ -456,6 +588,7 @@ impl<'a> ShortlistResult<'a> {
             outers: self.outers.iter().map(|c| fmt(c)).collect(),
             shoes: self.shoes.iter().map(|c| fmt(c)).collect(),
             bags: self.bags.iter().map(|c| fmt(c)).collect(),
+            colour_items: Vec::new(),
         }
     }
 
@@ -486,7 +619,24 @@ impl<'a> ShortlistResult<'a> {
             outers: self.outers.iter().map(|c| fmt(c)).collect(),
             shoes: self.shoes.iter().map(|c| fmt(c)).collect(),
             bags: self.bags.iter().map(|c| fmt(c)).collect(),
+            colour_items: Vec::new(),
         }
+    }
+
+    /// 목록의 색 있는 상의·아우터(`mood_palette::colour_family`), "이름(계열)" 꼴.
+    ///
+    /// 이름에 깨진 글자(U+FFFD)가 있는 옷은 넣지 않는다. 모델은 그 이름을 그대로 돌려줄 수 없어
+    /// 고쳐 쓰고, 서버는 고친 이름을 옷장에서 찾지 못해 그 초안을 버린다 — 2026-10-17 프레피
+    /// 실측에서 "슬레이트블루 럭비 셔츠" 초안이 매번 이렇게 빠졌다. 데이터는 고치지 않는다.
+    pub fn colour_items(&self) -> Vec<String> {
+        self.tops
+            .iter()
+            .chain(self.outers.iter())
+            .filter(|c| !has_broken_name(c))
+            .filter_map(|c| {
+                crate::services::mood_palette::colour_family(c).map(|f| format!("{}({f})", c.name))
+            })
+            .collect()
     }
 
     /// 디버깅용 요약

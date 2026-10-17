@@ -83,6 +83,7 @@ async fn get_recommendation(
         &recent_hint,
         None,
         false,
+        false,
     )
     .await;
 
@@ -319,20 +320,36 @@ async fn get_multi_recommendation(
         current_season: current_season.as_deref(),
         recent_item_ids: &recent_ids,
     };
-    let shortlist = crate::services::shortlist::build_all_shortlists(&clothes, &sl_ctx);
+    // 색 다양성 성별·무드(여성 스트리트·스포티 캐주얼, 남성 아메카지·프레피)는 후보 목록에
+    // 색 계열을 남기고 후보 지시의 원칙 5 를 장르의 색 조합으로 바꾼다
+    // (`services::mood_palette`). 밝은색을 싫어한다고 적은 사용자에게는 켜지 않는다.
+    let dislikes_bright = dislikes_bright_colors(&state.db, user_id).await;
+    let palette =
+        crate::services::mood_palette::enabled(body.gender.as_deref(), mood, dislikes_bright);
+    if crate::services::mood_palette::targets(body.gender.as_deref(), mood) {
+        tracing::info!(palette, "무드 색 다양성");
+    }
+    let shortlist = if palette {
+        crate::services::shortlist::build_all_shortlists_with_palette(&clothes, &sl_ctx)
+    } else {
+        crate::services::shortlist::build_all_shortlists(&clothes, &sl_ctx)
+    };
     tracing::info!("{}", shortlist.summary());
     // 글램·엣지는 소재·실루엣·두께·특징까지 넘긴다 — 어떤 옷이 빛을 받는지, 어떤 형태인지가
     // 판단의 중심이라 이름만으로는 모자라다. 다른 무드는 예전과 같은 줄이다.
-    let grouped = if mood.is_some_and(crate::services::mood_gate::judges) {
+    let mut grouped = if mood.is_some_and(crate::services::mood_gate::judges) {
         shortlist.to_grouped_detailed()
     } else {
         shortlist.to_grouped()
     };
+    if palette {
+        grouped.colour_items = shortlist.colour_items();
+        tracing::info!(colour_items = ?grouped.colour_items, "무드 색 다양성 후보");
+    }
 
     // 엣지의 색 다양성(후보 지시의 색 문장, 카드의 컬러 우선 선택). 밝은색을 싫어한다고 적은
     // 사용자에게는 켜지 않는다 — 상담(`chat::today_outfit`)과 같은 기준이다. 저장값은 읽기만 한다.
-    let edgy_colour =
-        mood == Some(StyleGenre::Edgy) && !dislikes_bright_colors(&state.db, user_id).await;
+    let edgy_colour = mood == Some(StyleGenre::Edgy) && !dislikes_bright;
     if mood == Some(StyleGenre::Edgy) {
         tracing::info!(edgy_colour, "엣지 색 다양성");
     }
@@ -349,6 +366,7 @@ async fn get_multi_recommendation(
         &recent_hint,
         mood,
         edgy_colour,
+        palette,
     )
     .await
     .map_err(AppError::Internal)?;
@@ -1736,6 +1754,7 @@ fn build_grouped_clothes(clothes: &[Clothing]) -> prompts::GroupedClothes {
             .filter(|c| c.category == "가방")
             .map(fmt)
             .collect(),
+        colour_items: Vec::new(),
     }
 }
 
