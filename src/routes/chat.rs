@@ -596,6 +596,8 @@ async fn chat(
                             &clothes,
                             &wide_clothes,
                             &state.embedding,
+                            mood,
+                            temperature,
                         )
                         .await
                         {
@@ -1531,6 +1533,11 @@ fn genre_backdrop(genre: StyleGenre) -> &'static str {
             "one clear architectural line or a single field of colour with a sharp edge — \
              never a dark grungy alley, graffiti or neon"
         }
+        // 팝: 색이 있는 면이나 단순한 그래픽 건축 요소 하나. 옷의 색·무늬보다 강하지 않게.
+        G::Pop => {
+            "one clear field of colour or a simple graphic architectural detail that suits the \
+             colours of the clothes, calm enough that the pattern of the clothes stays the strongest"
+        }
         _ => "a material and colour that suit the clothes",
     }
 }
@@ -1749,6 +1756,18 @@ fn genre_setting(genre: StyleGenre) -> (&'static [&'static str], &'static str) {
             ],
             "crisp daylight from one side that sharpens the lines of the clothes",
         ),
+        // 팝: 그래픽 타일의 카페 테라스·디자인 서점 입구·색 칠한 계단·갤러리 앞·줄무늬 차양.
+        // 놀이공원·캔디숍·그래피티·네온으로 굳히지 않는다. 시간은 빛이 정한다(`pick_light`).
+        G::Pop => (
+            &[
+                "a cafe terrace with graphic two-tone floor tiles",
+                "the entrance of a design bookshop with a coloured door frame",
+                "a city staircase painted in one bright colour",
+                "a gallery forecourt with pale paving and one coloured wall",
+                "a terrace under a striped awning in front of a pale rendered wall",
+            ],
+            "bright clear daylight that keeps the colours of the clothes true",
+        ),
         G::Amekaji => (
             &[
                 "a narrow alley with old brick and a parked bicycle",
@@ -1894,6 +1913,14 @@ fn genre_hair(genre: StyleGenre) -> &'static [(&'static str, u32)] {
             ("straight shoulder-length hair with a center part", 2),
             ("short textured crop", 1),
         ],
+        // 팝: 일상 헤어 위주. 튀는 헤어로 무드를 대신하지 않는다.
+        G::Pop => &[
+            ("long straight hair worn down", 3),
+            ("chin-length bob with a little movement", 3),
+            ("high ponytail", 2),
+            ("loose low bun", 2),
+            ("half-up hair, loosely gathered", 1),
+        ],
         // 남성 장르의 코디를 여성 모델로 그릴 때. 특정 무드 없이 일상적인 헤어로 둔다.
         _ => &[
             (
@@ -2003,6 +2030,13 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
             "Her expression is relaxed and self-possessed: a calm, steady look, confident \
              without performing.",
         ),
+        // 팝: 밝고 편안한 자신감. 화장은 가볍게 — 옷 색에 맞춘 색조로 무드를 만들지 않는다.
+        StyleGenre::Pop => (
+            "in her twenties or early thirties",
+            "minimal everyday makeup, natural lips",
+            "Her expression is bright and relaxed — an easy, confident smile or a cheerful \
+             glance, never a posed advertising grin.",
+        ),
         _ => (
             "in her twenties",
             "minimal everyday makeup, natural lips",
@@ -2063,7 +2097,7 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
             "Candid editorial photography: she is out in the city, aware of the camera and \
              at ease with it, photographed from across the pavement."
         }
-        StyleGenre::Edgy => {
+        StyleGenre::Edgy | StyleGenre::Pop => {
             "Candid editorial photography: she is out in the city on her own errand, aware of \
              the camera and unbothered by it, photographed from across the pavement."
         }
@@ -2089,7 +2123,7 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
     // 바뀌면 그 무드의 저장된 사진이 캐시에서 빗나간다.
     // 엣지도 코발트·버건디·올리브 같은 옷의 색을 누르지 않는다.
     let (saturation, palette, moment) = match genre {
-        StyleGenre::Glam | StyleGenre::Edgy => (
+        StyleGenre::Glam | StyleGenre::Edgy | StyleGenre::Pop => (
             "true-to-life saturation",
             "every garment keeps its own colour and saturation, and the colours of the \
              background support the clothes rather than compete with them",
@@ -2181,6 +2215,12 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
             "excessive makeup, dark smoky eyes, dark lipstick",
             "fashion-model posing, scowling or aggressive expression",
             "excessive gloss, wet-look or high-shine leather",
+        ),
+        // 팝: 아이돌·아이 같은 포즈와 옷 색에 맞춘 화장으로 무드를 대신하지 않는다.
+        StyleGenre::Pop => (
+            "excessive makeup, glitter makeup, coloured eyeshadow matched to the clothes",
+            "fashion-model posing, cutesy or childish poses, idol-style finger hearts",
+            "excessive gloss",
         ),
         _ => (
             "excessive makeup",
@@ -2369,6 +2409,35 @@ Colour: {base_color}
 Style: {base_style}
 
 Avoid: {base_avoid}, punk costume, studs, spikes, chains, safety pins, rips, distressing or hardware that the listed garments do not have, piercings, tattoos, chokers, necklaces, earrings, sunglasses, a dark grungy alley, graffiti, neon lighting, nightclub interior."#
+        ),
+        // 팝: 색과 무늬가 착장을 이끈다. 목록의 색·배색·스트라이프·체크·그래픽을 그대로 두고 새
+        // 프린트·로고·장식·소품을 더하지 않는다. 어린아이 같은 연출·코스튬으로 가지 않는다.
+        StyleGenre::Pop => format!(
+            r#"Fashion editorial photograph of a woman {age}, dressed in a bright, playful, colour-led way. She must be female.
+
+Face: {base_face}
+
+Body: {base_body}
+
+Outfit: The female model is wearing {items} — worn so the colours and patterns of the pieces read clearly: every listed colour, colour-block, stripe, check and graphic stays exactly as listed, with no new print, logo, slogan or decoration added. Bright pieces sit together just as they are listed. A piece described as worn closed stays fastened all the way — never open it to show the colour of what is underneath. {base_fidelity}
+
+Garments: {base_garments}
+
+Pose: {pose}. {base_pose_rule}
+
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
+
+Lighting: {light}. {base_light}
+
+Camera: {base_camera}
+
+Composition: {base_composition}
+
+Colour: {base_color}
+
+Style: {base_style}
+
+Avoid: {base_avoid}, an amusement park, a candy shop, a graffiti wall, neon lighting, nightclub interior, costume or cosplay styling, childish or kid-like styling, toy-like props, balloons, idol stage styling, jewellery, glasses, bandanas, hats or scarves that are not listed, added prints or logos."#
         ),
         StyleGenre::Bohemian => format!(
             r#"Fashion editorial photograph of a woman in her 20s, dressed in a loose, bohemian way. She must be female.
@@ -2977,8 +3046,9 @@ async fn tool_get_outfit(
 /// 앞 코디에서 한 카테고리만 바꾼다.
 ///
 /// 유저가 원하는 것을 말했으면 그 카테고리 안에서 가장 비슷한 옷을, 아니면 남은
-/// 아이템들과의 궁합 점수 합이 가장 높은 옷을 고른다. 지금 입은 것은 후보에서 뺀다 —
-/// 바꿔 달라는 요청에 같은 옷이 돌아오면 안 된다.
+/// 아이템들과의 궁합 점수 합이 가장 높은 옷을 고른다(팝은 `best_fit_swap` 참고). 지금 입은
+/// 것은 후보에서 뺀다 — 바꿔 달라는 요청에 같은 옷이 돌아오면 안 된다.
+#[allow(clippy::too_many_arguments)]
 async fn tool_swap_item(
     base: &[ChatItem],
     category: &str,
@@ -2986,6 +3056,8 @@ async fn tool_swap_item(
     clothes: &[Clothing],
     wide_clothes: &[Clothing],
     embedding: &std::sync::Arc<crate::services::embedding::EmbeddingService>,
+    mood: Option<StyleGenre>,
+    temperature: Option<f64>,
 ) -> Option<(Vec<ChatItem>, Vec<String>)> {
     let slot = slot_for_category(category)?;
     let current = base
@@ -3039,13 +3111,7 @@ async fn tool_swap_item(
         // 색이나 종류를 말했으면 이미 걸렀으므로 검색이 실패해도 첫 후보가 답이다.
         found.or_else(|| (!colors.is_empty() || !kinds.is_empty()).then(|| &candidates[0]))
     };
-    let picked = picked.or_else(|| {
-        candidates.iter().max_by_key(|c| {
-            kept.iter()
-                .map(|k| outfit_scorer::complement_score(k, c))
-                .sum::<i32>()
-        })
-    })?;
+    let picked = picked.or_else(|| best_fit_swap(&candidates, &kept, mood, temperature))?;
 
     let new_item = ChatItem::from_clothing(picked, true)?;
     // 자리는 그대로 두고 그 칸만 바꾼다 — 화면과 이미지 문자열의 순서가 유지된다.
@@ -3067,6 +3133,48 @@ async fn tool_swap_item(
         .collect();
     tracing::info!(category, query, picked = %picked.name, "swap_item");
     Some((items, ids))
+}
+
+/// 유저가 원하는 것을 말하지 않은 바꾸기: 남은 옷과의 궁합 점수 합이 가장 높은 옷.
+///
+/// 팝이면 바꾼 뒤에도 팝으로 읽히는 옷을 먼저 본다 — 궁합 점수만 보면 기본색 옷이 이겨 색
+/// 조합이 깨졌다(2026-10-17 실측: 화이트 티 + 레드 트러커 + 켈리그린 팬츠의 하의가 화이트
+/// 데님으로). 그런 옷이 없으면 원래대로다. 팝의 온화한 날 겨울 외투는 홈처럼 후보가 아니다
+/// (`mood_gate::hidden_on_mild_pop_day`). 다른 무드는 예전과 같다.
+fn best_fit_swap<'a>(
+    candidates: &'a [Clothing],
+    kept: &[&Clothing],
+    mood: Option<StyleGenre>,
+    temperature: Option<f64>,
+) -> Option<&'a Clothing> {
+    let candidates: Vec<&Clothing> = candidates
+        .iter()
+        .filter(|c| !crate::services::mood_gate::hidden_on_mild_pop_day(c, mood, temperature))
+        .collect();
+    let keeps_pop: Vec<&Clothing> = if mood == Some(StyleGenre::Pop) {
+        candidates
+            .iter()
+            .copied()
+            .filter(|c| {
+                let mut outfit = kept.to_vec();
+                outfit.push(c);
+                crate::services::mood_gate::reads_as_at(StyleGenre::Pop, &outfit, temperature)
+                    == Some(true)
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let pool: Vec<&Clothing> = if keeps_pop.is_empty() {
+        candidates
+    } else {
+        keeps_pop
+    };
+    pool.into_iter().max_by_key(|c| {
+        kept.iter()
+            .map(|k| outfit_scorer::complement_score(k, c))
+            .sum::<i32>()
+    })
 }
 
 /// 유저가 말한 색 표현을 옷장 이름에 쓰는 색 단어들로 넓힌다. 색을 말하지 않았으면 빈 목록.
@@ -3382,6 +3490,16 @@ fn today_outfit(
     clothes: &[Clothing],
     ctx: &OutfitContext<'_>,
 ) -> (String, Vec<ChatItem>, Vec<String>) {
+    // 홈과 같은 기준: 팝의 온화한 날에는 겨울 외투를 기준 옷·조합 후보로 쓰지 않는다. 기온을
+    // 모르면 빼지 않는다(`mood_gate::hidden_on_mild_pop_day`).
+    let usable: Vec<Clothing> = clothes
+        .iter()
+        .filter(|c| {
+            !crate::services::mood_gate::hidden_on_mild_pop_day(c, ctx.mood, ctx.temperature)
+        })
+        .cloned()
+        .collect();
+    let clothes = usable.as_slice();
     let temp = ctx.temperature.unwrap_or(20.0);
     let mut anchors: Vec<&Clothing> = clothes
         .iter()
@@ -3602,7 +3720,7 @@ fn build_final_outfit<'a>(
     // 없으면 원래 최고점이다 — 빈 답보다 낫다.
     let reads = |o: &Vec<&Clothing>| {
         ctx.mood
-            .and_then(|m| crate::services::mood_gate::reads_as(m, o))
+            .and_then(|m| crate::services::mood_gate::reads_as_at(m, o, ctx.temperature))
             .unwrap_or(true)
     };
     let (best_outfit, best_score) = combos
@@ -4328,6 +4446,162 @@ mod tests {
         assert!(!run(16.0, Some(StyleGenre::Minimal), &none).2.is_empty());
     }
 
+    /// 상담의 팝 코디도 홈과 같은 게이트를 지난다 — 기준 옷이 선명한 옷이어도 그 옷 한 벌에
+    /// 기본색만 맞춘 조합은 내지 않고, 다른 색 계열 옷이나 배색 옷이 함께인 조합을 고른다.
+    /// 8°C·2°C 에는 여민 코트 속 상의를 근거로 세지 않는다(코트나 하의의 색이 보여야 한다).
+    #[test]
+    fn today_outfit_reads_pop_with_visible_colour() {
+        use crate::models::style_vocab::{Saturation, Thickness};
+        let coloured = |id: &str, name: &str, cat: &str, color: &str, kw: &str| {
+            let mut c = chat_item(id, name, cat, "cotton", kw);
+            c.color = Some(color.into());
+            c.saturation = Some(Saturation::High);
+            c
+        };
+        let plain = |id: &str, name: &str, cat: &str, color: &str| {
+            let mut c = chat_item(id, name, cat, "cotton", "plain");
+            c.color = Some(color.into());
+            c.saturation = Some(Saturation::Low);
+            c
+        };
+        let mut navy_coat = plain("o1", "네이비 보온 울 코트", "아우터", "네이비");
+        navy_coat.texture_keywords = Some("heavy wool, knee-length, insulated lining".into());
+        navy_coat.thickness = Thickness::Thick;
+        let mut check_coat = coloured(
+            "o2",
+            "그린 레드 체크 울 코트",
+            "아우터",
+            "그린/레드",
+            "heavy wool, bold check in green and red, knee-length, insulated lining",
+        );
+        check_coat.thickness = Thickness::Thick;
+        let clothes = vec![
+            coloured("t1", "코발트 크롭 니트", "상의", "코발트", "soft knit"),
+            coloured(
+                "t2",
+                "레드 핑크 컬러블록 스웨트셔츠",
+                "상의",
+                "레드/핑크",
+                "colour-block panels in red and pink",
+            ),
+            plain("t3", "화이트 코튼 티셔츠", "상의", "화이트"),
+            plain("t4", "블랙 슬림 니트", "상의", "블랙"),
+            coloured(
+                "b1",
+                "체리레드 미디 스커트",
+                "하의",
+                "체리레드",
+                "a-line, midi",
+            ),
+            coloured(
+                "b2",
+                "켈리그린 코듀로이 팬츠",
+                "하의",
+                "켈리그린",
+                "full length",
+            ),
+            plain("b3", "인디고 와이드 데님", "하의", "인디고"),
+            plain("s1", "화이트 스니커즈", "신발", "화이트"),
+            plain("s2", "블랙 앵클부츠", "신발", "블랙"),
+            plain("g", "블랙 숄더백", "가방", "블랙"),
+            navy_coat,
+            check_coat,
+        ];
+        let feedback = outfit_scorer::FeedbackContext {
+            item_adj: Default::default(),
+            preference: Default::default(),
+        };
+        let none = outfit_scorer::RecentHistory {
+            item_freq: Default::default(),
+        };
+        for t in [19.6, 8.0, 2.0] {
+            let ctx = OutfitContext {
+                user: None,
+                temperature: Some(t),
+                feedback: &feedback,
+                recent: &none,
+                mood: Some(StyleGenre::Pop),
+            };
+            let (_, items, ids) = today_outfit(&clothes, &ctx);
+            assert!(!ids.is_empty(), "{t}");
+            let pieces: Vec<&Clothing> = ids
+                .iter()
+                .filter_map(|id| clothes.iter().find(|c| &c.id == id))
+                .collect();
+            let names: Vec<&str> = items.iter().map(|i| i.name.as_str()).collect();
+            assert_eq!(
+                crate::services::mood_gate::reads_as_at(StyleGenre::Pop, &pieces, Some(t)),
+                Some(true),
+                "{t}: {names:?}"
+            );
+            // 같은 착장을 기온 없이 보면(상의도 보인다고 보면) 당연히 팝이다 — 기온을 넣은
+            // 판정이 더 엄격하다.
+            assert_eq!(
+                crate::services::mood_gate::reads_as(StyleGenre::Pop, &pieces),
+                Some(true)
+            );
+        }
+    }
+
+    /// 팝에서 말없이 "하의만 바꿔줘" 하면 팝이 깨지지 않는 하의를 고른다. 그런 하의가 없으면
+    /// 궁합 점수 그대로이고, 다른 무드는 예전과 같은 옷을 고른다.
+    #[test]
+    fn a_silent_pop_swap_keeps_the_outfit_pop() {
+        use crate::models::style_vocab::Saturation;
+        use crate::models::style_vocab::{Role, Tone};
+        // 시드와 같은 역할·톤: 기본색은 베이스, 색 옷은 약한포인트.
+        let colour = |id: &str, name: &str, cat: &str, color: &str| {
+            let mut c = chat_item(id, name, cat, "cotton", "plain");
+            c.color = Some(color.into());
+            c.saturation = Some(Saturation::High);
+            c.role = Some(Role::SoftAccent);
+            c.tone = Some(Tone::Mid);
+            c
+        };
+        let plain = |id: &str, name: &str, cat: &str, color: &str| {
+            let mut c = chat_item(id, name, cat, "cotton", "plain");
+            c.color = Some(color.into());
+            c.saturation = Some(Saturation::Low);
+            c.role = Some(Role::Base);
+            c.tone = Some(if color == "블랙" {
+                Tone::Dark
+            } else {
+                Tone::Bright
+            });
+            c
+        };
+        let tee = plain("t", "화이트 코튼 티셔츠", "상의", "화이트");
+        let jacket = colour("o", "레드 크롭 트러커 재킷", "아우터", "레드");
+        let kept = vec![&tee, &jacket];
+        let neutral_only = vec![
+            plain("b1", "화이트 와이드 데님 팬츠", "하의", "화이트"),
+            plain("b2", "블랙 와이드 슬랙스", "하의", "블랙"),
+        ];
+        let mut with_colour = neutral_only.clone();
+        with_colour.push(colour("b3", "코발트 와이드 팬츠", "하의", "코발트"));
+        let pick = |pool: &[Clothing], mood| {
+            best_fit_swap(pool, &kept, mood, Some(19.6)).map(|c| c.name.clone())
+        };
+        assert_eq!(
+            pick(&with_colour, Some(StyleGenre::Pop)).as_deref(),
+            Some("코발트 와이드 팬츠")
+        );
+        // 재현 조건: 무드 없이 궁합 점수만 보면 기본색 하의를 고른다.
+        assert_ne!(
+            pick(&with_colour, None).as_deref(),
+            Some("코발트 와이드 팬츠")
+        );
+        // 팝을 지킬 하의가 없으면 궁합 점수로 고른다(빈 답이 아니다).
+        assert_eq!(
+            pick(&neutral_only, Some(StyleGenre::Pop)),
+            pick(&neutral_only, None)
+        );
+        // 다른 무드는 무드 없는 선택과 같다.
+        for m in [None, Some(StyleGenre::Edgy), Some(StyleGenre::Street)] {
+            assert_eq!(pick(&with_colour, m), pick(&with_colour, None));
+        }
+    }
+
     const GLAM_ITEMS: &str = "top/inner: 에메랄드 새틴 드레이프 블라우스 (satin, fluid satin, draped cowl neckline), \
          pants: 블랙 와이드 슬랙스 (polyester, wide leg)";
 
@@ -4492,13 +4766,180 @@ mod tests {
         );
     }
 
+    /// 홈과 같은 기준: 팝의 온화한 날(19.6°C)에는 상담 오늘 코디와 말없는 바꾸기도 겨울 패딩을
+    /// 쓰지 않는다. 찬 날(8·2°C)에는 남는다. 기온을 모르거나 다른 무드면 예전 그대로다.
+    #[test]
+    fn mild_pop_days_keep_winter_outers_out_of_chat_picks() {
+        use crate::models::style_vocab::{Role, Saturation, Thickness, Tone};
+        let mut puffer = chat_item(
+            "o1",
+            "핑크 오렌지 컬러블록 패딩",
+            "아우터",
+            "nylon",
+            "colour-block puffer in pink and orange, down fill, hip-length",
+        );
+        puffer.color = Some("핑크/오렌지".into());
+        puffer.saturation = Some(Saturation::High);
+        puffer.thickness = Thickness::Thick;
+        puffer.role = Some(Role::Accent);
+        let mut trucker = chat_item("o2", "레드 크롭 트러커 재킷", "아우터", "cotton", "cropped");
+        trucker.color = Some("레드".into());
+        trucker.saturation = Some(Saturation::High);
+        trucker.role = Some(Role::SoftAccent);
+        trucker.tone = Some(Tone::Mid);
+        let plain = |id: &str, name: &str, cat: &str, color: &str| {
+            let mut c = chat_item(id, name, cat, "cotton", "plain");
+            c.color = Some(color.into());
+            c.saturation = Some(Saturation::Low);
+            c.role = Some(Role::Base);
+            c
+        };
+        let mut knit = plain("t1", "블랙 슬림 니트", "상의", "블랙");
+        knit.thickness = Thickness::Medium;
+        let clothes = vec![
+            knit,
+            plain("t2", "화이트 코튼 티셔츠", "상의", "화이트"),
+            plain("b1", "인디고 와이드 데님", "하의", "인디고"),
+            plain("b2", "블랙 와이드 슬랙스", "하의", "블랙"),
+            plain("s1", "블랙 앵클부츠", "신발", "블랙"),
+            plain("g", "블랙 숄더백", "가방", "블랙"),
+            puffer.clone(),
+        ];
+        let feedback = outfit_scorer::FeedbackContext {
+            item_adj: Default::default(),
+            preference: Default::default(),
+        };
+        let none = outfit_scorer::RecentHistory {
+            item_freq: Default::default(),
+        };
+        let names_at = |t: Option<f64>, mood| {
+            let ctx = OutfitContext {
+                user: None,
+                temperature: t,
+                feedback: &feedback,
+                recent: &none,
+                mood,
+            };
+            today_outfit(&clothes, &ctx)
+                .1
+                .into_iter()
+                .map(|i| i.name)
+                .collect::<Vec<_>>()
+        };
+        let p = "핑크 오렌지 컬러블록 패딩".to_string();
+        // 재현 조건: 패딩이 유일한 팝 옷이라, 무드 판정만 보면 19.6°C 에도 기준 옷이 된다.
+        assert!(crate::services::mood_gate::is_pop_piece(&puffer));
+        let mild = names_at(Some(19.6), Some(StyleGenre::Pop));
+        assert!(!mild.is_empty() && !mild.contains(&p), "{mild:?}");
+        for t in [8.0, 2.0] {
+            let cold = names_at(Some(t), Some(StyleGenre::Pop));
+            assert!(cold.contains(&p), "{t}: {cold:?}");
+        }
+
+        // 말없는 바꾸기(아우터): 19.6°C 팝이면 패딩 대신 트러커, 찬 날에는 패딩도 후보다.
+        let tee = &clothes[1];
+        let denim = &clothes[2];
+        let kept = vec![tee, denim];
+        let pool = vec![puffer.clone(), trucker.clone()];
+        let pick = |mood, t| best_fit_swap(&pool, &kept, mood, t).map(|c| c.name.clone());
+        assert_eq!(
+            pick(Some(StyleGenre::Pop), Some(19.6)).as_deref(),
+            Some("레드 크롭 트러커 재킷")
+        );
+        let only_puffer = vec![puffer.clone()];
+        assert_eq!(
+            best_fit_swap(&only_puffer, &kept, Some(StyleGenre::Pop), Some(2.0))
+                .map(|c| c.name.as_str()),
+            Some("핑크 오렌지 컬러블록 패딩")
+        );
+        assert!(best_fit_swap(&only_puffer, &kept, Some(StyleGenre::Pop), Some(19.6)).is_none());
+        // 기온을 모르거나 다른 무드면 빼지 않는다.
+        for (mood, t) in [
+            (Some(StyleGenre::Pop), None),
+            (Some(StyleGenre::Edgy), Some(19.6)),
+            (None, Some(19.6)),
+        ] {
+            assert!(best_fit_swap(&only_puffer, &kept, mood, t).is_some());
+        }
+    }
+
+    const POP_ITEMS: &str = "top/inner: 코발트 블루 크롭 니트 (soft cotton-blend knit, cropped length, crew neck, long sleeves), \
+         pants: 블랙 와이드 슬랙스 (polyester, wide leg, clean drape), \
+         outerwear: 그린 레드 체크 울 코트 (heavy wool, bold check in green and red, knee-length, insulated lining; worn closed with its own fastening, arms in the sleeves), \
+         shoes: 블랙 레더 앵클부츠 (leather, block heel ankle boot)";
+
+    /// 팝 프롬프트: 옷의 색을 누르는 팔레트 문장이 없고, 목록의 색·무늬를 그대로 두며 새
+    /// 프린트·로고·소품을 막는다. 여민 코트는 속옷 색을 보이려고 열지 않는다(2026-10-17 실측
+    /// 8°C 체크 코트 사진이 열린 채 나왔다). 표정은 밝지만 광고 미소·아이돌 포즈는 아니다.
+    /// 공통 얼굴(실제 성인, 개인의 얼굴)과 머리부터 신발까지의 구도는 그대로다.
+    #[test]
+    fn pop_prompt_keeps_listed_colours_and_closed_coats() {
+        for h in [0u64, 1, 42, 1 << 40, 3 << 48, u64::MAX] {
+            let p = build_image_prompt(StyleGenre::Pop, POP_ITEMS, h);
+            assert!(p.contains(POP_ITEMS));
+            assert!(p.contains("worn closed with its own fastening, arms in the sleeves"));
+            assert!(p.contains("never open it to show the colour of what is underneath"));
+            assert!(p.contains("no new print, logo, slogan or decoration added"));
+            assert!(!p.contains("muted neutral palette"));
+            assert!(!p.contains("restrained saturation"));
+            assert!(p.contains("true-to-life saturation"));
+            assert!(p.contains("in her twenties or early thirties"));
+            assert!(p.contains("never a posed advertising grin"));
+            for w in [
+                "amusement park",
+                "candy shop",
+                "graffiti",
+                "neon lighting",
+                "costume or cosplay",
+                "childish",
+                "idol-style finger hearts",
+                "coloured eyeshadow matched to the clothes",
+                "added prints or logos",
+            ] {
+                assert!(p.contains(w), "{w}");
+            }
+            assert!(!p.contains("not posed for anyone"));
+            assert!(p.contains("distinctive individual facial features"));
+            assert!(p.contains("Full body visible from head to shoes"));
+            for other in ["dressed to be noticed", "matte leather stays matte"] {
+                assert!(!p.contains(other), "{other}");
+            }
+        }
+    }
+
+    /// 팝의 장소는 색 건축·그래픽 타일 카페·디자인 서점·계단·갤러리로 고르게 나뉘고, 놀이공원·
+    /// 사탕 가게·그래피티·네온으로 수렴하지 않는다. 같은 입력이면 같은 장소·캐시 키다.
+    #[test]
+    fn pop_scenes_are_varied_and_not_kitsch() {
+        let (places, own_light) = genre_setting(StyleGenre::Pop);
+        assert!(places.len() >= 4);
+        for p in places {
+            for w in ["amusement", "candy", "graffiti", "neon", "night"] {
+                assert!(!p.contains(w), "{p}");
+            }
+        }
+        assert!(own_light.contains("colours of the clothes true"));
+        let picked: std::collections::HashSet<&str> = (0..64u64)
+            .map(|h| pick_setting(StyleGenre::Pop, h))
+            .collect();
+        assert!(picked.len() >= 6, "{picked:?}");
+        assert_eq!(
+            image_cache_keys(POP_ITEMS, StyleGenre::Pop),
+            image_cache_keys(POP_ITEMS, StyleGenre::Pop)
+        );
+        assert_ne!(
+            image_cache_keys(POP_ITEMS, StyleGenre::Pop).1,
+            image_cache_keys(POP_ITEMS, StyleGenre::Street).1
+        );
+    }
+
     /// 다른 무드의 얼굴·구도·회피 문장은 글램 작업 전과 같다. 이 문장이 바뀌면 그 무드의
     /// 저장된 사진이 캐시에서 전부 빗나간다(2026-10-16 12개 무드 × 8개 입력 대조로 확인).
     #[test]
     fn other_moods_keep_their_shared_face_and_avoid_text() {
         for g in StyleGenre::ALL
             .iter()
-            .filter(|g| !matches!(g, StyleGenre::Glam | StyleGenre::Edgy))
+            .filter(|g| !matches!(g, StyleGenre::Glam | StyleGenre::Edgy | StyleGenre::Pop))
         {
             let p = build_image_prompt(*g, GLAM_ITEMS, 42);
             assert!(p.contains("woman in her twenties with distinctive"), "{g}");

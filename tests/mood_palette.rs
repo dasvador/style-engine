@@ -229,3 +229,63 @@ fn a_broken_name_neither_reaches_the_model_nor_blocks_its_colour() {
     assert!(pal.shoes.iter().any(|c| c.id == "sneaker"));
     assert_eq!(pal.tops.len(), base.tops.len());
 }
+
+/// 팝 후보 지시의 옷 목록: 색 있는 배색·그래픽 옷은 "(배색·그래픽)", 선명한 단색 옷은 색 계열로
+/// 적는다. 흑백 무늬·흐린 색·기본색·신발·가방·깨진 이름은 넣지 않는다. 시드 id·이름 규칙이 아닌
+/// 속성으로 본다(업로드 옷 이름 "레드 체크 스커트").
+#[test]
+fn pop_items_name_coloured_patterns_and_vivid_garments_only() {
+    let none = HashSet::new();
+    let mut w = wardrobe()
+        .into_iter()
+        .filter(|c| c.id.starts_with("basic"))
+        .take(6)
+        .collect::<Vec<_>>();
+    let vivid = |id: &str, category: &str, color: &str, sat: Saturation, kw: &str| {
+        let mut c = item(id, category, color, Role::Accent, Style::Basic);
+        c.saturation = Some(sat);
+        c.texture_keywords = (!kw.is_empty()).then(|| kw.into());
+        c
+    };
+    w.push(vivid(
+        "knit",
+        "상의",
+        "코발트",
+        Saturation::High,
+        "soft knit",
+    ));
+    w.push(vivid("check", "하의", "레드", Saturation::High, ""));
+    w.last_mut().unwrap().name = "레드 체크 스커트".into();
+    w.push(vivid(
+        "mono",
+        "상의",
+        "블랙/화이트",
+        Saturation::Low,
+        "checkerboard knit in black and white",
+    ));
+    w.push(vivid(
+        "muted",
+        "하의",
+        "세이지",
+        Saturation::Low,
+        "cotton twill",
+    ));
+    w.push(vivid(
+        "bag",
+        "가방",
+        "레드",
+        Saturation::High,
+        "graphic print",
+    ));
+    let mut broken = vivid("broken", "상의", "핑크", Saturation::High, "");
+    broken.name = "핑\u{FFFD}\u{FFFD} 니트".into();
+    w.push(broken);
+
+    let got = build_all_shortlists_with_palette(&w, &ctx(19.6, &none)).pop_items();
+    assert!(got.contains(&"코발트 knit(블루)".to_string()), "{got:?}");
+    assert!(
+        got.contains(&"레드 체크 스커트(배색·그래픽)".to_string()),
+        "{got:?}"
+    );
+    assert_eq!(got.len(), 2, "{got:?}");
+}

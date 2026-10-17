@@ -187,7 +187,133 @@ pub fn is_known_non_leather_garment(c: &Clothing) -> bool {
 
 /// 무드 요소를 판단하는 무드인가. 이 무드들은 후보 보완·상담 후보 확장·게이트를 함께 쓴다.
 pub fn judges(mood: StyleGenre) -> bool {
-    matches!(mood, StyleGenre::Glam | StyleGenre::Edgy)
+    matches!(mood, StyleGenre::Glam | StyleGenre::Edgy | StyleGenre::Pop)
+}
+
+/// 선명한 색의 옷인가(팝). 색 이름이 색 계열을 가리키고(`mood_palette::colour_family` — 기본색·
+/// 미상은 아니다), 채도가 "낮음" 이 아니어야 한다. 채도가 비어 있으면 이름의 색을 따른다.
+/// 차분한 세이지·더스티 핑크처럼 채도가 낮다고 적힌 옷은 팝의 색 대비로 세지 않는다.
+pub fn is_vivid_colour(c: &Clothing) -> bool {
+    is_garment(&c.category)
+        && crate::services::mood_palette::colour_family(c).is_some()
+        && c.saturation != Some(crate::models::style_vocab::Saturation::Low)
+}
+
+/// 옷 한 벌이 팝의 중심인가 — 색 있는 배색·그래픽·대담한 패턴(2026-10-17 팝 무드 추가).
+///
+/// 형태를 가리키는 말(배색·컬러블록·그래픽·추상 프린트·굵은 스트라이프·기하·체커보드·멀티컬러)이
+/// 있고, 그 옷에 색이 있어야 한다 — 색 이름이 색 계열이거나("코발트/화이트" 배색 포함), 설명에
+/// 색 단어가 있다. 흑백 그래픽 티·흑백 체크는 아니다. "striped lining" 처럼 안감·가방의 무늬,
+/// 무늬가 없는 단색 옷도 아니다. 시드 밖의 업로드 옷은 설명이 비어 있어 이름의 형태 단어로 본다.
+pub fn is_pop_piece(c: &Clothing) -> bool {
+    if !is_garment(&c.category) {
+        return false;
+    }
+    // 설명은 쉼표·세미콜론으로 나뉜 구절마다 본다. 안감·트림·파이핑처럼 안쪽이나 가장자리
+    // 디테일을 말하는 구절은 뺀다 — "striped lining" 은 무늬 근거가 아니지만, 같은 코트의
+    // "bold check in green and red" 구절은 그대로 근거다.
+    let keywords = c.texture_keywords.as_deref().unwrap_or("").to_lowercase();
+    let outside: Vec<&str> = keywords
+        .split([',', ';'])
+        .filter(|phrase| !POP_DETAIL_WORDS.iter().any(|w| phrase.contains(w)))
+        .collect();
+    let pattern_in_keywords = outside
+        .iter()
+        .any(|phrase| POP_PATTERN_WORDS.iter().any(|w| phrase.contains(w)));
+    let pattern_in_name = POP_PATTERN_NAMES.iter().any(|w| c.name.contains(w))
+        && !POP_DETAIL_NAMES.iter().any(|w| c.name.contains(w));
+    if !(pattern_in_keywords || pattern_in_name) {
+        return false;
+    }
+    let coloured_name = crate::services::mood_palette::colour_family(c).is_some()
+        && c.saturation != Some(crate::models::style_vocab::Saturation::Low);
+    coloured_name || outside.iter().any(|phrase| has_vivid_colour_word(phrase))
+}
+
+/// 팝 요청에서 자동 추천·자동 교체 후보로 쓰지 않는 옷 — 코트를 여미지 않는 기온(12°C 이상)의
+/// 겨울 외투(두껍고 보온 안감·충전재가 확인된 아우터). 날씨 판정은 보온 과잉을 보지 않고
+/// (`serving_ranker`), 후보 목록은 20°C 부터 무거운 아우터를 거른다 — 19.6°C 실측 6회 중 3회에
+/// 다운 패딩이 배색 아우터로 카드에 올랐다(2026-10-17). 홈(`recommendation`)과 상담의 오늘 코디·
+/// 말없는 바꾸기(`chat`)가 같은 기준을 쓴다. 팝이 아니거나 기온을 모르면 아무것도 빼지 않는다.
+pub fn hidden_on_mild_pop_day(
+    c: &Clothing,
+    mood: Option<StyleGenre>,
+    temperature: Option<f64>,
+) -> bool {
+    mood == Some(StyleGenre::Pop)
+        && temperature.is_some_and(|t| t >= crate::services::serving_ranker::CLOSED_COAT_BELOW_C)
+        && crate::services::serving_ranker::is_winter_outer(c)
+}
+
+/// 무늬를 가리키는 설명 말.
+const POP_PATTERN_WORDS: [&str; 13] = [
+    "colour-block",
+    "color-block",
+    "colorblock",
+    "colourblock",
+    "graphic print",
+    "abstract print",
+    "bold stripe",
+    "wide stripe",
+    "geometric",
+    "checkerboard",
+    "bold check",
+    "multicolour",
+    "multicolor",
+];
+
+/// 무늬를 가리키는 이름 말. 업로드 옷은 설명이 비어 있어 이름으로 본다.
+const POP_PATTERN_NAMES: [&str; 8] = [
+    "컬러블록",
+    "배색",
+    "그래픽",
+    "스트라이프",
+    "체크",
+    "기하",
+    "패턴",
+    "멀티컬러",
+];
+
+/// 옷 겉면이 아닌 안쪽·가장자리 디테일. 이 말이 있는 구절(이름)의 무늬는 근거가 아니다.
+const POP_DETAIL_WORDS: [&str; 7] = [
+    "lining", "lined", "trim", "piping", "binding", "inside", "interior",
+];
+const POP_DETAIL_NAMES: [&str; 5] = ["안감", "파이핑", "트리밍", "스티치", "테이프"];
+
+/// 선명한 색 단어. 단어 단위로 본다 — "structured", "tailored" 의 red 는 색이 아니다.
+const VIVID_COLOUR_WORDS: [&str; 15] = [
+    "red",
+    "pink",
+    "orange",
+    "yellow",
+    "green",
+    "teal",
+    "blue",
+    "cobalt",
+    "purple",
+    "violet",
+    "lilac",
+    "coral",
+    "mustard",
+    "tangerine",
+    "fuchsia",
+];
+
+/// 바로 앞에 오면 색을 흐리게 만드는 말 — "navy blue", "muted green", "dusty pink" 는 선명한 색이
+/// 아니다.
+const MUTING_WORDS: [&str; 11] = [
+    "navy", "muted", "dusty", "faded", "washed", "dull", "pale", "dark", "greyish", "grayish",
+    "smoky",
+];
+
+fn has_vivid_colour_word(phrase: &str) -> bool {
+    let words: Vec<&str> = phrase
+        .split(|ch: char| !ch.is_ascii_alphabetic())
+        .filter(|w| !w.is_empty())
+        .collect();
+    words.iter().enumerate().any(|(i, w)| {
+        VIVID_COLOUR_WORDS.contains(w) && !(i > 0 && MUTING_WORDS.contains(&words[i - 1]))
+    })
 }
 
 /// 이 무드에서 옷 한 벌이 무드 요소인가. 판단하지 않는 무드는 `None` 이다.
@@ -195,6 +321,9 @@ pub fn is_mood_piece(mood: StyleGenre, c: &Clothing) -> Option<bool> {
     match mood {
         StyleGenre::Glam => Some(is_glam_piece(c)),
         StyleGenre::Edgy => Some(is_edgy_piece(c)),
+        // 팝의 후보 보강·상담 후보 확장용: 배색·그래픽 옷이나 선명한 색 옷. 착장이 팝인지는
+        // `reads_as_at` 이 따로 판단한다 — 선명한 옷 한 벌만으로는 팝이 아니다.
+        StyleGenre::Pop => Some(is_pop_piece(c) || is_vivid_colour(c)),
         _ => None,
     }
 }
@@ -206,9 +335,45 @@ pub fn is_mood_piece(mood: StyleGenre, c: &Clothing) -> Option<bool> {
 /// 가방·신발의 글램 요소는 옷의 포인트를 거드는 쪽으로만 본다.
 ///
 /// 엣지도 같다 — 형태나 가죽이 옷에 있어야 한다. 가죽 부츠·가방은 세지 않는다.
+// 앱 경로는 기온을 아는 `reads_as_at` 을 쓴다. 이 함수는 라이브러리의 테스트·예제가 쓰는데,
+// 같은 모듈이 바이너리에도 컴파일되어 거기서는 쓰이지 않는다.
+#[allow(dead_code)]
 pub fn reads_as(mood: StyleGenre, outfit: &[&Clothing]) -> Option<bool> {
+    reads_as_at(mood, outfit, None)
+}
+
+/// 기온을 아는 판정. 팝만 기온을 쓴다 — 코트를 여며 입는 기온(`CLOSED_COAT_BELOW_C` 미만)에는
+/// 아우터가 있으면 코트 속 상의의 색·그래픽을 근거로 세지 않는다. 다른 무드는 `reads_as` 와 같다.
+///
+/// 팝: 보이는 옷(상의·하의·아우터)에 색 있는 배색·그래픽 옷이 있거나(`is_pop_piece`), 서로 다른 색
+/// 계열의 선명한 옷이 둘 이상이어야 한다(`is_vivid_colour`). 선명한 옷 한 벌에 기본 데님, 가방·
+/// 신발만 유색인 조합은 아니다.
+pub fn reads_as_at(
+    mood: StyleGenre,
+    outfit: &[&Clothing],
+    temperature: Option<f64>,
+) -> Option<bool> {
     if !judges(mood) {
         return None;
+    }
+    if mood == StyleGenre::Pop {
+        let has_outer = outfit.iter().any(|c| c.category == "아우터");
+        let top_hidden = has_outer
+            && temperature
+                .is_some_and(|t| t < crate::services::serving_ranker::CLOSED_COAT_BELOW_C);
+        let visible: Vec<&&Clothing> = outfit
+            .iter()
+            .filter(|c| is_garment(&c.category) && !(top_hidden && c.category == "상의"))
+            .collect();
+        if visible.iter().any(|c| is_pop_piece(c)) {
+            return Some(true);
+        }
+        let families: std::collections::HashSet<&str> = visible
+            .iter()
+            .filter(|c| is_vivid_colour(c))
+            .filter_map(|c| crate::services::mood_palette::colour_family(c))
+            .collect();
+        return Some(families.len() >= 2);
     }
     Some(
         outfit
@@ -337,9 +502,10 @@ mod tests {
         assert_eq!(reads_as(StyleGenre::Glam, &[&tee]), Some(false));
         assert_eq!(reads_as(StyleGenre::Glam, &[&tee, &satin]), Some(true));
         assert_eq!(reads_as(StyleGenre::Edgy, &[&tee]), Some(false));
+        assert_eq!(reads_as(StyleGenre::Pop, &[&tee]), Some(false));
         for g in StyleGenre::ALL
             .iter()
-            .filter(|g| !matches!(g, StyleGenre::Glam | StyleGenre::Edgy))
+            .filter(|g| !matches!(g, StyleGenre::Glam | StyleGenre::Edgy | StyleGenre::Pop))
         {
             assert_eq!(reads_as(*g, &[&tee]), None, "{g}");
         }
@@ -599,5 +765,226 @@ mod tests {
             reads_as(StyleGenre::Edgy, &[&tee, &denim, &rider, &bag]),
             Some(true)
         );
+    }
+
+    fn garment(
+        name: &str,
+        cat: &str,
+        color: &str,
+        sat: Option<crate::models::style_vocab::Saturation>,
+        kw: &str,
+    ) -> Clothing {
+        let mut c = with(item("cotton", color, kw), name, cat, "x");
+        c.saturation = sat;
+        c
+    }
+
+    use crate::models::style_vocab::Saturation::{High, Low, Mid};
+
+    /// 팝 한 벌의 근거: 색 있는 배색·그래픽·대담한 패턴. 흑백 그래픽, 안감 무늬, 무늬 없는 단색,
+    /// 가방은 아니다. 업로드 옷처럼 설명이 비어도 이름의 형태 단어와 색으로 본다.
+    #[test]
+    fn a_pop_piece_needs_a_coloured_pattern() {
+        for c in [
+            garment(
+                "코발트 컬러블록 니트",
+                "상의",
+                "코발트/화이트",
+                Some(High),
+                "colour-block knit, cobalt and white panels",
+            ),
+            garment(
+                "멀티 스트라이프 셔츠",
+                "상의",
+                "화이트",
+                Some(Low),
+                "cotton poplin, bold stripe in red and blue",
+            ),
+            garment("레드 체크 스커트", "하의", "레드", None, ""), // 업로드 옷: 설명 없음
+            garment("그린 기하 패턴 재킷", "아우터", "그린/핑크", Some(Mid), ""),
+            // 겉감 체크 구절은 근거다 — 같은 설명에 보온 안감이 있어도.
+            garment(
+                "체크 울 코트",
+                "아우터",
+                "그린/레드",
+                Some(High),
+                "heavy wool, bold check in green and red, insulated lining",
+            ),
+            // 바탕이 흰색이어도 실제 색 그래픽이 있으면 근거다.
+            garment(
+                "화이트 그래픽 티",
+                "상의",
+                "화이트",
+                Some(Low),
+                "cotton jersey, abstract print in cobalt blue and pink",
+            ),
+        ] {
+            assert!(is_pop_piece(&c), "{}", c.name);
+        }
+        for c in [
+            garment(
+                "블랙 그래픽 오버핏 티셔츠",
+                "상의",
+                "블랙",
+                Some(Low),
+                "cotton, graphic print, oversized",
+            ),
+            garment(
+                "네이비 스트라이프 럭비 티",
+                "상의",
+                "네이비",
+                Some(Low),
+                "cotton, rugby stripe",
+            ),
+            garment(
+                "블랙 체커보드 니트",
+                "상의",
+                "블랙/화이트",
+                Some(Low),
+                "checkerboard knit in black and white",
+            ),
+            garment(
+                "베이지 트렌치",
+                "아우터",
+                "베이지",
+                Some(Low),
+                "cotton twill, plain striped lining",
+            ),
+            garment(
+                "체리레드 니트",
+                "상의",
+                "체리레드",
+                Some(High),
+                "fine knit, crew neck",
+            ),
+            // "structured"·"tailored" 의 red 는 색이 아니다.
+            garment(
+                "차콜 기하 자카드 재킷",
+                "아우터",
+                "차콜",
+                Some(Low),
+                "structured tailored jacket, geometric jacquard",
+            ),
+            // 흐린 색 단어는 선명한 색이 아니다.
+            garment(
+                "그레이 스트라이프 셔츠",
+                "상의",
+                "그레이",
+                Some(Low),
+                "bold stripe in navy blue and muted green",
+            ),
+            // 무늬가 안감·트림에만 있다.
+            garment(
+                "블랙 울 코트",
+                "아우터",
+                "블랙",
+                Some(Low),
+                "wool, red and blue geometric lining",
+            ),
+            garment("네이비 배색 파이핑 셔츠", "상의", "네이비", None, ""),
+            garment(
+                "멀티컬러 그래픽 토트백",
+                "가방",
+                "레드",
+                Some(High),
+                "graphic print canvas",
+            ),
+        ] {
+            assert!(!is_pop_piece(&c), "{}", c.name);
+        }
+    }
+
+    /// 착장: 배색·그래픽 옷 한 벌이거나, 서로 다른 색 계열의 선명한 옷 둘. 선명한 옷 한 벌에 기본
+    /// 데님, 같은 계열 둘, 차분한(채도 낮음) 색, 가방·신발 색은 아니다.
+    #[test]
+    fn pop_reads_from_a_pattern_or_two_vivid_colours() {
+        let cobalt = garment("코발트 니트", "상의", "코발트", Some(High), "fine knit");
+        let red_skirt = garment(
+            "체리레드 스커트",
+            "하의",
+            "체리레드",
+            Some(High),
+            "a-line skirt",
+        );
+        let red_top = garment("레드 티", "상의", "레드", Some(High), "cotton jersey");
+        let denim = garment("인디고 데님", "하의", "인디고", Some(Low), "denim");
+        let sage = garment(
+            "세이지 스커트",
+            "하의",
+            "세이지그린",
+            Some(Low),
+            "matte skirt",
+        );
+        let mut bag = garment("옐로 숄더백", "가방", "옐로", Some(High), "leather");
+        bag.category = "가방".into();
+        let graphic = garment(
+            "멀티 그래픽 티",
+            "상의",
+            "화이트/레드",
+            Some(Mid),
+            "abstract print in red and blue",
+        );
+        let pop = |o: &[&Clothing]| reads_as(StyleGenre::Pop, o);
+        assert_eq!(pop(&[&cobalt, &red_skirt]), Some(true));
+        assert_eq!(pop(&[&graphic, &denim]), Some(true));
+        assert_eq!(pop(&[&red_top, &denim, &bag]), Some(false));
+        assert_eq!(pop(&[&red_top, &red_skirt]), Some(false));
+        assert_eq!(pop(&[&cobalt, &sage]), Some(false));
+    }
+
+    /// 코트를 여미는 기온에는 코트 속 상의의 색·그래픽을 세지 않는다. 배색 코트면 팝이다.
+    /// 온화한 날 팝 후보에서 빠지는 것은 겨울 외투뿐이다. 찬 날·다른 무드·기온 미상은 그대로다.
+    #[test]
+    fn only_winter_outers_are_hidden_on_mild_pop_days() {
+        let mut puffer = garment(
+            "핑크 오렌지 컬러블록 패딩",
+            "아우터",
+            "핑크/오렌지",
+            Some(High),
+            "colour-block puffer, down fill, hip-length",
+        );
+        puffer.thickness = crate::models::style_vocab::Thickness::Thick;
+        let windbreaker = garment(
+            "코발트 옐로 컬러블록 바람막이",
+            "아우터",
+            "코발트/옐로",
+            Some(High),
+            "lightweight nylon, unlined",
+        );
+        let pop = Some(StyleGenre::Pop);
+        assert!(hidden_on_mild_pop_day(&puffer, pop, Some(19.6)));
+        assert!(hidden_on_mild_pop_day(&puffer, pop, Some(12.0)));
+        for t in [Some(8.0), Some(2.0), None] {
+            assert!(!hidden_on_mild_pop_day(&puffer, pop, t), "{t:?}");
+        }
+        assert!(!hidden_on_mild_pop_day(&windbreaker, pop, Some(19.6)));
+        for m in [Some(StyleGenre::Edgy), Some(StyleGenre::Street), None] {
+            assert!(!hidden_on_mild_pop_day(&puffer, m, Some(19.6)));
+        }
+    }
+
+    #[test]
+    fn a_top_under_a_closed_coat_does_not_make_it_pop() {
+        let graphic = garment(
+            "멀티 그래픽 티",
+            "상의",
+            "화이트/레드",
+            Some(Mid),
+            "abstract print in red and blue",
+        );
+        let denim = garment("인디고 데님", "하의", "인디고", Some(Low), "denim");
+        let navy_coat = garment("네이비 울 코트", "아우터", "네이비", Some(Low), "wool coat");
+        let block_coat = garment(
+            "컬러블록 울 코트",
+            "아우터",
+            "코발트/오렌지",
+            Some(High),
+            "colour-block wool coat, insulated lining",
+        );
+        let at = |o: &[&Clothing], t| reads_as_at(StyleGenre::Pop, o, Some(t));
+        assert_eq!(at(&[&graphic, &denim, &navy_coat], 16.0), Some(true));
+        assert_eq!(at(&[&graphic, &denim, &navy_coat], 5.0), Some(false));
+        assert_eq!(at(&[&graphic, &denim, &block_coat], 5.0), Some(true));
+        assert_eq!(at(&[&graphic, &denim], 5.0), Some(true));
     }
 }

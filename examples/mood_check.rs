@@ -106,7 +106,7 @@ async fn main() -> anyhow::Result<()> {
                 "{label} {}점 · 날씨 {:?} · 무드 {:?}",
                 e.score,
                 compute_today_fit(&c, temp),
-                mood_gate::reads_as(mood, &pieces)
+                mood_gate::reads_as_at(mood, &pieces, Some(temp))
             );
             for p in &e.problems {
                 println!("  -{} {:?} {}: {}", p.deduction, p.code, p.rule, p.detail);
@@ -187,7 +187,8 @@ async fn main() -> anyhow::Result<()> {
                             0
                         };
                         let pieces: Vec<&Clothing> = v.iter().map(|i| &i.c).collect();
-                        let reads = mood_gate::reads_as(mood, &pieces).unwrap_or(true);
+                        let reads =
+                            mood_gate::reads_as_at(mood, &pieces, Some(temp)).unwrap_or(true);
                         let codes = e
                             .problems
                             .iter()

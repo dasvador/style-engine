@@ -1,4 +1,4 @@
-//! 무드가 기존 규칙의 해석을 바꾸는 곳. 지금은 글램만.
+//! 무드가 기존 규칙의 해석을 바꾸는 곳. 글램·엣지·팝.
 //!
 //! 운영 엔진(`style_engine::evaluate`)은 "무난한 일상복" 을 기준으로 쓰였다. 글램을
 //! 고른 사용자에게 그 기준을 그대로 대면, 시선을 끄는 옷을 쓴 조합이 같은 이유로 여러 번
@@ -48,6 +48,20 @@
 //! 지운다. 가방 규칙·슬롯 역할 감점은 남긴다. 유색 가방·신발이거나 옷 두 곳이 포인트면
 //! 그대로 깎는다.
 
+//!
+//! ## 팝(2026-10-17)
+//!
+//! 팝 옷장을 운영 엔진으로 채점했을 때(`examples/mood_check`, 19.6·8·26°C) 팝으로 읽히는
+//! 조합의 최고점이 기본색 조합보다 4~12점 낮았다. 팝에만 걸리는 감점은 둘이었다 — 색 하의·
+//! 색 상의(약한포인트)의 슬롯 역할(−8, 두 색 조합이면 두 번), 그리고 무채색 포인트 가방이 더한
+//! "포인트 과다"(−20). 앞의 것은 글램 3·엣지 하의와 같은 근거라 같은 방식으로 되돌린다 —
+//! 상의·하의가 포인트·약한포인트이고 색 있는 배색·그래픽 옷이거나 선명한 색 옷이며, 옷의
+//! 포인트(역할 '포인트')가 한 곳 이하일 때만이다. 뒤의 것은 엣지 2를 그대로 쓴다. 조용한
+//! 아우터 안의 강한 상의(1)도 같다.
+//!
+//! 되돌리지 않는 것: 색 옷 세 벌에 베이스가 없을 때의 중심축 부재, 옷 두 곳이 포인트일 때의
+//! 포인트 과다, 가방 규칙, 격식 상한(글램 4), 올블랙(5). 이 감점은 팝에서도 실제로 과하거나
+//! 근거가 같다.
 use crate::models::clothing::Clothing;
 use crate::models::outfit::{EvaluationResult, IssueCode, OutfitContext, OutfitStrength, SlotKind};
 use crate::models::style_vocab::{Role, StyleGenre};
@@ -66,6 +80,7 @@ pub fn evaluate_for_mood(
     match mood {
         Some(StyleGenre::Glam) => apply_waivers(ctx, &mut e, StyleGenre::Glam),
         Some(StyleGenre::Edgy) => apply_waivers(ctx, &mut e, StyleGenre::Edgy),
+        Some(StyleGenre::Pop) => apply_waivers(ctx, &mut e, StyleGenre::Pop),
         _ => {}
     }
     e
@@ -181,6 +196,7 @@ pub fn dark_look_reads_for(mood: Option<StyleGenre>, garments: &[&Clothing]) -> 
 
 fn apply_waivers(ctx: &OutfitContext, e: &mut EvaluationResult, mood: StyleGenre) {
     let glam = mood == StyleGenre::Glam;
+    let pop = mood == StyleGenre::Pop;
     let slot = |k: SlotKind| ctx.slots.iter().find(|s| s.slot == k);
     let garment_accents: Vec<&Clothing> = ctx
         .slots
@@ -227,7 +243,7 @@ fn apply_waivers(ctx: &OutfitContext, e: &mut EvaluationResult, mood: StyleGenre
                 )
             })
     };
-    let edgy_bottom_center = !glam
+    let edgy_bottom_center = mood == StyleGenre::Edgy
         && bottom.is_some_and(|b| {
             point_like(&b.clothing) && crate::services::mood_gate::is_edgy_piece(&b.clothing)
         })
@@ -292,6 +308,20 @@ fn apply_waivers(ctx: &OutfitContext, e: &mut EvaluationResult, mood: StyleGenre
                 notes.push("하의의 형태가 코디의 중심입니다".into());
                 p.deduction
             }
+            // 팝: 색·무늬가 착장의 중심인 상의·하의. 옷의 포인트가 한 곳 이하일 때만이다.
+            IssueCode::SlotRoleMismatch
+                if pop
+                    && garment_accents.len() <= 1
+                    && [top, bottom].into_iter().flatten().any(|s| {
+                        point_like(&s.clothing)
+                            && (crate::services::mood_gate::is_pop_piece(&s.clothing)
+                                || crate::services::mood_gate::is_vivid_colour(&s.clothing))
+                            && about(&s.clothing.name)
+                    }) =>
+            {
+                notes.push("색과 무늬가 코디의 중심입니다".into());
+                p.deduction
+            }
             // 4. 홈 '일상' 의 격식 상한 (글램만)
             IssueCode::FormalitySituationMismatch
                 if glam && daily && p.detail.contains("격식적") =>
@@ -329,7 +359,12 @@ fn apply_waivers(ctx: &OutfitContext, e: &mut EvaluationResult, mood: StyleGenre
         notes.dedup();
         for n in notes {
             e.strengths.push(OutfitStrength {
-                rule: if glam { "글램" } else { "엣지" }.into(),
+                rule: match mood {
+                    StyleGenre::Glam => "글램",
+                    StyleGenre::Pop => "팝",
+                    _ => "엣지",
+                }
+                .into(),
                 detail: n,
             });
         }

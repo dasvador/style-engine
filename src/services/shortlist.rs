@@ -315,6 +315,9 @@ fn mood_neighbors(mood: StyleGenre) -> &'static [StyleGenre] {
         // 엣지는 구조적인 재단을 모던 시크·매니시에서, 데님을 스트리트에서 빌린다. 기본
         // 아이템인 미니멀은 마지막이다 — 먼저 빌리면 형태가 없는 코디가 늘어난다.
         Edgy => &[ModernChic, Mannish, Street, Minimal],
+        // 팝은 색 있는 옷을 스트리트·스포티 캐주얼에서, 부드러운 색을 로맨틱에서 빌린다. 받쳐 줄
+        // 기본 아이템은 미니멀이 마지막이다.
+        Pop => &[Street, SportyCasual, Romantic, Minimal],
     }
 }
 
@@ -635,6 +638,28 @@ impl<'a> ShortlistResult<'a> {
             .filter(|c| !has_broken_name(c))
             .filter_map(|c| {
                 crate::services::mood_palette::colour_family(c).map(|f| format!("{}({f})", c.name))
+            })
+            .collect()
+    }
+
+    /// 팝 후보 지시에 넣을 팝 옷(상의·하의·아우터): 색 있는 배색·그래픽 옷은 "(배색·그래픽)",
+    /// 선명한 색 옷은 "(색 계열)". 깨진 이름은 넣지 않는다(`colour_items` 참고).
+    pub fn pop_items(&self) -> Vec<String> {
+        use crate::services::mood_gate::{is_pop_piece, is_vivid_colour};
+        self.tops
+            .iter()
+            .chain(self.bottoms.iter())
+            .chain(self.outers.iter())
+            .filter(|c| !has_broken_name(c))
+            .filter_map(|c| {
+                if is_pop_piece(c) {
+                    Some(format!("{}(배색·그래픽)", c.name))
+                } else if is_vivid_colour(c) {
+                    crate::services::mood_palette::colour_family(c)
+                        .map(|f| format!("{}({f})", c.name))
+                } else {
+                    None
+                }
             })
             .collect()
     }

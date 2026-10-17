@@ -590,7 +590,7 @@ fn other_moods_are_scored_exactly_as_before() {
     let base = engine::evaluate(&ctx(&look), Some("가을")).score;
     for g in StyleGenre::ALL
         .iter()
-        .filter(|g| !matches!(g, StyleGenre::Glam | StyleGenre::Edgy))
+        .filter(|g| !matches!(g, StyleGenre::Glam | StyleGenre::Edgy | StyleGenre::Pop))
     {
         assert_eq!(
             mood_rules::evaluate_for_mood(&ctx(&look), Some("가을"), Some(*g)).score,

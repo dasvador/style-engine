@@ -23,6 +23,7 @@ const GENRE_MIGRATION: &str =
 /// 뜨지 않게 하려는 것이다(`seeds/demo/glam.sql` 머리 주석).
 const DEMO_SEED_MOODS: &str = include_str!("../seeds/demo/glam.sql");
 const EDGY_SEED_MOODS: &str = include_str!("../seeds/demo/edgy.sql");
+const POP_SEED_MOODS: &str = include_str!("../seeds/demo/pop.sql");
 
 /// `('male', 'preppy', ...` 같은 INSERT 행에서 두 번째 따옴표 값(장르 키)을 뽑는다.
 fn inserted_genre_keys(sql: &str) -> Vec<(String, String)> {
@@ -130,7 +131,7 @@ fn legacy_values_the_migration_moves_are_still_accepted_by_the_server() {
     }
 }
 
-/// 화면에 나가는 목록(마이그레이션 8+8, 데모 시드의 글램·엣지)과 enum 이 일치해야 한다.
+/// 화면에 나가는 목록(마이그레이션 8+8, 데모 시드의 글램·엣지·팝)과 enum 이 일치해야 한다.
 /// 어느 쪽에도 노출되지 않는 장르가 남으면 그 장르로 태깅된 아이템은 영영 후보에
 /// 들어가지 못한다.
 #[test]
@@ -139,6 +140,7 @@ fn exposed_genres_cover_the_whole_vocabulary() {
         .into_iter()
         .chain(inserted_genre_keys(DEMO_SEED_MOODS))
         .chain(inserted_genre_keys(EDGY_SEED_MOODS))
+        .chain(inserted_genre_keys(POP_SEED_MOODS))
         .map(|(_, key)| key)
         .collect();
     exposed.sort();
@@ -213,6 +215,31 @@ fn edgy_rollback_targets_exactly_the_seeded_existing_items() {
         if s.contains("style_genre = 'edgy'") {
             assert!(
                 s.contains("clothing_id like '0ffd0c00") && s.contains("clothing_id in"),
+                "{stmt}"
+            );
+        }
+    }
+}
+
+/// 팝 롤백도 엣지와 같다 — 시드가 팝 태그를 붙인 기존 옷 목록이 두 파일에서 같고, 팝 태그 전체를
+/// 지우는 문장이 없다.
+#[test]
+fn pop_rollback_targets_exactly_the_seeded_existing_items() {
+    let rollback = include_str!("../seeds/demo/pop_rollback.sql");
+    let tag_block = &POP_SEED_MOODS[POP_SEED_MOODS
+        .find("SELECT id, 'pop', 'seed' FROM clothing")
+        .expect("태그 블록")..];
+    let mut seeded = clothing_ids(tag_block);
+    let mut rolled = clothing_ids(rollback);
+    seeded.sort();
+    rolled.sort();
+    assert_eq!(seeded.len(), 13);
+    assert_eq!(seeded, rolled);
+    for stmt in rollback.split(';') {
+        let s = stmt.to_lowercase();
+        if s.contains("style_genre = 'pop'") {
+            assert!(
+                s.contains("clothing_id like '0ffd0f00") && s.contains("clothing_id in"),
                 "{stmt}"
             );
         }

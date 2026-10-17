@@ -283,6 +283,13 @@ async fn get_multi_recommendation(
         }
     }
 
+    // 팝: 코트를 여미지 않는 기온(12°C 이상)에는 겨울 외투를 무드 옷장에서 뺀다
+    // (`mood_gate::hidden_on_mild_pop_day`). 다른 무드의 옷장은 그대로다.
+    let dropped = drop_winter_outers_on_mild_pop_days(&mut clothes, mood, weather.temperature);
+    if dropped > 0 {
+        tracing::info!(dropped, "팝: 온화한 날 겨울 외투 제외");
+    }
+
     let recent_hint = build_recent_hint(&state.db, &clothes, user_id).await;
     let current_season = current_season_label();
     let feedback = load_feedback(&state.db, user_id).await;
@@ -329,7 +336,9 @@ async fn get_multi_recommendation(
     if crate::services::mood_palette::targets(body.gender.as_deref(), mood) {
         tracing::info!(palette, "무드 색 다양성");
     }
-    let shortlist = if palette {
+    // 팝도 후보 목록에 색 계열을 남기고 깨진 이름을 뺀다 — 색이 무드의 중심이다.
+    let pop = mood == Some(StyleGenre::Pop);
+    let shortlist = if palette || pop {
         crate::services::shortlist::build_all_shortlists_with_palette(&clothes, &sl_ctx)
     } else {
         crate::services::shortlist::build_all_shortlists(&clothes, &sl_ctx)
@@ -345,6 +354,9 @@ async fn get_multi_recommendation(
     if palette {
         grouped.colour_items = shortlist.colour_items();
         tracing::info!(colour_items = ?grouped.colour_items, "무드 색 다양성 후보");
+    } else if pop {
+        grouped.colour_items = shortlist.pop_items();
+        tracing::info!(pop_items = ?grouped.colour_items, "팝 후보 옷");
     }
 
     // 엣지의 색 다양성(후보 지시의 색 문장, 카드의 컬러 우선 선택). 밝은색을 싫어한다고 적은
@@ -560,7 +572,8 @@ async fn get_multi_recommendation(
                     .filter_map(|id| id.as_ref())
                     .filter_map(|id| clothes.iter().find(|x| &x.id == id))
                     .collect();
-            crate::services::mood_gate::reads_as(m, &items) == Some(false)
+            crate::services::mood_gate::reads_as_at(m, &items, Some(weather.temperature))
+                == Some(false)
         }),
         None => (servable, 0),
     };
@@ -571,7 +584,11 @@ async fn get_multi_recommendation(
     // 대신 그 사실을 화면에 알린다 — 기본 코디를 글램이라고 내세우지 않는다.
     let mood_shortfall = mood.is_some_and(|m| {
         !servable.iter().any(|c| {
-            crate::services::mood_gate::reads_as(m, &candidate_items(c, &clothes)) != Some(false)
+            crate::services::mood_gate::reads_as_at(
+                m,
+                &candidate_items(c, &clothes),
+                Some(weather.temperature),
+            ) != Some(false)
         })
     });
     let notice = mood_shortfall.then(|| {
@@ -1005,6 +1022,20 @@ fn slot_name(kind: SlotKind) -> &'static str {
     }
 }
 
+/// 팝 요청에서 코트를 여미지 않는 기온이면 겨울 외투를 무드 옷장에서 뺀다
+/// (`mood_gate::hidden_on_mild_pop_day`, 상담과 같은 기준). 뺀 벌 수를 돌려준다.
+fn drop_winter_outers_on_mild_pop_days(
+    clothes: &mut Vec<Clothing>,
+    mood: Option<StyleGenre>,
+    temperature: f64,
+) -> usize {
+    let before = clothes.len();
+    clothes.retain(|c| {
+        !crate::services::mood_gate::hidden_on_mild_pop_day(c, mood, Some(temperature))
+    });
+    before - clothes.len()
+}
+
 /// 후보 하나의 한 슬롯을 다른 옷으로 바꾼 모델 응답.
 fn swapped_ai(
     base: &OutfitCandidate,
@@ -1164,7 +1195,11 @@ async fn supplement_candidates(
     // 2. 무드(글램·엣지) — 옷에 무드 요소가 있는 입을 수 있는 후보가 없을 때
     if let Some(m) = mood.filter(|m| crate::services::mood_gate::judges(*m)) {
         let reads = |c: &OutfitCandidate| {
-            crate::services::mood_gate::reads_as(m, &candidate_items(c, clothes)) == Some(true)
+            crate::services::mood_gate::reads_as_at(
+                m,
+                &candidate_items(c, clothes),
+                Some(temperature),
+            ) == Some(true)
         };
         let has_mood = scored.iter().zip(&status).any(|(c, ok)| *ok && reads(c));
         let base = scored
@@ -1916,6 +1951,36 @@ mod tests {
             warm.iter().find(|i| i.category == "아우터").unwrap().reason,
             "선"
         );
+    }
+
+    /// 팝은 12°C 이상에서 겨울 외투(두껍고 보온 확인)를 무드 옷장에서 뺀다. 안감 없는 두꺼운
+    /// 아우터·얇은 바람막이는 남고, 12°C 아래와 다른 무드에서는 아무것도 빼지 않는다.
+    #[test]
+    fn mild_pop_days_drop_only_winter_outers() {
+        let mut puffer = item("핑크 오렌지 컬러블록 패딩", "아우터");
+        puffer.thickness = Thickness::Thick;
+        puffer.texture_keywords = Some("colour-block puffer, down fill, hip-length".into());
+        let mut plain_thick = item("두꺼운 데님 재킷", "아우터");
+        plain_thick.thickness = Thickness::Thick;
+        plain_thick.texture_keywords = Some("heavy denim".into());
+        let wardrobe = vec![
+            puffer,
+            plain_thick,
+            item("코발트 옐로 컬러블록 바람막이", "아우터"),
+            item("코발트 블루 크롭 니트", "상의"),
+        ];
+        let run = |mood, t| {
+            let mut v = wardrobe.clone();
+            let n = drop_winter_outers_on_mild_pop_days(&mut v, mood, t);
+            (n, v.iter().map(|c| c.name.clone()).collect::<Vec<_>>())
+        };
+        let (n, left) = run(Some(StyleGenre::Pop), 19.6);
+        assert_eq!(n, 1);
+        assert!(!left.contains(&"핑크 오렌지 컬러블록 패딩".to_string()));
+        assert_eq!(run(Some(StyleGenre::Pop), 12.0).0, 1);
+        assert_eq!(run(Some(StyleGenre::Pop), 8.0).0, 0);
+        assert_eq!(run(Some(StyleGenre::Edgy), 19.6).0, 0);
+        assert_eq!(run(None, 19.6).0, 0);
     }
 
     /// 보완한 후보의 설명에는 바뀐 옷이 남지 않는다.

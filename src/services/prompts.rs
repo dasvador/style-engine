@@ -209,6 +209,31 @@ const EDGY_COLOUR_TASKS: &str = "- 엣지: 목록에 무채색(블랙·차콜·�
 - 엣지: 아우터를 입는 날에는 색이 보이도록 색이 있는 아우터를 쓰는 후보를 넣으세요 — 여민 코트 안의 상의 색은 거의 보이지 않습니다. 색이 있는 아우터나 상의에는 role 이 베이스·연결템인 담백한 하의와 가방을 받쳐 주세요.
 ";
 
+/// 팝의 원칙 3~5. 기본 원칙의 "강한 포인트 1개 이하·중립적인 이너·안정적인 하의" 는 서로 다른
+/// 색 옷의 조합과 그래픽 옷을 처음부터 밀어낸다. 그렇다고 모든 옷을 강한 색·무늬로 덮으라는
+/// 공식도 두지 않는다 — 세 방향(색 조합·배색/그래픽 옷·배색 아우터)이 모두 팝이다.
+const POP_PRINCIPLES: &str = "3. 각 후보는 색이나 그래픽이 착장의 중심이 되게 하세요. 방향은 셋입니다 — 서로 다른 색의 옷을 함께 입는 색 조합, 색 있는 배색·그래픽·대담한 패턴 옷이 중심인 조합, 배색·컬러 아우터가 중심인 조합. 두 컬러 옷이 함께 어울리는 것도 괜찮습니다.
+4. 색이나 무늬가 중심이 아닌 옷은 형태가 단순한 옷으로 받치세요. 모든 옷을 강한 색·무늬로 덮을 필요는 없습니다.
+5. 가방·신발은 코디를 거들 뿐 중심이 되지 못합니다. 기본 상의·하의에 색 있는 가방·신발만 더한 조합, 선명한 옷 한 벌에 무채색만 맞춘 조합은 팝 후보로 내지 마세요.";
+
+/// 팝 후보의 방향. 목록의 팝 옷(배색·그래픽 옷, 선명한 색 옷)을 이름으로 알려 준다 — 프레피
+/// 실측에서 "목록에 색이 있으면" 이라는 일반 문장은 모델이 색 옷을 고르게 하지 못했다.
+fn pop_tasks(pop_items: &[String], temperature: f64) -> String {
+    let mut out = String::from(
+        "- 팝: 날씨와 후보 목록이 허락하면 5개 중 색 조합 후보, 배색·그래픽 옷이 중심인 후보, 배색·컬러 아우터가 중심인 후보를 각각 1개 이상 넣으세요. 그런 옷이 목록에 없으면 억지로 만들지 마세요.\n- 팝: 색 조합은 후보마다 다른 색 계열(괄호 안)을 쓰고, 같은 색 옷을 여러 후보에 반복하지 마세요.\n- 팝: 각 후보의 \"focus\" 에 색이나 그래픽이 중심인 옷의 슬롯(상의·하의·아우터 중 하나)을 적으세요.\n",
+    );
+    if !pop_items.is_empty() {
+        out.push_str(&format!(
+            "- 팝: 이번 목록의 팝 옷은 {} 입니다.\n",
+            pop_items.join(", ")
+        ));
+    }
+    if temperature < GLAM_COVER_COAT_BELOW_C {
+        out.push_str("- 팝(추운 날): 코트는 소매에 팔을 넣고 여며 입는다고 보고 고르세요. 여민 코트 속 상의의 색·무늬는 보이지 않으니 배색·컬러 아우터나 색 있는 하의로 팝을 만드세요. 5°C 아래에서는 보온 안감(insulated lining, down fill 등)이 적힌 두꺼운 아우터를 고르세요.\n");
+    }
+    out
+}
+
 /// 추운 날 엣지. 보온 판정(`serving_ranker`)과 같은 기준을 미리 알려, 안감 없는 라이더·
 /// 레더 블레이저나 맨다리 미니가 후보로 나왔다가 날씨 게이트에서 빠지는 일을 줄인다.
 const EDGY_COLD_TASK: &str = "- 엣지(추운 날): 오늘 밖에서 입고 다니는 착장입니다. 코트는 소매에 팔을 넣고 여며 입는다고 보고 고르세요. 5°C 아래에서는 보온 안감(insulated lining, shearling lining 등)이 적힌 두꺼운 아우터를 고르고, 안감이 적히지 않은 라이더·레더 블레이저·크롭 재킷에 기대지 마세요.
@@ -286,6 +311,7 @@ pub fn outfit_candidate_prompts(
     // 예전과 같다.
     let glam = mood == Some(crate::models::style_vocab::StyleGenre::Glam);
     let edgy = mood == Some(crate::models::style_vocab::StyleGenre::Edgy);
+    let pop = mood == Some(crate::models::style_vocab::StyleGenre::Pop);
     let clothes_grouped = format!(
         "[상의 후보]\n{tops}\n\n[하의 후보]\n{bottoms}\n\n[아우터 후보]\n{outers}\n\n[신발 후보]\n{shoes}\n\n[가방 후보]\n{bags}",
         tops = if clothes.tops.is_empty() {
@@ -323,6 +349,8 @@ pub fn outfit_candidate_prompts(
         GLAM_PRINCIPLES
     } else if edgy {
         EDGY_PRINCIPLES
+    } else if pop {
+        POP_PRINCIPLES
     } else if let Some(p) = palette_principle {
         p
     } else {
@@ -432,6 +460,9 @@ pub fn outfit_candidate_prompts(
         } else if edgy {
             "\n- 선택한 무드: 엣지 — 비대칭과 구조적인 실루엣, 가죽과 니트·데님·직물의 대비로 \
              취향과 존재감을 드러내는 도시적인 스타일. 일상 외출에서 시선을 끄는 착장을 만듭니다."
+        } else if pop {
+            "\n- 선택한 무드: 팝 — 선명한 색의 조합, 컬러 그래픽·기하 패턴, 배색 아우터로 유쾌하게 \
+             시선을 끄는 성인 여성의 일상복. 코스튬·아이 같은 연출이 아니라 실제로 입는 착장입니다."
         } else if palette_principle.is_some() {
             match mood {
                 Some(crate::models::style_vocab::StyleGenre::Street) => "\n- 선택한 무드: 스트리트",
@@ -463,12 +494,14 @@ pub fn outfit_candidate_prompts(
             } else {
                 format!("{EDGY_TASKS}{colour}")
             }
+        } else if pop {
+            pop_tasks(&clothes.colour_items, weather.temperature)
         } else if palette_principle.is_some() {
             palette_tasks(mood, &clothes.colour_items)
         } else {
             String::new()
         },
-        focus_field = if glam || edgy {
+        focus_field = if glam || edgy || pop {
             "      \"focus\": \"상의|하의|아우터 중 시선이 모이는 곳\",\n"
         } else {
             ""
@@ -635,6 +668,9 @@ name 작성 원칙:
   sporty_casual(기능성 소재와 운동복 요소), glam(새틴·메탈릭·벨벳처럼 빛을 받는 소재나
   원숄더·드레이프 같은 조형적인 실루엣), edgy(비대칭·각진 어깨·배럴 레그·박시 크롭처럼
   형태가 분명한 옷이나 가죽 옷 — 검은색이나 오버사이즈라는 것만으로는 고르지 않습니다),
+  pop(컬러블록·컬러 그래픽·대담한 컬러 패턴처럼 색과 무늬가 중심인 옷, 또는 코발트·체리레드·
+  켈리그린처럼 채도가 높아 다른 선명한 색과 섞어 입을 단색 옷 — 흐린 색·파스텔·네이비 같은
+  기본색이나 흑백 그래픽이라는 것만으로는 고르지 않습니다),
   amekaji(아메리칸 캐주얼),
   preppy(아이비리그), workwear(작업복), outdoor_casual(기능성 아웃도어).
   확신이 서는 것만 고르고, 애매하면 비워 두세요 — 틀린 장르에 들어가면 그 장르의
@@ -834,6 +870,9 @@ name 작성 원칙:
   sporty_casual(기능성 소재와 운동복 요소), glam(새틴·메탈릭·벨벳처럼 빛을 받는 소재나
   원숄더·드레이프 같은 조형적인 실루엣), edgy(비대칭·각진 어깨·배럴 레그·박시 크롭처럼
   형태가 분명한 옷이나 가죽 옷 — 검은색이나 오버사이즈라는 것만으로는 고르지 않습니다),
+  pop(컬러블록·컬러 그래픽·대담한 컬러 패턴처럼 색과 무늬가 중심인 옷, 또는 코발트·체리레드·
+  켈리그린처럼 채도가 높아 다른 선명한 색과 섞어 입을 단색 옷 — 흐린 색·파스텔·네이비 같은
+  기본색이나 흑백 그래픽이라는 것만으로는 고르지 않습니다),
   amekaji(아메리칸 캐주얼),
   preppy(아이비리그), workwear(작업복), outdoor_casual(기능성 아웃도어).
   확신이 서는 것만 고르고, 애매하면 비워 두세요 — 틀린 장르에 들어가면 그 장르의
@@ -1023,7 +1062,7 @@ mod outfit_candidate_prompt_tests {
         )
     }
 
-    /// 글램·엣지가 아닌 무드는 예전 문장 그대로다 — 무드 전달이 다른 무드의 후보를 바꾸지
+    /// 글램·엣지·팝이 아닌 무드는 예전 문장 그대로다 — 무드 전달이 다른 무드의 후보를 바꾸지
     /// 않는다. 추운 날 문장도 다른 무드에는 들어가지 않는다.
     #[test]
     fn other_moods_get_the_unchanged_prompt() {
@@ -1031,12 +1070,12 @@ mod outfit_candidate_prompt_tests {
             let base = prompts_at(None, t);
             for g in StyleGenre::ALL
                 .iter()
-                .filter(|g| !matches!(g, StyleGenre::Glam | StyleGenre::Edgy))
+                .filter(|g| !matches!(g, StyleGenre::Glam | StyleGenre::Edgy | StyleGenre::Pop))
             {
                 assert_eq!(prompts_at(Some(*g), t), base, "{g}");
             }
             assert!(base.0.contains(DEFAULT_PRINCIPLES));
-            for word in ["글램", "엣지"] {
+            for word in ["글램", "엣지", "팝 "] {
                 assert!(!base.0.contains(word) && !base.1.contains(word));
             }
         }
@@ -1056,6 +1095,39 @@ mod outfit_candidate_prompt_tests {
         assert!(user.contains("\"focus\""));
         assert!(!user.contains(EDGY_COLD_TASK));
         assert!(!sys.contains("한 곳에 시선이 모이는 중심"));
+    }
+
+    /// 팝은 기본 원칙 3~5를 팝 원칙으로 바꾸고, 세 방향과 목록의 팝 옷을 이름으로 알린다.
+    /// 추운 날에는 여민 코트 속 상의 색이 보이지 않는다는 문장이 붙는다. 팝은 사용자가 직접
+    /// 고른 무드라 밝은색 비선호 값과 무관하게 같은 문장이다.
+    #[test]
+    fn pop_swaps_principles_and_names_its_pieces() {
+        let items = vec![
+            "레드 핑크 컬러블록 스웨트셔츠(배색·그래픽)".to_string(),
+            "코발트 와이드 팬츠(블루)".to_string(),
+        ];
+        for t in [19.6, 8.0, 2.0] {
+            let (sys, user) = prompts_full(Some(StyleGenre::Pop), t, true, false, &items);
+            assert!(sys.contains(POP_PRINCIPLES));
+            assert!(!sys.contains(DEFAULT_PRINCIPLES));
+            assert!(!sys.contains(EDGY_PRINCIPLES) && !sys.contains(GLAM_PRINCIPLES));
+            assert!(user.contains("선택한 무드: 팝"));
+            assert!(user.contains("색 조합 후보, 배색·그래픽 옷이 중심인 후보, 배색·컬러 아우터"));
+            assert!(user.contains("다른 색 계열"));
+            assert!(user.contains(
+                "이번 목록의 팝 옷은 레드 핑크 컬러블록 스웨트셔츠(배색·그래픽), 코발트 와이드 팬츠(블루) 입니다."
+            ));
+            assert!(user.contains("\"focus\""));
+            assert_eq!(user.contains("팝(추운 날)"), t < 12.0);
+            assert!(!user.contains("글램") && !user.contains("엣지"));
+            assert_eq!(
+                prompts_full(Some(StyleGenre::Pop), t, false, false, &items),
+                (sys, user)
+            );
+        }
+        // 팝 옷이 없으면 이름 목록 문장이 없다.
+        let (_, user) = prompts_full(Some(StyleGenre::Pop), 19.6, true, false, &[]);
+        assert!(!user.contains("이번 목록의 팝 옷"));
     }
 
     /// 엣지의 색 다양성 문장은 기본으로 들어가고, 밝은색 비선호 사용자에게는 빠진다. 형태·

@@ -266,6 +266,10 @@ style_vocab! {
         /// 대비가 코디의 중심. 글램이 광택·곡선으로 시선을 끈다면 엣지는 형태와 대비로 끈다.
         /// 후디·스니커즈 중심의 스트리트, 단정한 테일러링의 모던 시크와 다르다.
         Edgy => "edgy",
+        /// 선명한 색의 조합, 컬러 그래픽·기하 패턴, 배색 아우터처럼 색과 그래픽으로 시선을 끄는
+        /// 성인 여성의 일상복. 밝은 옷 한 벌만으로는 아니다 — 서로 다른 색의 옷이 어울리거나,
+        /// 색 있는 배색·그래픽 옷이 중심이어야 한다.
+        Pop => "pop",
     }
 }
 
@@ -372,6 +376,8 @@ impl StyleGenre {
             "glamour" | "glamorous" | "글램" | "글래머러스" => StyleGenre::Glam,
             // 엣지
             "edge" | "edgy_chic" | "엣지" | "엣지_시크" => StyleGenre::Edgy,
+            // 팝
+            "팝" | "pop_style" | "팝_스타일" | "pop_color" | "팝_컬러" => StyleGenre::Pop,
             // 스포티 캐주얼
             "athleisure" | "sporty" | "sportswear" | "애슬레저" | "스포티" | "스포티_캐주얼" => {
                 StyleGenre::SportyCasual
@@ -451,6 +457,9 @@ mod tests {
             ("edgy", StyleGenre::Edgy),
             ("Edgy Chic", StyleGenre::Edgy),
             ("엣지", StyleGenre::Edgy),
+            ("pop", StyleGenre::Pop),
+            ("Pop Style", StyleGenre::Pop),
+            ("팝", StyleGenre::Pop),
         ];
         for (raw, expected) in cases {
             assert_eq!(StyleGenre::from_alias(raw), Some(expected), "{raw}");
@@ -527,7 +536,7 @@ mod tests {
         );
     }
 
-    /// 남성 8개 · 여성 10개가 모두 표준값으로 존재해야 한다. 목록이 빠지면
+    /// 남성 8개 · 여성 11개가 모두 표준값으로 존재해야 한다. 목록이 빠지면
     /// `style_mood` 시드가 넣은 키를 서버가 디코딩하지 못한다.
     #[test]
     fn every_exposed_genre_is_a_canonical_value() {
@@ -552,6 +561,7 @@ mod tests {
             "sporty_casual",
             "glam",
             "edgy",
+            "pop",
         ];
         for key in male.iter().chain(female.iter()) {
             assert!(key.parse::<StyleGenre>().is_ok(), "{key}");
