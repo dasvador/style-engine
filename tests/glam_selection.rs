@@ -576,7 +576,8 @@ fn shoe_weather_separates_clear_misfits_from_borderline() {
     assert_eq!(shoe_weather(&sandal, 25.0), ShoeWeather::Fine);
 }
 
-/// 다른 무드의 채점은 그대로다 — 무드 반영 평가가 운영 평가와 같다.
+/// 다른 무드의 채점은 그대로다 — 무드 반영 평가가 운영 평가와 같다. 엣지는 자기 규칙이
+/// 있다(`tests/edgy_selection.rs`).
 #[test]
 fn other_moods_are_scored_exactly_as_before() {
     let look = [
@@ -587,7 +588,10 @@ fn other_moods_are_scored_exactly_as_before() {
         silver_bag(),
     ];
     let base = engine::evaluate(&ctx(&look), Some("가을")).score;
-    for g in StyleGenre::ALL.iter().filter(|g| **g != StyleGenre::Glam) {
+    for g in StyleGenre::ALL
+        .iter()
+        .filter(|g| !matches!(g, StyleGenre::Glam | StyleGenre::Edgy))
+    {
         assert_eq!(
             mood_rules::evaluate_for_mood(&ctx(&look), Some("가을"), Some(*g)).score,
             base,

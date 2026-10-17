@@ -131,6 +131,30 @@ const GLAM_TASKS: &str = "- 글램: 날씨와 후보 목록이 허락하면 5개
 - 글램: 각 후보의 \"focus\" 에 시선이 모이는 옷의 슬롯(상의·하의·아우터 중 하나)을 적으세요.
 ";
 
+/// 엣지의 원칙 3~5. 기본 원칙의 "강한 포인트 1개 이하·중립적인 이너·안정적인 하의" 는
+/// 형태가 있는 상의·하의를 처음부터 밀어낸다. 그렇다고 "중심은 딱 한 곳" 같은 새 공식을
+/// 두지도 않는다 — 형태와 소재 대비가 여러 곳에서 어울리는 것도 엣지다.
+const EDGY_PRINCIPLES: &str = "3. 각 후보는 옷(상의·하의·아우터)의 형태나 소재 대비로 특징이 드러나게 하세요. 형태는 비대칭 넥·헴, 각진 어깨, 배럴·와이드 레그, 박시한 크롭처럼 재단에서 나오고, 소재 대비는 가죽과 니트·울·데님을 함께 입는 데서 나옵니다. 특징이 여러 곳에 있어도 서로 어울리면 괜찮습니다.
+4. 실루엣의 비율을 정하세요 — 몸에 맞는 상의와 넓거나 묵직한 하의, 박시한 아우터와 날렵한 하의처럼. 후보마다 하의 종류(스커트·와이드·배럴·데님)와 아우터 종류를 바꿔 같은 틀(예: 라이더 + 검은 스키니)을 반복하지 마세요.
+5. 가방·신발은 코디를 거들 뿐 중심이 되지 못합니다. 기본 티셔츠·데님에 가죽 가방이나 부츠만 더한 조합은 엣지 후보로 내지 마세요. 후디·조거·운동화 중심(스트리트)이나 단정한 정장 세트(모던 시크)로 흐르지 마세요.";
+
+/// 엣지 후보의 방향. 날씨와 옷장이 허락하는 만큼만.
+const EDGY_TASKS: &str = "- 엣지: 날씨와 후보 목록이 허락하면 5개 중 상의의 형태가 중심인 후보, 하의의 형태나 가죽이 중심인 후보, 아우터의 형태가 중심인 후보를 각각 1개 이상 넣으세요. 그런 옷이 목록에 없으면 억지로 만들지 마세요.
+- 엣지: 각 후보의 \"focus\" 에 특징이 드러나는 옷의 슬롯(상의·하의·아우터 중 하나)을 적으세요.
+";
+
+/// 엣지의 색 다양성. 밝은색을 싫어한다고 적은 사용자에게는 넣지 않는다
+/// (`user_style_profile.dislikes_bright_colors`).
+const EDGY_COLOUR_TASKS: &str = "- 엣지: 목록에 무채색(블랙·차콜·그레이·화이트)이 아닌 색이 뚜렷한 상의나 아우터가 있으면, 5개 중 2개 이상은 그런 옷을 상의나 아우터에 넣고 후보마다 다른 색을 쓰세요. 나머지 옷은 그 색과 어울리게 고르세요. 무채색만으로 된 엣지 후보도 1개 이상 남기세요. 가방·신발만 색이 있는 조합은 색 후보로 세지 않습니다.
+- 엣지: 아우터를 입는 날에는 색이 보이도록 색이 있는 아우터를 쓰는 후보를 넣으세요 — 여민 코트 안의 상의 색은 거의 보이지 않습니다. 색이 있는 아우터나 상의에는 role 이 베이스·연결템인 담백한 하의와 가방을 받쳐 주세요.
+";
+
+/// 추운 날 엣지. 보온 판정(`serving_ranker`)과 같은 기준을 미리 알려, 안감 없는 라이더·
+/// 레더 블레이저나 맨다리 미니가 후보로 나왔다가 날씨 게이트에서 빠지는 일을 줄인다.
+const EDGY_COLD_TASK: &str = "- 엣지(추운 날): 오늘 밖에서 입고 다니는 착장입니다. 코트는 소매에 팔을 넣고 여며 입는다고 보고 고르세요. 5°C 아래에서는 보온 안감(insulated lining, shearling lining 등)이 적힌 두꺼운 아우터를 고르고, 안감이 적히지 않은 라이더·레더 블레이저·크롭 재킷에 기대지 마세요.
+- 엣지(추운 날): 미니처럼 짧은 하의는 니하이 부츠와 무릎을 덮는 롱코트가 함께일 때만 고르세요. 그렇지 않으면 미디 스커트나 긴 바지로 하의를 정하세요. 목록에 없는 스타킹·타이츠를 더하지 마세요.
+";
+
 /// 이 기온 미만의 글램은 "실내 착장 + 이동용 두꺼운 코트" 로 짠다.
 pub const GLAM_COVER_COAT_BELOW_C: f64 = 12.0;
 
@@ -148,6 +172,7 @@ const GLAM_COLD_TASK: &str = "- 글램(추운 날): 오늘 밖에서 입고 다�
 /// 없고 "필요할 때만" 이라고만 적혀 있던 동안, 모델은 15°C 에서도 5개 후보 전부를
 /// 아우터 없이 채웠다. 그러면 블레이저·코트 같은 아우터는 shortlist 까지 올라와도
 /// 후보에 한 번도 등장하지 못해 규칙 엔진이 비교할 기회조차 없다.
+#[allow(clippy::too_many_arguments)]
 pub async fn get_outfit_candidates(
     llm: &LlmClient,
     weather: &CurrentWeather,
@@ -156,6 +181,7 @@ pub async fn get_outfit_candidates(
     style_preference: Option<&str>,
     recent_items_hint: &str,
     mood: Option<crate::models::style_vocab::StyleGenre>,
+    colour_variety: bool,
 ) -> anyhow::Result<AiMultiRecommendation> {
     let today = chrono::Local::now().format("%Y-%m-%d (%A)").to_string();
     let (system_prompt, user_prompt) = outfit_candidate_prompts(
@@ -166,6 +192,7 @@ pub async fn get_outfit_candidates(
         recent_items_hint,
         &today,
         mood,
+        colour_variety,
     );
     Ok(llm
         .chat_json::<AiMultiRecommendation>(
@@ -178,6 +205,7 @@ pub async fn get_outfit_candidates(
 }
 
 /// 후보 생성 프롬프트(시스템, 사용자). 호출과 떼어 두어 문장을 테스트로 확인한다.
+#[allow(clippy::too_many_arguments)]
 pub fn outfit_candidate_prompts(
     weather: &CurrentWeather,
     clothes: &GroupedClothes,
@@ -186,11 +214,14 @@ pub fn outfit_candidate_prompts(
     recent_items_hint: &str,
     today: &str,
     mood: Option<crate::models::style_vocab::StyleGenre>,
+    // 엣지에서 색 다양성 문장을 넣을지. 밝은색 비선호 사용자면 `false` 다.
+    colour_variety: bool,
 ) -> (String, String) {
     // 글램은 기본 원칙 3~5(강한 포인트 1개 이하·안정적인 하의·중립적인 이너)를 글램의
     // 원칙으로 바꾼다. 두 원칙을 함께 두면 모델이 한쪽을 무시한다. 다른 무드의 문장은
     // 예전과 같다.
     let glam = mood == Some(crate::models::style_vocab::StyleGenre::Glam);
+    let edgy = mood == Some(crate::models::style_vocab::StyleGenre::Edgy);
     let clothes_grouped = format!(
         "[상의 후보]\n{tops}\n\n[하의 후보]\n{bottoms}\n\n[아우터 후보]\n{outers}\n\n[신발 후보]\n{shoes}\n\n[가방 후보]\n{bags}",
         tops = if clothes.tops.is_empty() {
@@ -225,6 +256,8 @@ pub fn outfit_candidate_prompts(
 
     let principles = if glam {
         GLAM_PRINCIPLES
+    } else if edgy {
+        EDGY_PRINCIPLES
     } else {
         DEFAULT_PRINCIPLES
     };
@@ -329,17 +362,33 @@ pub fn outfit_candidate_prompts(
         mood_line = if glam {
             "\n- 선택한 무드: 글램 — 빛나는 소재와 선명한 실루엣으로 존재감을 주는 스타일. \
              저녁 약속·파티·분위기 있는 장소에서 시선을 끄는 착장을 만듭니다."
+        } else if edgy {
+            "\n- 선택한 무드: 엣지 — 비대칭과 구조적인 실루엣, 가죽과 니트·데님·직물의 대비로 \
+             취향과 존재감을 드러내는 도시적인 스타일. 일상 외출에서 시선을 끄는 착장을 만듭니다."
         } else {
             ""
         },
-        mood_tasks = if !glam {
-            String::new()
-        } else if weather.temperature < GLAM_COVER_COAT_BELOW_C {
-            format!("{GLAM_TASKS}{GLAM_COLD_TASK}")
+        mood_tasks = if glam {
+            if weather.temperature < GLAM_COVER_COAT_BELOW_C {
+                format!("{GLAM_TASKS}{GLAM_COLD_TASK}")
+            } else {
+                GLAM_TASKS.to_string()
+            }
+        } else if edgy {
+            let colour = if colour_variety {
+                EDGY_COLOUR_TASKS
+            } else {
+                ""
+            };
+            if weather.temperature < GLAM_COVER_COAT_BELOW_C {
+                format!("{EDGY_TASKS}{colour}{EDGY_COLD_TASK}")
+            } else {
+                format!("{EDGY_TASKS}{colour}")
+            }
         } else {
-            GLAM_TASKS.to_string()
+            String::new()
         },
-        focus_field = if glam {
+        focus_field = if glam || edgy {
             "      \"focus\": \"상의|하의|아우터 중 시선이 모이는 곳\",\n"
         } else {
             ""
@@ -504,7 +553,9 @@ name 작성 원칙:
   modern_chic(선명한 실루엣과 강한 대비), bohemian(자연 소재와 느슨한 레이어링),
   street(오버사이즈와 그래픽, 데님·카고), mannish(테일러링과 넓은 어깨),
   sporty_casual(기능성 소재와 운동복 요소), glam(새틴·메탈릭·벨벳처럼 빛을 받는 소재나
-  원숄더·드레이프 같은 조형적인 실루엣), amekaji(아메리칸 캐주얼),
+  원숄더·드레이프 같은 조형적인 실루엣), edgy(비대칭·각진 어깨·배럴 레그·박시 크롭처럼
+  형태가 분명한 옷이나 가죽 옷 — 검은색이나 오버사이즈라는 것만으로는 고르지 않습니다),
+  amekaji(아메리칸 캐주얼),
   preppy(아이비리그), workwear(작업복), outdoor_casual(기능성 아웃도어).
   확신이 서는 것만 고르고, 애매하면 비워 두세요 — 틀린 장르에 들어가면 그 장르의
   추천이 전부 어긋납니다.
@@ -701,7 +752,9 @@ name 작성 원칙:
   modern_chic(선명한 실루엣과 강한 대비), bohemian(자연 소재와 느슨한 레이어링),
   street(오버사이즈와 그래픽, 데님·카고), mannish(테일러링과 넓은 어깨),
   sporty_casual(기능성 소재와 운동복 요소), glam(새틴·메탈릭·벨벳처럼 빛을 받는 소재나
-  원숄더·드레이프 같은 조형적인 실루엣), amekaji(아메리칸 캐주얼),
+  원숄더·드레이프 같은 조형적인 실루엣), edgy(비대칭·각진 어깨·배럴 레그·박시 크롭처럼
+  형태가 분명한 옷이나 가죽 옷 — 검은색이나 오버사이즈라는 것만으로는 고르지 않습니다),
+  amekaji(아메리칸 캐주얼),
   preppy(아이비리그), workwear(작업복), outdoor_casual(기능성 아웃도어).
   확신이 서는 것만 고르고, 애매하면 비워 두세요 — 틀린 장르에 들어가면 그 장르의
   추천이 전부 어긋납니다.
@@ -839,8 +892,20 @@ mod outfit_candidate_prompt_tests {
     use crate::models::style_vocab::StyleGenre;
 
     fn prompts(mood: Option<StyleGenre>) -> (String, String) {
+        prompts_at(mood, 17.0)
+    }
+
+    fn prompts_at(mood: Option<StyleGenre>, temperature: f64) -> (String, String) {
+        prompts_with(mood, temperature, true)
+    }
+
+    fn prompts_with(
+        mood: Option<StyleGenre>,
+        temperature: f64,
+        colour_variety: bool,
+    ) -> (String, String) {
         let w = CurrentWeather {
-            temperature: 17.0,
+            temperature,
             apparent_temperature: 16.0,
             humidity: 50.0,
             wind_speed: 3.0,
@@ -862,18 +927,71 @@ mod outfit_candidate_prompt_tests {
             "- 티",
             "2026-10-17 (Saturday)",
             mood,
+            colour_variety,
         )
     }
 
-    /// 글램이 아닌 무드는 예전 문장 그대로다 — 무드 전달이 다른 무드의 후보를 바꾸지 않는다.
+    /// 글램·엣지가 아닌 무드는 예전 문장 그대로다 — 무드 전달이 다른 무드의 후보를 바꾸지
+    /// 않는다. 추운 날 문장도 다른 무드에는 들어가지 않는다.
     #[test]
     fn other_moods_get_the_unchanged_prompt() {
-        let base = prompts(None);
-        for g in StyleGenre::ALL.iter().filter(|g| **g != StyleGenre::Glam) {
-            assert_eq!(prompts(Some(*g)), base, "{g}");
+        for t in [17.0, 2.0] {
+            let base = prompts_at(None, t);
+            for g in StyleGenre::ALL
+                .iter()
+                .filter(|g| !matches!(g, StyleGenre::Glam | StyleGenre::Edgy))
+            {
+                assert_eq!(prompts_at(Some(*g), t), base, "{g}");
+            }
+            assert!(base.0.contains(DEFAULT_PRINCIPLES));
+            for word in ["글램", "엣지"] {
+                assert!(!base.0.contains(word) && !base.1.contains(word));
+            }
         }
-        assert!(base.0.contains(DEFAULT_PRINCIPLES));
-        assert!(!base.0.contains("글램") && !base.1.contains("글램"));
+    }
+
+    /// 엣지는 기본 원칙(강한 포인트 1개 이하·안정적인 하의·중립적인 이너)을 엣지 원칙으로
+    /// 바꾼다. 글램 문장은 섞이지 않는다. "중심은 한 곳" 같은 공식도 두지 않는다.
+    #[test]
+    fn edgy_swaps_the_conflicting_principles() {
+        let (sys, user) = prompts(Some(StyleGenre::Edgy));
+        assert!(sys.contains(EDGY_PRINCIPLES));
+        assert!(!sys.contains(DEFAULT_PRINCIPLES));
+        assert!(!sys.contains(GLAM_PRINCIPLES));
+        assert!(user.contains("선택한 무드: 엣지"));
+        assert!(user.contains(EDGY_TASKS));
+        assert!(!user.contains("글램"));
+        assert!(user.contains("\"focus\""));
+        assert!(!user.contains(EDGY_COLD_TASK));
+        assert!(!sys.contains("한 곳에 시선이 모이는 중심"));
+    }
+
+    /// 엣지의 색 다양성 문장은 기본으로 들어가고, 밝은색 비선호 사용자에게는 빠진다. 형태·
+    /// 추운 날 기준 문장은 둘 다 그대로다. 다른 무드에는 이 값이 아무 영향이 없다.
+    #[test]
+    fn edgy_colour_variety_follows_the_bright_colour_preference() {
+        for t in [16.0, 2.0] {
+            let (_, on) = prompts_with(Some(StyleGenre::Edgy), t, true);
+            let (_, off) = prompts_with(Some(StyleGenre::Edgy), t, false);
+            assert!(on.contains(EDGY_COLOUR_TASKS));
+            assert!(!off.contains(EDGY_COLOUR_TASKS));
+            assert!(off.contains(EDGY_TASKS));
+            assert_eq!(on.contains(EDGY_COLD_TASK), t < 12.0);
+            assert_eq!(off.contains(EDGY_COLD_TASK), t < 12.0);
+            for g in [None, Some(StyleGenre::Glam), Some(StyleGenre::Minimal)] {
+                assert_eq!(prompts_with(g, t, true), prompts_with(g, t, false));
+            }
+        }
+    }
+
+    /// 추운 날 엣지는 보온 안감·하체 기준을 미리 알린다. 날씨 판정과 같은 기준이다.
+    #[test]
+    fn cold_edgy_asks_for_lined_outerwear_and_covered_legs() {
+        let (_, user) = prompts_at(Some(StyleGenre::Edgy), 2.0);
+        assert!(user.contains(EDGY_COLD_TASK));
+        assert!(user.contains("보온 안감"));
+        assert!(user.contains("니하이 부츠와 무릎을 덮는 롱코트"));
+        assert!(!user.contains(GLAM_COLD_TASK));
     }
 
     /// 글램은 기본 원칙(강한 포인트 1개 이하·중립적인 이너)을 글램 원칙으로 바꾼다 — 두

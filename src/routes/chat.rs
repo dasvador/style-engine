@@ -190,6 +190,72 @@ impl ChatItem {
     }
 }
 
+/// 상담 모델에 주는 도구. provider 중립 형태다 — OpenAI 의 `function.parameters` 든
+/// Anthropic 의 `input_schema` 든 직렬화는 provider 구현체가 한다. `swap_item` 은 직전
+/// 코디가 있을 때만 따로 더한다.
+fn chat_tools() -> Vec<ToolDef> {
+    vec![
+        ToolDef::new(
+            "search_wardrobe",
+            "유저 옷장에서 아이템을 자연어로 검색한다. 유저가 말한 아이템이 어떤 카테고리인지 판단해서 category를 함께 넘겨라.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string", "description": "검색할 아이템 설명 (예: 올리브 슬립온, 모카브라운 워크자켓)" },
+                    "category": { "type": "string", "enum": ["상의","하의","아우터","신발","가방"], "description": "아이템의 카테고리. 슬립온/스니커/부츠/샌들→신발, 자켓/코트/가디건→아우터, 팬츠/데님→하의 등" }
+                },
+                "required": ["query", "category"]
+            }),
+        ),
+        ToolDef::new(
+            "get_outfit",
+            "유저가 특정 옷을 지정했을 때, 그 anchor 아이템 기준으로 서버가 최적의 착장을 생성한다. user_query는 유저 원문, anchor_name은 search_wardrobe에서 찾은 정확한 DB 이름. 특정 옷 없이 전체 코디를 원하면 get_outfit_for_today 를 쓴다.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "user_query": { "type": "string", "description": "유저가 언급한 원래 아이템 표현 (예: 올리브 슬립온)" },
+                    "anchor_name": { "type": "string", "description": "search_wardrobe 결과에서 선택한 정확한 DB 이름" },
+                    "avoid_tags": { "type": "array", "items": { "type": "string" }, "description": "피할 스타일 태그" }
+                },
+                "required": ["user_query", "anchor_name"]
+            }),
+        ),
+        ToolDef::new(
+            "get_outfit_for_today",
+            "기준 아이템 없이, 오늘 날씨와 화면에서 고른 무드에 맞는 코디를 서버가 옷장에서 만든다. 유저가 특정 옷을 말하지 않고 오늘 입을 코디를 원할 때 쓴다. 기준 옷도 서버가 고른다.",
+            json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        ),
+        ToolDef::new(
+            "evaluate_outfit",
+            "서버가 착장 조합의 품질을 검증한다. 문제가 있으면 이유와 함께 실패를 반환한다. get_outfit·get_outfit_for_today 결과를 검증할 때 사용.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "item_names": { "type": "array", "items": { "type": "string" }, "description": "검증할 아이템 이름 목록" }
+                },
+                "required": ["item_names"]
+            }),
+        ),
+        ToolDef::new(
+            "submit_feedback",
+            "유저가 대화 중 표현한 선호/비선호를 저장한다.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "feedback_type": { "type": "string", "enum": ["like", "dislike"], "description": "좋아요/싫어요" },
+                    "reason_tags": { "type": "array", "items": { "type": "string" }, "description": "이유 태그 (too_military, good_texture 등)" },
+                    "comment": { "type": "string", "description": "유저 원문 피드백" }
+                },
+                "required": ["feedback_type"]
+            }),
+        ),
+    ]
+}
+
 async fn chat(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -271,60 +337,7 @@ async fn chat(
             .unwrap_or_default(),
     );
 
-    // ─── Tool definitions ───
-    // provider 중립 형태. OpenAI의 `function.parameters`든 Anthropic의 `input_schema`든
-    // 직렬화는 provider 구현체가 한다.
-    let tools = vec![
-        ToolDef::new(
-            "search_wardrobe",
-            "유저 옷장에서 아이템을 자연어로 검색한다. 유저가 말한 아이템이 어떤 카테고리인지 판단해서 category를 함께 넘겨라.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "query": { "type": "string", "description": "검색할 아이템 설명 (예: 올리브 슬립온, 모카브라운 워크자켓)" },
-                    "category": { "type": "string", "enum": ["상의","하의","아우터","신발","가방"], "description": "아이템의 카테고리. 슬립온/스니커/부츠/샌들→신발, 자켓/코트/가디건→아우터, 팬츠/데님→하의 등" }
-                },
-                "required": ["query", "category"]
-            }),
-        ),
-        ToolDef::new(
-            "get_outfit",
-            "anchor 아이템 기준으로 서버가 최적의 착장을 생성한다. user_query는 유저 원문, anchor_name은 search_wardrobe에서 찾은 정확한 DB 이름.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "user_query": { "type": "string", "description": "유저가 언급한 원래 아이템 표현 (예: 올리브 슬립온)" },
-                    "anchor_name": { "type": "string", "description": "search_wardrobe 결과에서 선택한 정확한 DB 이름" },
-                    "avoid_tags": { "type": "array", "items": { "type": "string" }, "description": "피할 스타일 태그" }
-                },
-                "required": ["user_query", "anchor_name"]
-            }),
-        ),
-        ToolDef::new(
-            "evaluate_outfit",
-            "서버가 착장 조합의 품질을 검증한다. 문제가 있으면 이유와 함께 실패를 반환한다. get_outfit 결과를 검증할 때 사용.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "item_names": { "type": "array", "items": { "type": "string" }, "description": "검증할 아이템 이름 목록" }
-                },
-                "required": ["item_names"]
-            }),
-        ),
-        ToolDef::new(
-            "submit_feedback",
-            "유저가 대화 중 표현한 선호/비선호를 저장한다.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "feedback_type": { "type": "string", "enum": ["like", "dislike"], "description": "좋아요/싫어요" },
-                    "reason_tags": { "type": "array", "items": { "type": "string" }, "description": "이유 태그 (too_military, good_texture 등)" },
-                    "comment": { "type": "string", "description": "유저 원문 피드백" }
-                },
-                "required": ["feedback_type"]
-            }),
-        ),
-    ];
+    let tools = chat_tools();
 
     let has_previous = !body.previous_items.is_empty();
 
@@ -365,7 +378,7 @@ async fn chat(
     }
     let previous_hint = if has_previous {
         format!(
-            "\n\n직전에 보여 준 코디:\n{}\n유저가 이 코디의 일부만 바꾸자고 하면(예: '신발만 바꿔줘', '가방 다른 걸로') get_outfit 대신 swap_item 을 바꿀 카테고리마다 한 번씩 호출하라. 새 코디를 원하면 get_outfit 을 쓴다.\nswap_item 을 쓴 뒤에는 get_outfit 을 부르지 마라 — 유저가 바꾸라고 한 곳만 바꾼다. evaluate_outfit 이 아쉬운 점을 말해도 같은 카테고리 안에서 swap_item 을 한 번 더 부르거나, 그대로 두고 그 점을 한 문장으로 알려라.\nswap_item 의 query 에는 유저가 말한 표현만 넣어라 — 유저가 말하지 않은 색이나 소재를 붙이지 마라.\n답변은 swap_item 이 돌려준 changed.to 의 실제 이름으로, 바뀐 아이템이 나머지와 어떻게 어울리는지 착장 설명 규칙대로 2문장 쓴다. 아쉬운 점은 있을 때만 마지막에 한 문장.",
+            "\n\n직전에 보여 준 코디:\n{}\n유저가 이 코디의 일부만 바꾸자고 하면(예: '신발만 바꿔줘', '가방 다른 걸로') get_outfit·get_outfit_for_today 대신 swap_item 을 바꿀 카테고리마다 한 번씩 호출하라. 새 코디를 원하면 특정 옷을 말했을 때는 get_outfit, 아니면 get_outfit_for_today 를 쓴다.\nswap_item 을 쓴 뒤에는 get_outfit·get_outfit_for_today 를 부르지 마라 — 유저가 바꾸라고 한 곳만 바꾼다. evaluate_outfit 이 아쉬운 점을 말해도 같은 카테고리 안에서 swap_item 을 한 번 더 부르거나, 그대로 두고 그 점을 한 문장으로 알려라.\nswap_item 의 query 에는 유저가 말한 표현만 넣어라 — 유저가 말하지 않은 색이나 소재를 붙이지 마라.\n답변은 swap_item 이 돌려준 changed.to 의 실제 이름으로, 바뀐 아이템이 나머지와 어떻게 어울리는지 착장 설명 규칙대로 2문장 쓴다. 아쉬운 점은 있을 때만 마지막에 한 문장.",
             body.previous_items
                 .iter()
                 .map(|i| format!("- {}: {}", i.category, i.name))
@@ -376,22 +389,46 @@ async fn chat(
         String::new()
     };
 
+    // 화면에서 고른 무드. 예전에는 서버가 옷장을 거르는 데만 쓰고 모델에는 알리지 않아서,
+    // "엣지 무드로 추천해줘" 같은 요청에도 모델이 무드를 모른 채 기준 아이템을 되물었다
+    // (2026-10-17 실측).
+    let mood_hint = match mood {
+        Some(m) => {
+            let label: Option<(String,)> = sqlx::query_as(
+                "SELECT mood_label FROM style_mood WHERE mood_key = ? \
+                 ORDER BY gender = ? DESC LIMIT 1",
+            )
+            .bind(m.as_str())
+            .bind(body.gender.as_deref().unwrap_or(""))
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten();
+            let label = label.map(|r| r.0).unwrap_or_else(|| m.as_str().to_string());
+            format!(
+                "\n선택한 무드: {label}. 옷장 검색과 코디는 서버가 이미 이 무드의 옷장 안에서 고른다."
+            )
+        }
+        None => String::new(),
+    };
+
     let system_prompt = format!(
         r#"너는 프리미엄 셀렉샵 에디토리얼 스타일리스트다. AURALEE, BEAMS, HAVEN 같은 감성으로 코디를 설명한다.
 
 역할:
 - 유저의 질문을 이해하고, 도구를 호출해서 답변한다.
-- 코디 추천은 반드시 get_outfit 도구를 통해 서버가 결정한다. 직접 아이템을 고르지 마라.
+- 코디 추천은 서버가 결정한다. 직접 아이템을 고르지 마라. 유저가 특정 옷을 지정하면 get_outfit, 특정 옷 없이 전체 코디를 원하면 get_outfit_for_today 를 쓴다.
 - anchor 아이템을 찾을 때는 search_wardrobe를 호출한다.
 - 유저가 싫다/좋다 등 피드백을 주면 submit_feedback을 호출한다.
 
 흐름:
+0. 유저가 특정 아이템을 말하지 않고 오늘 입을 코디를 원하면(예: '오늘 날씨에 맞게 추천해줘', '이 무드로 코디해줘') 아이템을 되묻지 말고 get_outfit_for_today 를 호출한다. 무엇을 원하는지 자체가 불분명할 때만 질문한다
 1. 유저가 아이템을 언급하면 → search_wardrobe로 anchor 찾기
 2. anchor가 확정되면 → get_outfit으로 서버 추천 받기
-3. get_outfit 결과를 evaluate_outfit으로 검증
+3. get_outfit·get_outfit_for_today 결과를 evaluate_outfit으로 검증
 4. 검증 통과 → 착장을 설명
-5. 검증 실패 → get_outfit을 avoid_tags와 함께 재호출
-6. 유저가 피드백 주면 → submit_feedback 후 get_outfit 재호출
+5. 검증 실패 → get_outfit 경로면 avoid_tags와 함께 get_outfit 재호출. get_outfit_for_today 경로면 다시 불러도 같은 코디가 나오므로 재호출하지 말고, 아쉬운 점을 한 문장으로 알린다
+6. 유저가 피드백 주면 → submit_feedback 후, get_outfit 경로면 get_outfit 재호출. get_outfit_for_today 경로는 같은 요청 안에서 다시 불러도 같은 코디라 재호출하지 말고, 피드백이 다음 추천에 반영된다고 알린다
 
 착장 설명 규칙 (중요):
 - 아이템 리스트를 나열하지 마라 (UI에서 이미 표시됨)
@@ -400,13 +437,14 @@ async fn chat(
 - 마크다운/볼드/리스트 없이 순수 텍스트로 답변
 - 예시: '블루종의 드라이한 면 질감이 상체를 부드럽게 정리하고, 린넨 셔츠가 레이어링에 가벼운 깊이를 만듭니다. 캔버스 스니커로 하체 대비를 잡았습니다.'
 
-날씨: {weather}
+날씨: {weather}{mood_hint}
 답변은 한국어로.{previous_hint}"#,
         weather = if weather_hint.is_empty() {
             "정보 없음".to_string()
         } else {
             weather_hint.clone()
         },
+        mood_hint = mood_hint,
     );
 
     // ─── Tool calling loop (최대 8회 반복) ───
@@ -471,10 +509,25 @@ async fn chat(
                     // 부분 수정 중에는 코디를 통째로 새로 짜지 않는다. 지시문으로도 막지만,
                     // 평가가 아쉬운 점을 말하면 모델이 "검증 실패 → get_outfit 재호출" 흐름을
                     // 따라가 버린다 (2026-10-15: '신발만 로퍼로' 가 하의·가방까지 바뀌었다).
-                    "get_outfit" if swapped => json!({
+                    "get_outfit" | "get_outfit_for_today" if swapped => json!({
                         "error": "유저는 일부만 바꾸길 원한다. 전체 코디를 새로 짜지 말고 swap_item 결과를 그대로 설명하라."
                     })
                     .to_string(),
+                    "get_outfit_for_today" => {
+                        let (outfit_json, items, chosen_ids) = today_outfit(
+                            &clothes,
+                            &OutfitContext {
+                                user: user_profile.as_ref(),
+                                temperature,
+                                feedback: &feedback_ctx,
+                                recent: &recent,
+                                mood,
+                            },
+                        );
+                        final_items = items;
+                        final_item_ids = chosen_ids;
+                        outfit_json
+                    }
                     "get_outfit" => {
                         let user_query = fn_args["user_query"]
                             .as_str()
@@ -1472,6 +1525,12 @@ fn genre_backdrop(genre: StyleGenre) -> &'static str {
             "one quietly textured material — stone, glass or warm lamplight — kept calm \
              so the fabric of the clothes is what catches the light"
         }
+        // 엣지는 회색 골목·그래피티·네온으로 굳히지 않는다. 선이 분명한 건축 요소나 색이 있는
+        // 면 하나가 옷의 형태를 받쳐 준다.
+        G::Edgy => {
+            "one clear architectural line or a single field of colour with a sharp edge — \
+             never a dark grungy alley, graffiti or neon"
+        }
         _ => "a material and colour that suit the clothes",
     }
 }
@@ -1677,6 +1736,19 @@ fn genre_setting(genre: StyleGenre) -> (&'static [&'static str], &'static str) {
             "the last warm light of early evening, low from the side, with a few lamps \
              already lit in the background",
         ),
+        // 엣지: 갤러리 입구·질감 있는 상가 외벽·색이 있는 타일·아케이드·철제 보행교. 어두운
+        // 골목 하나로 수렴하지 않게 밝은 장소와 색이 있는 장소를 섞는다. 장소는 시간을 정하지
+        // 않는다 — 빛이 정한다(`pick_light`).
+        G::Edgy => (
+            &[
+                "the entrance of a contemporary gallery with a raw concrete frame and one coloured door",
+                "a shopping street of textured stone with dark-framed shop windows",
+                "a covered city arcade with a patterned tiled floor",
+                "a building corner clad in coloured ceramic tiles with a sharp edge",
+                "a pedestrian bridge of painted steel with the city behind it",
+            ],
+            "crisp daylight from one side that sharpens the lines of the clothes",
+        ),
         G::Amekaji => (
             &[
                 "a narrow alley with old brick and a parked bicycle",
@@ -1813,6 +1885,15 @@ fn genre_hair(genre: StyleGenre) -> &'static [(&'static str, u32)] {
             ("jaw-length bob with a neat side part", 2),
             ("low ponytail, smooth at the crown", 1),
         ],
+        // 엣지: 형태가 중심인 옷이라 목선·어깨를 덮지 않는 헤어에 무게를 둔다. 짧은 머리도
+        // 낮은 비중으로만 둔다 — 늘 짧은 머리면 캐릭터가 된다.
+        G::Edgy => &[
+            ("sleek straight hair tucked behind the ears", 3),
+            ("jaw-length blunt bob, natural texture", 3),
+            ("low ponytail, smooth at the crown", 2),
+            ("straight shoulder-length hair with a center part", 2),
+            ("short textured crop", 1),
+        ],
         // 남성 장르의 코디를 여성 모델로 그릴 때. 특정 무드 없이 일상적인 헤어로 둔다.
         _ => &[
             (
@@ -1914,6 +1995,14 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
             "She is comfortable being looked at: a relaxed, self-assured gaze and at most a \
              slight smile — present and at ease, never performing.",
         ),
+        // 엣지: 편안하면서 자신감 있는 표정. 화장은 다른 무드처럼 가볍게 둔다 — 짙은 눈화장·
+        // 어두운 입술로 무드를 만들지 않는다.
+        StyleGenre::Edgy => (
+            "in her twenties or early thirties",
+            "minimal everyday makeup, natural lips",
+            "Her expression is relaxed and self-possessed: a calm, steady look, confident \
+             without performing.",
+        ),
         _ => (
             "in her twenties",
             "minimal everyday makeup, natural lips",
@@ -1974,6 +2063,10 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
             "Candid editorial photography: she is out in the city, aware of the camera and \
              at ease with it, photographed from across the pavement."
         }
+        StyleGenre::Edgy => {
+            "Candid editorial photography: she is out in the city on her own errand, aware of \
+             the camera and unbothered by it, photographed from across the pavement."
+        }
         _ => {
             "Candid editorial photography: she is going about her own business and is not \
              aware of the camera, photographed from across the pavement."
@@ -1994,8 +2087,9 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
     // 요구하면 문장부터 옷과 부딪친다(2026-10-17 사용자 지적). 글램은 옷의 원래 색과
     // 채도를 지키고, 배경이 그 색을 받쳐 주게 한다. 다른 무드의 문장은 그대로다 —
     // 바뀌면 그 무드의 저장된 사진이 캐시에서 빗나간다.
+    // 엣지도 코발트·버건디·올리브 같은 옷의 색을 누르지 않는다.
     let (saturation, palette, moment) = match genre {
-        StyleGenre::Glam => (
+        StyleGenre::Glam | StyleGenre::Edgy => (
             "true-to-life saturation",
             "every garment keeps its own colour and saturation, and the colours of the \
              background support the clothes rather than compete with them",
@@ -2081,6 +2175,12 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
             "exaggerated runway posing, pouting lips, sultry or seductive expression, fixed \
              advertising smile",
             "oily or shiny skin, blown-out highlights on satin or metallic fabric",
+        ),
+        // 엣지: 무광 가죽을 번들거리게 그리지 않는다. 화난 듯한 표정으로 무드를 만들지 않는다.
+        StyleGenre::Edgy => (
+            "excessive makeup, dark smoky eyes, dark lipstick",
+            "fashion-model posing, scowling or aggressive expression",
+            "excessive gloss, wet-look or high-shine leather",
         ),
         _ => (
             "excessive makeup",
@@ -2241,6 +2341,35 @@ Style: {base_style}
 Avoid: {base_avoid}, nightclub interior, neon lighting, stage costume, red-carpet styling, added sequins, crystals or embellishment that the listed garments do not have, a hemline shorter or a neckline lower than listed, necklaces, earrings, bracelets, sunglasses, scarves, bandanas, champagne glasses, doll-like glamour face."#
             )
         }
+        // 엣지: 비대칭·각진 어깨·다리의 재단 같은 형태와, 가죽과 니트·울·데님의 표면 대비가
+        // 보이게 입는다. 펑크 의상·장식·찢김·피어싱·타투를 더하지 않는다.
+        StyleGenre::Edgy => format!(
+            r#"Fashion editorial photograph of a woman {age}, dressed with a sharp, confident edge. She must be female.
+
+Face: {base_face}
+
+Body: {base_body}
+
+Outfit: The female model is wearing {items} — worn so the shape of each piece reads: asymmetric lines, structured shoulders and the cut of the legs stay exactly as listed, and where leather sits against knit, wool or denim the contrast between the surfaces shows. Nothing is shortened, opened up, ripped or embellished: every neckline, hem and surface stays exactly as listed. Her hair stays clear of the neckline and the shoulder line. {base_fidelity}
+
+Garments: {base_garments}
+
+Pose: {pose}. {base_pose_rule}
+
+Setting: {setting}. The background carries one material or architectural element that suits the colour and texture of the clothes, and never draws the eye away from them. It is there to show the clothes: frame her so their colour and fabric read clearly against it, in the same light as the background.
+
+Lighting: {light}. Every listed fabric keeps its own surface: matte leather stays matte, smooth leather shows only its natural soft sheen, knit and denim keep their texture. {base_light}
+
+Camera: {base_camera}
+
+Composition: {base_composition}
+
+Colour: {base_color}
+
+Style: {base_style}
+
+Avoid: {base_avoid}, punk costume, studs, spikes, chains, safety pins, rips, distressing or hardware that the listed garments do not have, piercings, tattoos, chokers, necklaces, earrings, sunglasses, a dark grungy alley, graffiti, neon lighting, nightclub interior."#
+        ),
         StyleGenre::Bohemian => format!(
             r#"Fashion editorial photograph of a woman in her 20s, dressed in a loose, bohemian way. She must be female.
 
@@ -3160,16 +3289,15 @@ fn tool_evaluate_outfit(
         issues.push("too_military: 강한 스타일 아이템이 3개 이상".to_string());
     }
 
-    // 글램에서 어두운 색이 겹쳐도 옷의 소재·형태로 대비가 있으면 문제로 보지 않는다 —
-    // 홈의 글램 규칙(`mood_rules::dark_look_has_contrast`)과 같은 판단이다. 이걸 문제로
+    // 글램·엣지에서 어두운 색이 겹쳐도 옷의 소재·형태로 대비가 있으면 문제로 보지 않는다 —
+    // 홈의 무드 규칙(`mood_rules::dark_look_reads_for`)과 같은 판단이다. 이걸 문제로
     // 돌려주면 상담 모델이 get_outfit 을 다시 불러 기본 코디로 되돌아갔다.
     let garments: Vec<&Clothing> = items
         .iter()
         .copied()
         .filter(|c| matches!(c.category.as_str(), "상의" | "하의" | "아우터"))
         .collect();
-    let dark_ok = mood == Some(StyleGenre::Glam)
-        && crate::services::mood_rules::dark_look_has_contrast(&garments);
+    let dark_ok = crate::services::mood_rules::dark_look_reads_for(mood, &garments);
 
     // 같은 색상군 3+
     let mut cg_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
@@ -3244,6 +3372,95 @@ struct OutfitContext<'a> {
     mood: Option<StyleGenre>,
 }
 
+/// 기준 아이템 없이 오늘의 코디를 만든다(`get_outfit_for_today`).
+///
+/// 기준 옷은 오늘 날씨에 맞는 옷(상의·하의·아우터) 가운데 고른다. 무드 요소를 판단하는
+/// 무드(글램·엣지)면 무드 요소가 있는 옷을 먼저 본다. 같은 옷만 기준이 되지 않게 최근
+/// 추천에 덜 나온 옷부터 시도한다. 조합·날씨 판정·무드 게이트는 `build_final_outfit` 이
+/// 그대로 맡는다 — 기준 아이템이 있는 상담과 같은 경로다.
+fn today_outfit(
+    clothes: &[Clothing],
+    ctx: &OutfitContext<'_>,
+) -> (String, Vec<ChatItem>, Vec<String>) {
+    let temp = ctx.temperature.unwrap_or(20.0);
+    let mut anchors: Vec<&Clothing> = clothes
+        .iter()
+        .filter(|c| matches!(c.category.as_str(), "상의" | "하의" | "아우터"))
+        .filter(|c| is_weather_appropriate(c, temp))
+        .collect();
+    if let Some(m) = ctx.mood.filter(|m| crate::services::mood_gate::judges(*m)) {
+        let pieces: Vec<&Clothing> = anchors
+            .iter()
+            .copied()
+            .filter(|c| crate::services::mood_gate::is_mood_piece(m, c) == Some(true))
+            .collect();
+        if !pieces.is_empty() {
+            anchors = pieces;
+        }
+    }
+    // 최근에 덜 나온 옷이 먼저다. 같으면 엣지에서는 보이는 색이 있는 옷(유채색 아우터, 또는
+    // 코트를 여미지 않는 기온의 유채색 상의)을 먼저 시도한다 — 예전에는 이름순이라 늘
+    // '다크브라운…' 시어링 재킷이 기준이 됐다(2026-10-17 상담 실측). 밝은색을 싫어한다고
+    // 적은 사용자에게는 색을 앞세우지 않는다.
+    let prefer_colour =
+        ctx.mood == Some(StyleGenre::Edgy) && !ctx.user.is_some_and(|u| u.dislikes_bright_colors);
+    // 코트를 여미지 않는 기온(12°C 이상)에서는 두꺼운 아우터를 색 때문에 앞세우지 않는다 —
+    // 19.6°C 에 보온 안감 코발트 코트가 기준이 됐다(2026-10-17 실측). 두꺼운 옷의 날씨
+    // 필터는 그대로다(`is_weather_appropriate`) — 색 우선만 좁힌다.
+    let mild = temp >= crate::services::serving_ranker::CLOSED_COAT_BELOW_C;
+    let shows_colour = |c: &Clothing| {
+        prefer_colour
+            && crate::services::recommendation_service::is_chromatic(c)
+            && ((c.category == "아우터"
+                && !(mild && c.thickness == crate::models::style_vocab::Thickness::Thick))
+                || (c.category == "상의" && mild))
+    };
+    anchors.sort_by(|a, b| {
+        let freq = |c: &Clothing| ctx.recent.item_freq.get(&c.id).copied().unwrap_or(0);
+        freq(a)
+            .cmp(&freq(b))
+            .then_with(|| shows_colour(b).cmp(&shows_colour(a)))
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    // 기준 옷은 코디에 반드시 들어간다 — 2°C 에 안감 없는 라이더가 기준이면 모든 조합이
+    // 날씨 경계다. 그래서 몇 벌을 시도해, 날씨 판정이 통과인 코디를 경계인 코디보다 먼저
+    // 고른다. 같은 판정 안에서는 최근에 덜 나온 기준 옷이 먼저다.
+    // (날씨 통과, 기준 옷, build_final_outfit 결과)
+    type Built = (String, Vec<ChatItem>, Vec<String>);
+    let mut best: Option<(bool, &Clothing, Built)> = None;
+    for anchor in anchors.into_iter().take(6) {
+        let Some((desc, items, chosen_ids)) = build_final_outfit(anchor, clothes, ctx) else {
+            continue;
+        };
+        let pieces: Vec<&Clothing> = chosen_ids
+            .iter()
+            .filter_map(|id| clothes.iter().find(|c| &c.id == id))
+            .collect();
+        let pass =
+            today_fit_of(&pieces, temp) == crate::services::style_engine_v2::TodayFitLevel::Pass;
+        if best.as_ref().is_none_or(|b| pass && !b.0) {
+            best = Some((pass, anchor, (desc, items, chosen_ids)));
+        }
+        if pass {
+            break;
+        }
+    }
+    if let Some((_, anchor, (desc, mut items, chosen_ids))) = best {
+        apply_wear(&mut items, clothes, ctx.temperature);
+        let items_json: Vec<serde_json::Value> = items
+            .iter()
+            .map(|i| json!({"slot": i.slot, "name": i.name, "category": i.category, "owned": i.owned, "wear": i.wear}))
+            .collect();
+        let response = json!({ "anchor": anchor.name, "outfit": desc, "items": items_json });
+        return (response.to_string(), items, chosen_ids);
+    }
+    (
+        json!({"error": "no suitable outfit found"}).to_string(),
+        Vec::new(),
+        Vec::new(),
+    )
+}
+
 fn build_final_outfit<'a>(
     anchor: &'a Clothing,
     clothes: &'a [Clothing],
@@ -3280,15 +3497,15 @@ fn build_final_outfit<'a>(
         result
     };
 
-    // 글램이면 옷 슬롯마다 글램 옷을 두 벌까지 후보에 더한다. 궁합 점수 상위 몇 벌만
-    // 보면 글램 옷이 한 벌도 들지 못해, 아래 무드 게이트가 고를 것이 없었다.
-    let with_glam = |mut v: Vec<&'a Clothing>, cat: &str| -> Vec<&'a Clothing> {
-        if ctx.mood == Some(StyleGenre::Glam) {
+    // 글램·엣지면 옷 슬롯마다 무드 요소가 있는 옷을 두 벌까지 후보에 더한다. 궁합 점수
+    // 상위 몇 벌만 보면 무드 옷이 한 벌도 들지 못해, 아래 무드 게이트가 고를 것이 없었다.
+    let with_mood = |mut v: Vec<&'a Clothing>, cat: &str| -> Vec<&'a Clothing> {
+        if let Some(mood) = ctx.mood.filter(|m| crate::services::mood_gate::judges(*m)) {
             let extra: Vec<&Clothing> = clothes
                 .iter()
                 .filter(|c| c.category == cat && c.id != anchor.id)
                 .filter(|c| is_weather_appropriate(c, temp))
-                .filter(|c| crate::services::mood_gate::is_glam_piece(c))
+                .filter(|c| crate::services::mood_gate::is_mood_piece(mood, c) == Some(true))
                 .filter(|c| !v.iter().any(|x| x.id == c.id))
                 .take(2)
                 .collect();
@@ -3299,17 +3516,17 @@ fn build_final_outfit<'a>(
     let tops = if anchor_cat == "상의" {
         vec![anchor]
     } else {
-        with_glam(slot_candidates("상의", 5), "상의")
+        with_mood(slot_candidates("상의", 5), "상의")
     };
     let bottoms = if anchor_cat == "하의" {
         vec![anchor]
     } else {
-        with_glam(slot_candidates("하의", 5), "하의")
+        with_mood(slot_candidates("하의", 5), "하의")
     };
     let outers_pool = if anchor_cat == "아우터" {
         vec![anchor]
     } else {
-        with_glam(slot_candidates("아우터", 4), "아우터")
+        with_mood(slot_candidates("아우터", 4), "아우터")
     };
     let shoes = if anchor_cat == "신발" {
         vec![anchor]
@@ -3381,8 +3598,8 @@ fn build_final_outfit<'a>(
     }
     combos.sort_by_key(|a| std::cmp::Reverse(a.1));
     // 홈과 같은 무드 게이트(`services::mood_gate`). 글램이면 빛을 받는 소재나 조형적인
-    // 실루엣이 하나라도 있는 조합 중 최고점을 고른다. 그런 조합이 없으면 원래 최고점이다
-    // — 빈 답보다 낫다.
+    // 실루엣이, 엣지면 형태나 가죽 옷이 하나라도 있는 조합 중 최고점을 고른다. 그런 조합이
+    // 없으면 원래 최고점이다 — 빈 답보다 낫다.
     let reads = |o: &Vec<&Clothing>| {
         ctx.mood
             .and_then(|m| crate::services::mood_gate::reads_as(m, o))
@@ -3561,6 +3778,12 @@ fn is_weather_appropriate(item: &Clothing, temp: f64) -> bool {
         if item.category == "아우터" && weight != Weight::Light {
             return false;
         }
+        // 가죽 상의·하의는 바람이 통하지 않는다. 엣지 시드의 레더 미디 스커트가 26°C 후보에
+        // 올랐다(2026-10-17). 가죽 신발·가방은 그대로 둔다. 소재가 저장되지 않는 업로드 옷도
+        // 이름으로 가린다(`mood_gate::is_leather_garment`).
+        if item.category != "아우터" && crate::services::mood_gate::is_leather_garment(item) {
+            return false;
+        }
         if name.contains("코듀로이") {
             return false;
         }
@@ -3726,6 +3949,385 @@ mod tests {
         assert!(build_final_outfit(&only_mini[0], &only_mini, &ctx).is_none());
     }
 
+    /// 상담도 엣지 무드 게이트를 지난다. 기본 티·데님에 가죽 부츠·가방만 든 조합 대신 옷에
+    /// 형태나 가죽이 있는 조합을 고른다. 2°C 에는 안감 없는 라이더 대신 보온 안감 코트를
+    /// 고르고, 그 코트에 여며 입는 착용 상태가 붙는다.
+    #[test]
+    fn chat_outfit_reads_edgy_and_keeps_the_weather_check() {
+        use crate::models::style_vocab::Thickness;
+        let mut coat = chat_item(
+            "o1",
+            "차콜 비대칭 여밈 롱 울 코트",
+            "아우터",
+            "wool",
+            "heavy wool, asymmetric overlapping front, mid-calf length, insulated lining",
+        );
+        coat.thickness = Thickness::Thick;
+        coat.sub_category = Some("롱코트".into());
+        let mut rider = chat_item(
+            "o2",
+            "블랙 레더 라이더 자켓",
+            "아우터",
+            "leather",
+            "cropped biker",
+        );
+        rider.sub_category = Some("라이더자켓".into());
+        let clothes = vec![
+            chat_item(
+                "t1",
+                "화이트 코튼 티셔츠",
+                "상의",
+                "cotton",
+                "cotton jersey",
+            ),
+            chat_item(
+                "t2",
+                "블랙 리브드 슬림 니트",
+                "상의",
+                "knit",
+                "ribbed knit, slim fit",
+            ),
+            chat_item(
+                "b1",
+                "인디고 와이드 데님",
+                "하의",
+                "denim",
+                "denim, wide leg",
+            ),
+            chat_item(
+                "b2",
+                "차콜 울 배럴 레그 팬츠",
+                "하의",
+                "wool",
+                "curved barrel leg",
+            ),
+            chat_item(
+                "s",
+                "블랙 레더 컴뱃 부츠",
+                "신발",
+                "leather",
+                "lace-up, lug sole",
+            ),
+            chat_item("g", "블랙 레더 숄더백", "가방", "leather", "angular shape"),
+            coat,
+            rider,
+        ];
+        let feedback = outfit_scorer::FeedbackContext {
+            item_adj: Default::default(),
+            preference: Default::default(),
+        };
+        let recent = outfit_scorer::RecentHistory {
+            item_freq: Default::default(),
+        };
+        let pick = |t: f64| {
+            let ctx = OutfitContext {
+                user: None,
+                temperature: Some(t),
+                feedback: &feedback,
+                recent: &recent,
+                mood: Some(StyleGenre::Edgy),
+            };
+            let (_, mut items, _) = build_final_outfit(&clothes[4], &clothes, &ctx).unwrap();
+            apply_wear(&mut items, &clothes, ctx.temperature);
+            items
+        };
+        let warm = pick(18.0);
+        let warm_clothes: Vec<&Clothing> = warm
+            .iter()
+            .filter_map(|i| clothes.iter().find(|c| c.name == i.name))
+            .collect();
+        assert_eq!(
+            crate::services::mood_gate::reads_as(StyleGenre::Edgy, &warm_clothes),
+            Some(true),
+            "{:?}",
+            warm.iter().map(|i| &i.name).collect::<Vec<_>>()
+        );
+        let cold = pick(2.0);
+        let names: Vec<&str> = cold.iter().map(|i| i.name.as_str()).collect();
+        assert!(names.contains(&"차콜 비대칭 여밈 롱 울 코트"), "{names:?}");
+        assert!(!names.contains(&"블랙 레더 라이더 자켓"));
+        let outer = cold.iter().find(|i| i.slot == "outer").unwrap();
+        assert!(
+            outer
+                .wear
+                .as_deref()
+                .is_some_and(|w| w.contains("arms in the sleeves"))
+        );
+    }
+
+    fn profile_stub() -> crate::models::user_profile::UserStyleProfile {
+        crate::models::user_profile::UserStyleProfile {
+            user_id: "u".into(),
+            height_cm: None,
+            weight_kg: None,
+            upper_body: None,
+            calves: None,
+            preferred_fit: None,
+            leg_length: None,
+            preferred_top_size: None,
+            needs_grounded_shoes: false,
+            prefers_weighted_bag: false,
+            low_profile_only_occasional: false,
+            medium_volume_runner_bonus: false,
+            denim_bridge_bonus: false,
+            likes_texture_depth: false,
+            likes_melange: false,
+            likes_suede: false,
+            likes_washed_denim: false,
+            likes_mocha_brown: false,
+            likes_heather_gray: false,
+            dislikes_flat_beige: false,
+            dislikes_military_cosplay: false,
+            dislikes_bright_colors: false,
+            commute: None,
+            walking_amount: None,
+            comfort_priority: None,
+        }
+    }
+
+    /// 상담 모델이 받는 도구에 기준 아이템 없는 추천이 있다. 기준 아이템 추천(`get_outfit`)은
+    /// 예전처럼 기준 이름을 요구한다 — 빈 이름이면 옷장 첫 옷에 부분 일치하기 때문이다.
+    #[test]
+    fn chat_tools_offer_an_anchorless_outfit() {
+        let tools = chat_tools();
+        let schema = |name: &str| {
+            let t = tools.iter().find(|t| t.name == name).unwrap();
+            t.input_schema.clone()
+        };
+        let today = schema("get_outfit_for_today");
+        assert_eq!(today["required"], json!([]));
+        assert_eq!(
+            schema("get_outfit")["required"],
+            json!(["user_query", "anchor_name"])
+        );
+        assert!(tools.iter().all(|t| t.name != "swap_item"));
+    }
+
+    /// 기준 아이템 없는 상담 추천(`get_outfit_for_today` 가 부르는 함수): 엣지면 무드 요소가
+    /// 있는 옷을 기준으로 삼고, 날씨 판정·무드 게이트·착용 상태가 기준 아이템 추천과 같다.
+    /// 2°C 에는 안감 없는 라이더 대신 안감 코트를 여며 입고, 26°C 에는 아우터·가죽 하의가
+    /// 없다. 같은 옷만 기준이 되지 않게 최근에 덜 나온 옷부터 쓴다.
+    #[test]
+    fn today_outfit_follows_mood_weather_and_recency() {
+        use crate::models::style_vocab::Thickness;
+        let mut coat = chat_item(
+            "o1",
+            "차콜 비대칭 여밈 롱 울 코트",
+            "아우터",
+            "wool",
+            "heavy wool, asymmetric overlapping front, mid-calf length, insulated lining",
+        );
+        coat.thickness = Thickness::Thick;
+        coat.sub_category = Some("롱코트".into());
+        let mut rider = chat_item(
+            "o2",
+            "블랙 레더 라이더 자켓",
+            "아우터",
+            "leather",
+            "cropped biker",
+        );
+        rider.sub_category = Some("라이더자켓".into());
+        let mut asym = chat_item(
+            "t1",
+            "차콜 비대칭 헴 저지 롱슬리브",
+            "상의",
+            "jersey",
+            "asymmetric hem, long sleeves",
+        );
+        asym.thickness = Thickness::Thin;
+        let mut skirt = chat_item(
+            "b3",
+            "블랙 레더 미디 스커트",
+            "하의",
+            "leather",
+            "matte leather, midi length",
+        );
+        skirt.sub_category = Some("스커트".into());
+        let mut sandals = chat_item(
+            "s2",
+            "블랙 레더 피셔맨 샌들",
+            "신발",
+            "leather",
+            "woven straps",
+        );
+        sandals.sub_category = Some("샌들".into());
+        let clothes = vec![
+            chat_item(
+                "t2",
+                "화이트 코튼 티셔츠",
+                "상의",
+                "cotton",
+                "cotton jersey",
+            ),
+            chat_item(
+                "t3",
+                "블랙 리브드 슬림 니트",
+                "상의",
+                "knit",
+                "ribbed knit, slim fit",
+            ),
+            asym,
+            chat_item(
+                "b1",
+                "인디고 와이드 데님",
+                "하의",
+                "denim",
+                "denim, wide leg",
+            ),
+            chat_item(
+                "b2",
+                "차콜 울 배럴 레그 팬츠",
+                "하의",
+                "wool",
+                "curved barrel leg",
+            ),
+            skirt,
+            chat_item(
+                "s1",
+                "블랙 레더 컴뱃 부츠",
+                "신발",
+                "leather",
+                "lace-up, lug sole",
+            ),
+            sandals,
+            chat_item("g", "블랙 레더 숄더백", "가방", "leather", "angular shape"),
+            coat,
+            rider,
+        ];
+        let feedback = outfit_scorer::FeedbackContext {
+            item_adj: Default::default(),
+            preference: Default::default(),
+        };
+        let none = outfit_scorer::RecentHistory {
+            item_freq: Default::default(),
+        };
+        let run = |t: f64, mood, recent: &outfit_scorer::RecentHistory| {
+            let ctx = OutfitContext {
+                user: None,
+                temperature: Some(t),
+                feedback: &feedback,
+                recent,
+                mood,
+            };
+            let (out, items, ids) = today_outfit(&clothes, &ctx);
+            let anchor = serde_json::from_str::<serde_json::Value>(&out).unwrap()["anchor"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+            (anchor, items, ids)
+        };
+        let pieces = |items: &[ChatItem]| -> Vec<&Clothing> {
+            items
+                .iter()
+                .filter_map(|i| clothes.iter().find(|c| c.name == i.name))
+                .collect()
+        };
+
+        let (anchor, cold, ids) = run(2.0, Some(StyleGenre::Edgy), &none);
+        assert!(!ids.is_empty());
+        let a = clothes.iter().find(|c| c.name == anchor).unwrap();
+        assert!(crate::services::mood_gate::is_edgy_piece(a), "{anchor}");
+        assert_eq!(
+            crate::services::mood_gate::reads_as(StyleGenre::Edgy, &pieces(&cold)),
+            Some(true)
+        );
+        let names: Vec<&str> = cold.iter().map(|i| i.name.as_str()).collect();
+        assert!(names.contains(&"차콜 비대칭 여밈 롱 울 코트"), "{names:?}");
+        assert!(!names.contains(&"블랙 레더 라이더 자켓"));
+        assert!(
+            cold.iter()
+                .find(|i| i.slot == "outer")
+                .and_then(|i| i.wear.as_deref())
+                .is_some_and(|w| w.contains("arms in the sleeves"))
+        );
+
+        let (_, hot, _) = run(26.0, Some(StyleGenre::Edgy), &none);
+        let names: Vec<&str> = hot.iter().map(|i| i.name.as_str()).collect();
+        assert!(hot.iter().all(|i| i.slot != "outer"), "{names:?}");
+        assert!(!names.contains(&"블랙 레더 미디 스커트"));
+        assert!(!names.contains(&"차콜 울 배럴 레그 팬츠"));
+        assert_eq!(
+            crate::services::mood_gate::reads_as(StyleGenre::Edgy, &pieces(&hot)),
+            Some(true)
+        );
+
+        // 최근에 가장 많이 나온 기준 옷은 다음에 뒤로 간다.
+        let mut seen = outfit_scorer::RecentHistory {
+            item_freq: Default::default(),
+        };
+        let first = run(16.0, Some(StyleGenre::Edgy), &none).0;
+        let first_id = clothes.iter().find(|c| c.name == first).unwrap().id.clone();
+        seen.item_freq.insert(first_id, 3);
+        assert_ne!(run(16.0, Some(StyleGenre::Edgy), &seen).0, first);
+
+        // 엣지에서 최근 이력이 같으면 보이는 색이 있는 기준 옷이 먼저다(시드 밖의 색 이름도
+        // 같다). 이름순으로는 뒤인 코럴 니트가 앞선다. 밝은색을 싫어한다고 적은 프로필이면
+        // 색을 앞세우지 않는다.
+        let mut coloured = clothes.clone();
+        let mut coral = chat_item(
+            "t9",
+            "코럴 비대칭 넥 니트",
+            "상의",
+            "knit",
+            "asymmetric neckline",
+        );
+        coral.color = Some("코럴".into());
+        coral.saturation = Some(crate::models::style_vocab::Saturation::High);
+        coloured.push(coral);
+        let anchor_at_16 = |user: Option<&crate::models::user_profile::UserStyleProfile>| {
+            let ctx16 = OutfitContext {
+                user,
+                temperature: Some(16.0),
+                feedback: &feedback,
+                recent: &none,
+                mood: Some(StyleGenre::Edgy),
+            };
+            serde_json::from_str::<serde_json::Value>(&today_outfit(&coloured, &ctx16).0).unwrap()
+                ["anchor"]
+                .as_str()
+                .unwrap_or("")
+                .to_string()
+        };
+        assert_eq!(anchor_at_16(None), "코럴 비대칭 넥 니트");
+        let dislikes = crate::models::user_profile::UserStyleProfile {
+            dislikes_bright_colors: true,
+            ..profile_stub()
+        };
+        assert_ne!(anchor_at_16(Some(&dislikes)), "코럴 비대칭 넥 니트");
+
+        // 따뜻한 날에는 두꺼운 컬러 코트가 아니라 컬러 상의를 먼저 시도한다. 이름순으로는
+        // 코트가 앞이다.
+        let mut warm_set = coloured.clone();
+        let mut cobalt_coat = chat_item(
+            "o9",
+            "가 코발트 보온 울 코트",
+            "아우터",
+            "wool",
+            "asymmetric wrap front, insulated lining",
+        );
+        cobalt_coat.color = Some("코발트".into());
+        cobalt_coat.saturation = Some(crate::models::style_vocab::Saturation::High);
+        cobalt_coat.thickness = Thickness::Thick;
+        warm_set.push(cobalt_coat);
+        let ctx19 = OutfitContext {
+            user: None,
+            temperature: Some(19.0),
+            feedback: &feedback,
+            recent: &none,
+            mood: Some(StyleGenre::Edgy),
+        };
+        let anchor19 =
+            serde_json::from_str::<serde_json::Value>(&today_outfit(&warm_set, &ctx19).0).unwrap()
+                ["anchor"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+        assert_eq!(anchor19, "코럴 비대칭 넥 니트");
+
+        // 무드 요소를 판단하지 않는 무드도 코디를 만든다.
+        assert!(!run(16.0, Some(StyleGenre::Minimal), &none).2.is_empty());
+    }
+
     const GLAM_ITEMS: &str = "top/inner: 에메랄드 새틴 드레이프 블라우스 (satin, fluid satin, draped cowl neckline), \
          pants: 블랙 와이드 슬랙스 (polyester, wide leg)";
 
@@ -3819,11 +4421,85 @@ mod tests {
         assert_eq!(glam, image_cache_keys(GLAM_ITEMS, StyleGenre::Glam));
     }
 
+    const EDGY_ITEMS: &str = "top/inner: 코발트 비대칭 넥 리브 니트 (knit, ribbed wool-blend knit, asymmetric neckline cut lower on one side), \
+         pants: 블랙 레더 미디 스커트 (leather, smooth matte leather, straight cut, midi length, back slit), \
+         outerwear: 차콜 비대칭 여밈 롱 울 코트 (wool, heavy wool, structured shoulders, insulated lining; worn closed with its own fastening, arms in the sleeves), \
+         shoes: 블랙 레더 컴뱃 부츠 (leather, lace-up front, chunky lug sole)";
+
+    /// 엣지 프롬프트: 옷의 색을 누르는 팔레트 문장이 없고, 무광 가죽을 번들거리게 하지
+    /// 않으며, 목록에 없는 피어싱·타투·체인·찢김을 막는다. 표정 문장이 서로 부딪치지 않고,
+    /// 착용 상태는 목록 그대로 들어간다. 글램 문장은 섞이지 않는다.
+    #[test]
+    fn edgy_prompt_keeps_colour_surface_and_listed_pieces() {
+        for h in [0u64, 1, 42, 1 << 40, 3 << 48, u64::MAX] {
+            let p = build_image_prompt(StyleGenre::Edgy, EDGY_ITEMS, h);
+            assert!(p.contains(EDGY_ITEMS));
+            assert!(p.contains("worn closed with its own fastening, arms in the sleeves"));
+            assert!(!p.contains("muted neutral palette"));
+            assert!(!p.contains("restrained saturation"));
+            assert!(p.contains("true-to-life saturation"));
+            assert!(p.contains("matte leather stays matte"));
+            for w in [
+                "piercings",
+                "tattoos",
+                "studs",
+                "rips",
+                "graffiti",
+                "neon lighting",
+            ] {
+                assert!(p.contains(w), "{w}");
+            }
+            // 공통 표정·구도 문장과 엣지 문장이 함께 있지 않다.
+            assert!(!p.contains("not posed for anyone"));
+            assert!(!p.contains("is not aware of the camera"));
+            assert!(p.contains("confident without performing"));
+            for glam_only in ["dressed to be noticed", "satin, velvet and", "champagne"] {
+                assert!(!p.contains(glam_only), "{glam_only}");
+            }
+            // 걷다가 돌아보기를 포함한 공통 자세와 머리부터 신발까지 보이는 구도는 그대로다.
+            assert!(p.contains("Full body visible from head to shoes"));
+        }
+    }
+
+    /// 엣지의 장소가 어두운 골목·그래피티·네온으로 수렴하지 않는다. 밝은 장소와 색이 있는
+    /// 장소가 섞이고, 같은 입력이면 같은 장소다(캐시 키가 안정적이다).
+    #[test]
+    fn edgy_scenes_are_varied_and_not_grungy() {
+        let (places, own_light) = genre_setting(StyleGenre::Edgy);
+        assert!(places.len() >= 4);
+        for p in places {
+            for w in ["alley", "graffiti", "neon", "night"] {
+                assert!(!p.contains(w), "{p}");
+            }
+        }
+        assert!(
+            places
+                .iter()
+                .any(|p| p.contains("colour") || p.contains("coloured"))
+        );
+        assert!(!own_light.contains("night"));
+        let picked: std::collections::HashSet<&str> = (0..64u64)
+            .map(|h| pick_setting(StyleGenre::Edgy, h))
+            .collect();
+        assert!(picked.len() >= 6, "{picked:?}");
+        assert_eq!(
+            image_cache_keys(EDGY_ITEMS, StyleGenre::Edgy),
+            image_cache_keys(EDGY_ITEMS, StyleGenre::Edgy)
+        );
+        assert_ne!(
+            image_cache_keys(EDGY_ITEMS, StyleGenre::Edgy).1,
+            image_cache_keys(EDGY_ITEMS, StyleGenre::ModernChic).1
+        );
+    }
+
     /// 다른 무드의 얼굴·구도·회피 문장은 글램 작업 전과 같다. 이 문장이 바뀌면 그 무드의
     /// 저장된 사진이 캐시에서 전부 빗나간다(2026-10-16 12개 무드 × 8개 입력 대조로 확인).
     #[test]
     fn other_moods_keep_their_shared_face_and_avoid_text() {
-        for g in StyleGenre::ALL.iter().filter(|g| **g != StyleGenre::Glam) {
+        for g in StyleGenre::ALL
+            .iter()
+            .filter(|g| !matches!(g, StyleGenre::Glam | StyleGenre::Edgy))
+        {
             let p = build_image_prompt(*g, GLAM_ITEMS, 42);
             assert!(p.contains("woman in her twenties with distinctive"), "{g}");
             assert!(

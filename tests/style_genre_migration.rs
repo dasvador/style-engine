@@ -22,6 +22,7 @@ const GENRE_MIGRATION: &str =
 /// 데모 시드가 넣는 무드 칩. 글램은 옷과 함께 시드로만 들어간다 — 옷 없이 칩만 운영에
 /// 뜨지 않게 하려는 것이다(`seeds/demo/glam.sql` 머리 주석).
 const DEMO_SEED_MOODS: &str = include_str!("../seeds/demo/glam.sql");
+const EDGY_SEED_MOODS: &str = include_str!("../seeds/demo/edgy.sql");
 
 /// `('male', 'preppy', ...` 같은 INSERT 행에서 두 번째 따옴표 값(장르 키)을 뽑는다.
 fn inserted_genre_keys(sql: &str) -> Vec<(String, String)> {
@@ -129,7 +130,7 @@ fn legacy_values_the_migration_moves_are_still_accepted_by_the_server() {
     }
 }
 
-/// 화면에 나가는 목록(마이그레이션 8+8, 데모 시드의 글램)과 enum 이 일치해야 한다.
+/// 화면에 나가는 목록(마이그레이션 8+8, 데모 시드의 글램·엣지)과 enum 이 일치해야 한다.
 /// 어느 쪽에도 노출되지 않는 장르가 남으면 그 장르로 태깅된 아이템은 영영 후보에
 /// 들어가지 못한다.
 #[test]
@@ -137,6 +138,7 @@ fn exposed_genres_cover_the_whole_vocabulary() {
     let mut exposed: Vec<String> = inserted_genre_keys(GENRE_MIGRATION)
         .into_iter()
         .chain(inserted_genre_keys(DEMO_SEED_MOODS))
+        .chain(inserted_genre_keys(EDGY_SEED_MOODS))
         .map(|(_, key)| key)
         .collect();
     exposed.sort();
@@ -172,5 +174,47 @@ fn shared_genres_appear_in_both_gender_lists() {
             female.contains(&shared.to_string()),
             "여성 목록에 {shared} 없음"
         );
+    }
+}
+
+/// 문자열에서 `'xxxxxxxx-xxxx-…'` 꼴의 옷 id 를 순서대로 뽑는다.
+fn clothing_ids(sql: &str) -> Vec<String> {
+    let mut ids = Vec::new();
+    let mut rest = sql;
+    while let Some(at) = rest.find('\'') {
+        rest = &rest[at + 1..];
+        let Some(end) = rest.find('\'') else { break };
+        let v = &rest[..end];
+        if v.len() == 36 && v.chars().filter(|c| *c == '-').count() == 4 {
+            ids.push(v.to_string());
+        }
+        rest = &rest[end + 1..];
+    }
+    ids
+}
+
+/// 엣지 롤백은 시드가 엣지 태그를 붙인 기존 옷만 지운다 — 두 파일의 기존 옷 목록이 같아야
+/// 한다. 목록이 어긋나면 시드 태그가 남거나, 다른 시드의 엣지 태그를 지운다.
+#[test]
+fn edgy_rollback_targets_exactly_the_seeded_existing_items() {
+    let rollback = include_str!("../seeds/demo/edgy_rollback.sql");
+    let tag_block = &EDGY_SEED_MOODS[EDGY_SEED_MOODS
+        .find("SELECT id, 'edgy', 'seed' FROM clothing")
+        .expect("태그 블록")..];
+    let mut seeded = clothing_ids(tag_block);
+    let mut rolled = clothing_ids(rollback);
+    seeded.sort();
+    rolled.sort();
+    assert_eq!(seeded.len(), 17);
+    assert_eq!(seeded, rolled);
+    // 엣지 전체를 지우는 문장이 없다.
+    for stmt in rollback.split(';') {
+        let s = stmt.to_lowercase();
+        if s.contains("style_genre = 'edgy'") {
+            assert!(
+                s.contains("clothing_id like '0ffd0c00") && s.contains("clothing_id in"),
+                "{stmt}"
+            );
+        }
     }
 }

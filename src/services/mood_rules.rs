@@ -26,6 +26,27 @@
 //! 옷 두 곳이 강하면 "착장마다 중심 소재 하나" 기준으로 계속 깎는다(2026-10-17 사용자).
 //!
 //! 날씨·계절·스타일 충돌·텍스처 충돌 감점은 건드리지 않는다.
+//!
+//! ## 엣지(2026-10-17)
+//!
+//! 엣지 옷장을 운영 엔진으로 전부 채점했을 때(`examples/mood_check`) 대표 엣지 코디가
+//! 28~37점으로 떨어진 이유는 셋이었다 — 조용한 아우터 안의 형태 있는 상의(이너 규칙),
+//! 형태가 중심인 하의의 슬롯 역할, 가죽·니트·울이 섞여도 어두운 색이면 깎는 밝기 밸런스.
+//! 셋 다 글램의 1·3·5 와 같은 근거라 같은 자리만 되돌린다. 하의는 포인트와 약한포인트를
+//! 함께 본다(엣지의 하의는 배럴 레그·가죽 스커트처럼 형태로 중심을 잡는다). 올블랙은
+//! 형태 디테일이 있거나, 확인된 가죽 옷과 확인된 비가죽 옷이 함께 있을 때만 되돌린다 —
+//! 소재를 모르는 옷은 대비의 근거가 아니다.
+//!
+//! 글램의 4(격식 상한 3.5)는 엣지에 옮기지 않는다 — 홈 '일상' 의 격식 상한은 엣지에도
+//! 그대로 맞는 기준이다(차콜 코트와 컬러 코트가 똑같이 받는다).
+//!
+//! 글램의 2(보조 아이템만 더한 포인트 과다)는 좁혀서 옮긴다(2026-10-17 컬러 옷 추가 뒤).
+//! 컬러 코트·컬러 니트(포인트)에 검정 가죽 가방(데이터상 포인트)이 더해지면 "포인트 2개"
+//! (−20~25)가 붙어, 같은 옷의 차콜 코트 조합보다 20점 아래로 밀렸다. 같은 가방을 가방
+//! 규칙(가방까지 포인트)과 슬롯 역할이 이미 깎는다. 그래서 옷의 포인트가 한 곳이고, 넘치는
+//! 포인트가 무채색(검정·차콜·그레이·화이트 계열) 가방·신발뿐일 때만 "포인트 과다" 를
+//! 지운다. 가방 규칙·슬롯 역할 감점은 남긴다. 유색 가방·신발이거나 옷 두 곳이 포인트면
+//! 그대로 깎는다.
 
 use crate::models::clothing::Clothing;
 use crate::models::outfit::{EvaluationResult, IssueCode, OutfitContext, OutfitStrength, SlotKind};
@@ -42,8 +63,10 @@ pub fn evaluate_for_mood(
     mood: Option<StyleGenre>,
 ) -> EvaluationResult {
     let mut e = style_engine::evaluate(ctx, current_season);
-    if mood == Some(StyleGenre::Glam) {
-        apply_glam(ctx, &mut e);
+    match mood {
+        Some(StyleGenre::Glam) => apply_waivers(ctx, &mut e, StyleGenre::Glam),
+        Some(StyleGenre::Edgy) => apply_waivers(ctx, &mut e, StyleGenre::Edgy),
+        _ => {}
     }
     e
 }
@@ -132,7 +155,32 @@ fn daily_formality_waiver(ctx: &OutfitContext, deduction: i32) -> i32 {
     (deduction - kept).max(0)
 }
 
-fn apply_glam(ctx: &OutfitContext, e: &mut EvaluationResult) {
+/// 엣지의 어두운 코디가 형태나 소재 대비로 읽히는가(규칙 5의 엣지판). 근거는 둘 중
+/// 하나다 — 형태 디테일이 있는 옷(가죽이어도 된다: 비대칭 지퍼 가죽 재킷), 또는 확인된
+/// 가죽 옷과 확인된 가죽이 아닌 옷(니트·울·데님 등)이 함께 있는 것. 소재를 모르는 옷은
+/// 가죽도 비가죽도 아니다 — 가죽 스커트 + 소재 미상 탑은 대비로 치지 않는다. 상담의 평가
+/// 도구도 같은 판단을 쓴다.
+pub fn dark_edgy_look_has_contrast(garments: &[&Clothing]) -> bool {
+    use crate::services::mood_gate::{
+        has_edgy_shape, is_known_non_leather_garment, is_leather_garment,
+    };
+    let shaped = garments.iter().any(|c| has_edgy_shape(c));
+    let material_contrast = garments.iter().any(|c| is_leather_garment(c))
+        && garments.iter().any(|c| is_known_non_leather_garment(c));
+    shaped || material_contrast
+}
+
+/// 무드에서 어두운 코디가 소재·형태로 대비를 만드는가. 판단하지 않는 무드는 `false` 다.
+pub fn dark_look_reads_for(mood: Option<StyleGenre>, garments: &[&Clothing]) -> bool {
+    match mood {
+        Some(StyleGenre::Glam) => dark_look_has_contrast(garments),
+        Some(StyleGenre::Edgy) => dark_edgy_look_has_contrast(garments),
+        _ => false,
+    }
+}
+
+fn apply_waivers(ctx: &OutfitContext, e: &mut EvaluationResult, mood: StyleGenre) {
+    let glam = mood == StyleGenre::Glam;
     let slot = |k: SlotKind| ctx.slots.iter().find(|s| s.slot == k);
     let garment_accents: Vec<&Clothing> = ctx
         .slots
@@ -160,7 +208,34 @@ fn apply_glam(ctx: &OutfitContext, e: &mut EvaluationResult) {
         .filter(|s| is_garment(s.slot))
         .map(|s| &s.clothing)
         .collect();
-    let dark_contrast = dark_look_has_contrast(&garments);
+    let dark_contrast = dark_look_reads_for(Some(mood), &garments);
+    // 엣지: 하의가 형태로 중심을 잡고, 다른 옷에는 포인트·약한포인트가 없다.
+    let point_like = |c: &Clothing| matches!(c.role, Some(Role::Accent | Role::SoftAccent));
+    // 엣지: 포인트인 가방·신발이 모두 무채색인가(규칙 2의 엣지판).
+    let accessory_accents_neutral = {
+        let accents: Vec<&Clothing> = ctx
+            .slots
+            .iter()
+            .filter(|s| !is_garment(s.slot) && s.clothing.role == Some(Role::Accent))
+            .map(|s| &s.clothing)
+            .collect();
+        !accents.is_empty()
+            && accents.iter().all(|c| {
+                matches!(
+                    crate::services::outfit_scorer::color_group(c.color.as_deref().unwrap_or("")),
+                    "dark" | "gray" | "cream"
+                )
+            })
+    };
+    let edgy_bottom_center = !glam
+        && bottom.is_some_and(|b| {
+            point_like(&b.clothing) && crate::services::mood_gate::is_edgy_piece(&b.clothing)
+        })
+        && ctx
+            .slots
+            .iter()
+            .filter(|s| is_garment(s.slot) && s.slot != SlotKind::Bottom)
+            .all(|s| !point_like(&s.clothing));
     let daily = matches!(ctx.situation.as_deref(), Some("일상" | "캐주얼") | None);
 
     let mut waived = 0;
@@ -182,19 +257,28 @@ fn apply_glam(ctx: &OutfitContext, e: &mut EvaluationResult) {
             {
                 p.deduction
             }
-            // 2. 넘치는 포인트가 가방·신발뿐
-            IssueCode::TooManyAccents if garment_accents.len() <= 1 => {
+            // 2. 넘치는 포인트가 가방·신발뿐 (엣지는 무채색 가방·신발일 때만)
+            IssueCode::TooManyAccents
+                if !glam && garment_accents.len() <= 1 && accessory_accents_neutral =>
+            {
+                notes.push("포인트는 옷 한 곳이고 무채색 가방은 그와 겨루지 않습니다".into());
+                p.deduction
+            }
+            IssueCode::TooManyAccents if glam && garment_accents.len() <= 1 => {
                 notes.push("포인트는 옷 한 곳이고 가방은 작은 보조 포인트입니다".into());
                 p.deduction
             }
             IssueCode::SlotRoleMismatch
-                if garment_accents.len() <= 1 && accessory_names.iter().any(|n| about(n)) =>
+                if glam
+                    && garment_accents.len() <= 1
+                    && accessory_names.iter().any(|n| about(n)) =>
             {
                 p.deduction
             }
             // 3. 하의가 유일한 포인트
             IssueCode::SlotRoleMismatch
-                if garment_accents.len() == 1
+                if glam
+                    && garment_accents.len() == 1
                     && bottom.is_some_and(|b| {
                         b.clothing.role == Some(Role::Accent) && about(&b.clothing.name)
                     }) =>
@@ -202,8 +286,16 @@ fn apply_glam(ctx: &OutfitContext, e: &mut EvaluationResult) {
                 notes.push("하의가 코디의 중심입니다".into());
                 p.deduction
             }
-            // 4. 홈 '일상' 의 격식 상한
-            IssueCode::FormalitySituationMismatch if daily && p.detail.contains("격식적") => {
+            IssueCode::SlotRoleMismatch
+                if edgy_bottom_center && bottom.is_some_and(|b| about(&b.clothing.name)) =>
+            {
+                notes.push("하의의 형태가 코디의 중심입니다".into());
+                p.deduction
+            }
+            // 4. 홈 '일상' 의 격식 상한 (글램만)
+            IssueCode::FormalitySituationMismatch
+                if glam && daily && p.detail.contains("격식적") =>
+            {
                 let back = daily_formality_waiver(ctx, p.deduction);
                 if back < p.deduction {
                     // 넓힌 상한도 넘으면 남은 몫은 그대로 깎는다.
@@ -237,7 +329,7 @@ fn apply_glam(ctx: &OutfitContext, e: &mut EvaluationResult) {
         notes.dedup();
         for n in notes {
             e.strengths.push(OutfitStrength {
-                rule: "글램".into(),
+                rule: if glam { "글램" } else { "엣지" }.into(),
                 detail: n,
             });
         }

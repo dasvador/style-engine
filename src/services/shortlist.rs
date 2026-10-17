@@ -200,6 +200,12 @@ fn is_temp_appropriate(item: &Clothing, temp: f64) -> bool {
         if item.category == "아우터" && weight != Weight::Light {
             return false;
         }
+        // 가죽 상의·하의는 바람이 통하지 않는다. 엣지 시드의 레더 미디 스커트가 26°C 후보에
+        // 올랐다(2026-10-17). 가죽 신발·가방은 그대로 둔다. 소재가 저장되지 않는 업로드 옷도
+        // 이름으로 가린다(`mood_gate::is_leather_garment`).
+        if item.category != "아우터" && crate::services::mood_gate::is_leather_garment(item) {
+            return false;
+        }
         if name.contains("코듀로이") {
             return false;
         }
@@ -306,6 +312,9 @@ fn mood_neighbors(mood: StyleGenre) -> &'static [StyleGenre] {
         // 글램의 포인트를 받쳐 주는 쪽은 날렵한 모던 시크와 기본 아이템인 미니멀이다.
         // 새틴 같은 소재를 공유하는 로맨틱은 그다음이다 — 먼저 빌리면 부드러운 인상이 섞인다.
         Glam => &[ModernChic, Minimal, Romantic],
+        // 엣지는 구조적인 재단을 모던 시크·매니시에서, 데님을 스트리트에서 빌린다. 기본
+        // 아이템인 미니멀은 마지막이다 — 먼저 빌리면 형태가 없는 코디가 늘어난다.
+        Edgy => &[ModernChic, Mannish, Street, Minimal],
     }
 }
 
@@ -550,6 +559,24 @@ mod tests {
             .collect();
         v.sort();
         v
+    }
+
+    /// 더운 날에는 가죽 상의·하의를 빼고, 가죽 샌들·가방은 남긴다. 선선한 날에는 가죽
+    /// 스커트도 후보다.
+    #[test]
+    fn leather_garments_leave_on_hot_days_but_leather_accessories_stay() {
+        let leather = |id: &str, cat: &str| {
+            let mut c = item(id, cat, Style::Basic, 3);
+            c.material_primary = Some("leather".into());
+            c
+        };
+        let skirt = leather("레더 미디 스커트", "하의");
+        let sandal = leather("피셔맨 샌들", "신발");
+        let bag = leather("숄더백", "가방");
+        assert!(!is_temp_appropriate(&skirt, 26.0));
+        assert!(is_temp_appropriate(&skirt, 18.0));
+        assert!(is_temp_appropriate(&sandal, 26.0));
+        assert!(is_temp_appropriate(&bag, 26.0));
     }
 
     #[test]

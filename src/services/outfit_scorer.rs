@@ -320,9 +320,12 @@ pub fn pairwise_score(a: &Clothing, b: &Clothing) -> i32 {
     if is_upper_pair {
         let a_color = a.color.as_deref().unwrap_or("");
         let b_color = b.color.as_deref().unwrap_or("");
+        // 색군을 모르는 색("other" — 레드·코발트·바이올렛 등)끼리는 같은 색이 아니다. 예전에는
+        // 체리 레드 상의와 코발트 코트도 "other" 가 같아 동색으로 깎였다(2026-10-17).
+        let a_cg = color_group(a_color);
         let same_color_group = !a_color.is_empty()
             && !b_color.is_empty()
-            && (a_color == b_color || color_group(a_color) == color_group(b_color));
+            && (a_color == b_color || (a_cg != "other" && a_cg == color_group(b_color)));
         if same_color_group {
             // texture contrast가 있으면 완화
             let tex_contrast = (a_td - b_td).abs() >= 3;
@@ -1436,6 +1439,22 @@ mod missing_value_tests {
             created_at: now,
             updated_at: now,
         }
+    }
+
+    /// 상의·아우터 동색 감점은 같은 색이거나 알려진 같은 색군일 때만이다. 색군을 모르는 다른
+    /// 강조색끼리(레드 + 코발트)는 동색이 아니다. 검정 + 차콜은 여전히 같은 어두운 색군이다.
+    #[test]
+    fn unknown_colour_groups_are_not_the_same_colour() {
+        let pair = |top: &str, outer: &str| {
+            let mut t = item("상의", None, None);
+            t.color = Some(top.into());
+            let mut o = item("아우터", None, None);
+            o.color = Some(outer.into());
+            pairwise_score(&t, &o)
+        };
+        assert_eq!(pair("체리레드", "코발트"), pair("화이트", "코발트"));
+        assert!(pair("블랙", "차콜") < pair("화이트", "차콜"));
+        assert!(pair("버건디", "버건디") < pair("화이트", "버건디"));
     }
 
     #[test]

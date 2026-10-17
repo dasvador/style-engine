@@ -82,6 +82,7 @@ async fn get_recommendation(
         body.style_preference.as_deref(),
         &recent_hint,
         None,
+        false,
     )
     .await;
 
@@ -320,12 +321,21 @@ async fn get_multi_recommendation(
     };
     let shortlist = crate::services::shortlist::build_all_shortlists(&clothes, &sl_ctx);
     tracing::info!("{}", shortlist.summary());
-    // 글램은 소재·실루엣·두께·특징까지 넘긴다. 다른 무드는 예전과 같은 줄이다.
-    let grouped = if mood == Some(StyleGenre::Glam) {
+    // 글램·엣지는 소재·실루엣·두께·특징까지 넘긴다 — 어떤 옷이 빛을 받는지, 어떤 형태인지가
+    // 판단의 중심이라 이름만으로는 모자라다. 다른 무드는 예전과 같은 줄이다.
+    let grouped = if mood.is_some_and(crate::services::mood_gate::judges) {
         shortlist.to_grouped_detailed()
     } else {
         shortlist.to_grouped()
     };
+
+    // 엣지의 색 다양성(후보 지시의 색 문장, 카드의 컬러 우선 선택). 밝은색을 싫어한다고 적은
+    // 사용자에게는 켜지 않는다 — 상담(`chat::today_outfit`)과 같은 기준이다. 저장값은 읽기만 한다.
+    let edgy_colour =
+        mood == Some(StyleGenre::Edgy) && !dislikes_bright_colors(&state.db, user_id).await;
+    if mood == Some(StyleGenre::Edgy) {
+        tracing::info!(edgy_colour, "엣지 색 다양성");
+    }
 
     // LLM: 5후보 생성 (shortlist 기반 카테고리별 그룹 입력). 고른 무드를 함께 넘긴다 —
     // 예전에는 무드가 옷장을 거르는 데만 쓰여, 모델은 무드를 모른 채 "편한 스타일" 로
@@ -338,6 +348,7 @@ async fn get_multi_recommendation(
         body.style_preference.as_deref(),
         &recent_hint,
         mood,
+        edgy_colour,
     )
     .await
     .map_err(AppError::Internal)?;
@@ -454,9 +465,9 @@ async fn get_multi_recommendation(
         .await
         {
             Some(ctx) => {
-                // S2(조용한 아우터 안의 강한 상의) shadow 는 글램 밖의 무드만 잰다. 글램은
-                // `mood_rules` 가 이미 운영 점수에 반영했다.
-                if mood != Some(StyleGenre::Glam) {
+                // S2(조용한 아우터 안의 강한 상의) shadow 는 글램·엣지 밖의 무드만 잰다. 두
+                // 무드는 `mood_rules` 가 이미 운영 점수에 반영했다.
+                if !mood.is_some_and(crate::services::mood_gate::judges) {
                     let eval = style_engine::evaluate(&ctx, current_season.as_deref());
                     mood_waivers.push((
                         c.ai_candidate_index,
@@ -595,6 +606,32 @@ async fn get_multi_recommendation(
     let variation = match &todays {
         Some(t) => recommendation_service::select_variation(&servable, &t.candidate),
         None => None,
+    };
+
+    // 엣지: 두 카드가 모두 무채색으로만 보이면 순위가 가까운 컬러 후보를 고른다
+    // (`recommendation_service::prefer_visible_color`). 다른 무드는 그대로다.
+    let (todays, variation) = if edgy_colour {
+        let idx = |r: &Option<recommendation_service::ModeSelectionResult>| {
+            r.as_ref().map(|r| r.candidate.ai_candidate_index)
+        };
+        let before = (idx(&todays), idx(&variation));
+        let after = recommendation_service::prefer_visible_color(
+            &servable,
+            todays,
+            variation,
+            weather.temperature,
+            &clothes,
+        );
+        if (idx(&after.0), idx(&after.1)) != before {
+            tracing::info!(
+                ?before,
+                after = ?(idx(&after.0), idx(&after.1)),
+                "엣지 카드: 순위가 가까운 컬러 후보를 골랐다"
+            );
+        }
+        after
+    } else {
+        (todays, variation)
     };
 
     // Step 3: 안 입은 옷 — 휴면 아이템 포함 후보
@@ -877,6 +914,20 @@ fn outfit_items_for(
         .collect()
 }
 
+/// 사용자가 밝은색을 싫어한다고 적었는가(`user_style_profile`). 프로필이 없거나 읽지 못하면
+/// `false` 다 — 적지 않은 취향을 지어내지 않는다.
+async fn dislikes_bright_colors(db: &sqlx::MySqlPool, user_id: &str) -> bool {
+    sqlx::query_as::<_, (bool,)>(
+        "SELECT dislikes_bright_colors FROM user_style_profile WHERE user_id = ?",
+    )
+    .bind(user_id)
+    .fetch_optional(db)
+    .await
+    .ok()
+    .flatten()
+    .is_some_and(|r| r.0)
+}
+
 /// 모델이 썼지만 최종 구성에 없는 옷의 이름.
 fn dropped_names(
     ai_result: &crate::models::recommendation::AiRecommendation,
@@ -1092,13 +1143,12 @@ async fn supplement_candidates(
         }
     }
 
-    // 2. 글램 — 옷에 글램 요소가 있는 입을 수 있는 후보가 없을 때
-    if mood == Some(StyleGenre::Glam) {
+    // 2. 무드(글램·엣지) — 옷에 무드 요소가 있는 입을 수 있는 후보가 없을 때
+    if let Some(m) = mood.filter(|m| crate::services::mood_gate::judges(*m)) {
         let reads = |c: &OutfitCandidate| {
-            crate::services::mood_gate::reads_as(StyleGenre::Glam, &candidate_items(c, clothes))
-                == Some(true)
+            crate::services::mood_gate::reads_as(m, &candidate_items(c, clothes)) == Some(true)
         };
-        let has_glam = scored.iter().zip(&status).any(|(c, ok)| *ok && reads(c));
+        let has_mood = scored.iter().zip(&status).any(|(c, ok)| *ok && reads(c));
         let base = scored
             .iter()
             .zip(&status)
@@ -1106,7 +1156,7 @@ async fn supplement_candidates(
             .map(|(c, _)| c)
             .max_by_key(|c| c.style_score)
             .cloned();
-        if let (false, Some(base)) = (has_glam, base) {
+        if let (false, Some(base)) = (has_mood, base) {
             let source = ai[base.ai_candidate_index].clone();
             let mut best: Vec<(
                 i32,
@@ -1130,7 +1180,7 @@ async fn supplement_candidates(
                 )> = None;
                 for item in pool
                     .iter()
-                    .filter(|c| crate::services::mood_gate::is_glam_piece(c))
+                    .filter(|c| crate::services::mood_gate::is_mood_piece(m, c) == Some(true))
                 {
                     let variant = swapped_ai(
                         &base,
@@ -1167,7 +1217,7 @@ async fn supplement_candidates(
             for (_, kind, variant, mut c) in best.into_iter().take(MAX_SUPPLEMENTS) {
                 c.ai_candidate_index = ai.len();
                 added.push(format!(
-                    "글램: {} → {}",
+                    "{m}: {} → {}",
                     slot_name(kind),
                     variant.outfit.last().map(|o| o.name.as_str()).unwrap_or("")
                 ));
@@ -1886,6 +1936,52 @@ mod tests {
     }
 
     use super::*;
+
+    /// 홈의 밝은색 비선호는 저장된 프로필을 그대로 읽는다 — 참이면 참, 거짓·프로필 없음은
+    /// 거짓. 실제 DB 쿼리를 쓴다. `TEST_DATABASE_URL` 이 없으면 건너뛴다. 넣은 행은 판정
+    /// 전에 지운다.
+    #[tokio::test]
+    async fn bright_colour_preference_is_read_from_the_stored_profile() {
+        let Some(url) = std::env::var("TEST_DATABASE_URL")
+            .ok()
+            .filter(|s| !s.is_empty())
+        else {
+            eprintln!("TEST_DATABASE_URL 이 없어 건너뜁니다");
+            return;
+        };
+        let db = sqlx::mysql::MySqlPoolOptions::new()
+            .max_connections(2)
+            .connect(&url)
+            .await
+            .expect("DB 연결");
+        let (yes, no, none) = (
+            "test-bright-yes-20261017",
+            "test-bright-no-20261017",
+            "test-bright-none-20261017",
+        );
+        for (u, v) in [(yes, true), (no, false)] {
+            sqlx::query(
+                "INSERT INTO user_style_profile (user_id, dislikes_bright_colors) VALUES (?, ?)",
+            )
+            .bind(u)
+            .bind(v)
+            .execute(&db)
+            .await
+            .expect("프로필");
+        }
+        let got = (
+            dislikes_bright_colors(&db, yes).await,
+            dislikes_bright_colors(&db, no).await,
+            dislikes_bright_colors(&db, none).await,
+        );
+        sqlx::query("DELETE FROM user_style_profile WHERE user_id IN (?, ?)")
+            .bind(yes)
+            .bind(no)
+            .execute(&db)
+            .await
+            .expect("정리");
+        assert_eq!(got, (true, false, false));
+    }
     use crate::models::style_vocab::Thickness;
     use chrono::NaiveDateTime;
 
