@@ -38,7 +38,7 @@ pub async fn get_outfit_recommendation(
 - 당신의 역할은 주어진 옷장 후보 안에서 날씨와 상황에 맞는 "후보 코디안"을 조합하는 것입니다.
 - 규칙 엔진처럼 강하게 판정하거나 단정하지 마세요.
 - 옷장에 없는 아이템을 절대 만들어내지 마세요.
-- 반드시 입력으로 제공된 아이템명만 사용하세요.
+- 반드시 입력으로 제공된 아이템만 사용하세요. 각 아이템의 "id" 에는 입력 줄의 id: 값을 그대로 복사하세요. 서버는 id 로 옷을 고르고, "name" 은 참고용입니다.
 
 추천 원칙:
 1. 날씨와 상황을 우선 고려하세요.
@@ -73,9 +73,9 @@ pub async fn get_outfit_recommendation(
 {{
   "recommendation": "전체 추천 요약 (2~3문장)",
   "outfit": [
-    {{ "category": "상의", "name": "정확한 아이템명", "reason": "선택 이유" }},
-    {{ "category": "하의", "name": "정확한 아이템명", "reason": "선택 이유" }},
-    {{ "category": "아우터", "name": "정확한 아이템명", "reason": "선택 이유" }}
+    {{ "category": "상의", "id": "목록의 id", "name": "아이템명", "reason": "선택 이유" }},
+    {{ "category": "하의", "id": "목록의 id", "name": "아이템명", "reason": "선택 이유" }},
+    {{ "category": "아우터", "id": "목록의 id", "name": "아이템명", "reason": "선택 이유" }}
   ],
   "weather_summary": "날씨 요약 한 줄",
   "tips": ["실용적인 팁 1", "실용적인 팁 2"]
@@ -401,9 +401,9 @@ pub fn outfit_candidate_prompts(
 - 신발 슬롯에는 [신발 후보]에서만 선택하라.
 - 가방 슬롯에는 [가방 후보]에서만 선택하라.
 - 다른 슬롯의 아이템을 가져오지 마라.
-- 후보 목록에 없는 이름을 만들지 마라.
-- 이름은 후보 목록의 문자열을 그대로 복사하라.
-- 확신이 없으면 해당 슬롯을 빈 문자열로 두어라. 서버가 후처리로 채운다.
+- 후보 목록에 없는 아이템을 만들지 마라.
+- 각 아이템의 "id" 에는 후보 목록 줄의 id: 값을 한 글자도 바꾸지 말고 그대로 복사하라. 서버는 id 로 옷을 고른다. "name" 은 참고용이다.
+- 확신이 없으면 해당 슬롯의 id 와 name 을 모두 빈 문자열로 두어라. 서버가 후처리로 채운다.
 
 추천 원칙:
 1. 날씨와 상황을 우선 고려하세요.
@@ -447,11 +447,11 @@ pub fn outfit_candidate_prompts(
     {{
       "recommendation": "후보 1 요약 (1~2문장)",
       "outfit": [
-        {{ "category": "상의", "name": "정확한 아이템명", "reason": "선택 이유" }},
-        {{ "category": "하의", "name": "정확한 아이템명", "reason": "선택 이유" }},
-        {{ "category": "아우터", "name": "정확한 아이템명", "reason": "선택 이유" }},
-        {{ "category": "신발", "name": "정확한 아이템명", "reason": "선택 이유" }},
-        {{ "category": "가방", "name": "정확한 아이템명", "reason": "선택 이유" }}
+        {{ "category": "상의", "id": "목록의 id", "name": "아이템명", "reason": "선택 이유" }},
+        {{ "category": "하의", "id": "목록의 id", "name": "아이템명", "reason": "선택 이유" }},
+        {{ "category": "아우터", "id": "목록의 id", "name": "아이템명", "reason": "선택 이유" }},
+        {{ "category": "신발", "id": "목록의 id", "name": "아이템명", "reason": "선택 이유" }},
+        {{ "category": "가방", "id": "목록의 id", "name": "아이템명", "reason": "선택 이유" }}
       ],
 {focus_field}      "weather_summary": "날씨 요약 한 줄",
       "tips": ["팁"]
@@ -1187,6 +1187,16 @@ mod outfit_candidate_prompt_tests {
         // 팝 옷이 없으면 이름 목록 문장이 없다.
         let (_, user) = prompts_full(Some(StyleGenre::Pop), 19.6, true, false, &[]);
         assert!(!user.contains("이번 목록의 팝 옷"));
+    }
+
+    /// 응답 형식은 아이템마다 "id" 를 요구하고, 규칙은 목록의 id 를 그대로 복사하라고 한다.
+    /// 이름을 그대로 복사하라는 예전 규칙은 없다(서버는 id 로 옷을 고른다).
+    #[test]
+    fn candidates_must_answer_with_list_ids() {
+        let (sys, user) = prompts_at(None, 17.0);
+        assert!(sys.contains("id: 값을 한 글자도 바꾸지 말고 그대로 복사하라"));
+        assert!(!sys.contains("이름은 후보 목록의 문자열을 그대로 복사하라"));
+        assert_eq!(user.matches(r#""id": "목록의 id""#).count(), 5);
     }
 
     /// 글램 소재 대비 지시는 코트를 입는 날(12°C 미만)에, 목록에 퍼·시어링 아우터와 무광 트리밍

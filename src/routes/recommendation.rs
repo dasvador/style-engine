@@ -92,11 +92,13 @@ async fn get_recommendation(
     // 6. Try multi-candidate scoring, fall back to single-candidate
     let (ai_result, selected_candidate) = match multi_result {
         Ok(multi) if !multi.candidates.is_empty() => {
-            // Build OutfitCandidates from AI results
+            // Build OutfitCandidates from AI results — 이 경로는 옷장 전체를 보여 줬다.
+            let offered = crate::services::item_resolution::OfferedItems::from_clothes(&clothes);
             let mut candidates = Vec::new();
             for (i, ai_candidate) in multi.candidates.iter().enumerate() {
                 if let Some(oc) = build_outfit_candidate(
                     &ai_candidate.outfit,
+                    &offered,
                     &clothes,
                     &state.db,
                     body.occasion.as_deref(),
@@ -157,16 +159,18 @@ async fn get_recommendation(
         }
     };
 
-    // 7. Build response with image_url — 옷장에 없는 이름은 버린다(build_outfit_items 와 동일).
+    // 7. Build response with image_url — 이 요청에서 제공한 옷의 id 로만 연결한다
+    //    (`item_resolution`). 연결하지 못한 항목은 버린다. 이름은 옷장의 것을 쓴다.
+    let offered_all = crate::services::item_resolution::OfferedItems::from_clothes(&clothes);
     let outfit: Vec<OutfitItem> = ai_result
         .outfit
         .iter()
         .filter_map(|ai_item| {
-            let matched = find_matching_clothing(&clothes, &ai_item.name)?;
+            let matched = resolve_logged(ai_item, &offered_all)?;
             Some(OutfitItem {
                 id: matched.id.clone(),
-                category: ai_item.category.clone(),
-                name: ai_item.name.clone(),
+                category: matched.category.clone(),
+                name: matched.name.clone(),
                 reason: ai_item.reason.clone(),
                 image_url: matched.image_url.clone(),
                 material: matched.image_material(),
@@ -183,11 +187,11 @@ async fn get_recommendation(
         }
         None => {
             // Fallback: save from matched outfit items
-            let top_id = find_slot_id(&outfit, "상의", &clothes);
-            let bottom_id = find_slot_id(&outfit, "하의", &clothes);
-            let outer_id = find_slot_id(&outfit, "아우터", &clothes);
-            let shoes_id = find_slot_id(&outfit, "신발", &clothes);
-            let bag_id = find_slot_id(&outfit, "가방", &clothes);
+            let top_id = find_slot_id(&outfit, "상의");
+            let bottom_id = find_slot_id(&outfit, "하의");
+            let outer_id = find_slot_id(&outfit, "아우터");
+            let shoes_id = find_slot_id(&outfit, "신발");
+            let bag_id = find_slot_id(&outfit, "가방");
 
             let _ = RecommendationHistoryRepo::insert(
                 &state.db,
@@ -406,11 +410,23 @@ async fn get_multi_recommendation(
         );
     }
 
-    // style_engine 점수 + 이력 penalty/bonus 계산
+    // style_engine 점수 + 이력 penalty/bonus 계산. 모델 응답의 id 는 모델에게 보여 준 후보
+    // 목록(슬롯별 shortlist) 안에서만 연결한다 — 무드 옷장 전체로 넓히지 않는다.
+    let offered = crate::services::item_resolution::OfferedItems::from_clothes(
+        shortlist
+            .tops
+            .iter()
+            .chain(&shortlist.bottoms)
+            .chain(&shortlist.outers)
+            .chain(&shortlist.shoes)
+            .chain(&shortlist.bags)
+            .copied(),
+    );
     let mut scored_candidates = Vec::new();
     for (i, ai_c) in ai_candidates.candidates.iter().enumerate() {
         if let Some(oc) = build_outfit_candidate(
             &ai_c.outfit,
+            &offered,
             &clothes,
             &state.db,
             body.occasion.as_deref(),
@@ -926,7 +942,7 @@ fn outfit_items_for(
             let mut reason = ai_result
                 .outfit
                 .iter()
-                .find(|a| find_matching_clothing(clothes, &a.name).is_some_and(|m| m.id == item.id))
+                .find(|a| a.id.as_deref() == Some(item.id.as_str()))
                 .map(|a| a.reason.clone())
                 .unwrap_or_else(|| SERVER_FILLED_REASON.to_string());
             // 판정에 쓴 착용 상태를 설명과 이미지에 같이 넘긴다.
@@ -997,7 +1013,7 @@ fn tips_for(
 }
 
 /// 후보를 다시 모델 응답 모양으로 적는다. 보완한 후보를 응답·채점 경로에 그대로 태우기
-/// 위해서다. 이유 문장은 원래 후보의 것을 옷 이름으로 찾아 쓴다.
+/// 위해서다. 이유 문장은 원래 후보의 것을 옷 id 로 찾아 쓴다.
 fn ai_items_of(
     c: &OutfitCandidate,
     source: &crate::models::recommendation::AiRecommendation,
@@ -1007,11 +1023,12 @@ fn ai_items_of(
         .into_iter()
         .map(|item| crate::models::recommendation::AiOutfitItem {
             category: item.category.clone(),
+            id: Some(item.id.clone()),
             name: item.name.clone(),
             reason: source
                 .outfit
                 .iter()
-                .find(|a| a.name == item.name)
+                .find(|a| a.id.as_deref() == Some(item.id.as_str()))
                 .map(|a| a.reason.clone())
                 .unwrap_or_else(|| SERVER_FILLED_REASON.to_string()),
         })
@@ -1062,6 +1079,7 @@ fn swapped_ai(
         .collect();
     items.push(crate::models::recommendation::AiOutfitItem {
         category: to.category.clone(),
+        id: Some(to.id.clone()),
         name: to.name.clone(),
         reason: why.to_string(),
     });
@@ -1135,8 +1153,11 @@ async fn supplement_candidates(
         mood: Option<StyleGenre>,
         temperature: f64,
     ) -> Option<OutfitCandidate> {
+        // 서버가 옷장 안에서 만든 후보다(모델 응답이 아니다) — 옷장 안의 id 로 연결한다.
+        let offered = crate::services::item_resolution::OfferedItems::from_clothes(clothes);
         let c = build_outfit_candidate(
             &ai_item.outfit,
+            &offered,
             clothes,
             db,
             occasion,
@@ -1339,6 +1360,7 @@ async fn load_feedback(
 #[allow(clippy::too_many_arguments)]
 async fn build_outfit_candidate(
     ai_outfit: &[crate::models::recommendation::AiOutfitItem],
+    offered: &crate::services::item_resolution::OfferedItems<'_>,
     clothes: &[Clothing],
     db: &sqlx::MySqlPool,
     occasion: Option<&str>,
@@ -1354,37 +1376,7 @@ async fn build_outfit_candidate(
     let mut bag_id = None;
     let mut slots = Vec::new();
 
-    for ai_item in ai_outfit {
-        let clothing = match find_matching_clothing(clothes, &ai_item.name) {
-            Some(c) => c,
-            None => {
-                // 후보 목록에 없는 이름 — 조용히 버리면 슬롯이 통째로 비는데 그 사실이
-                // 어디에도 남지 않는다. 아우터가 사라져도 알 수 없었던 이유다.
-                tracing::warn!(
-                    "LLM 이 후보에 없는 이름을 반환했습니다: {} / {}",
-                    ai_item.category,
-                    ai_item.name
-                );
-                continue;
-            }
-        };
-        let slot_kind = match category_to_slot(&ai_item.category) {
-            Some(sk) => sk,
-            None => continue,
-        };
-
-        // LLM이 지정한 카테고리와 DB 실제 카테고리 불일치 → skip
-        let db_slot = category_to_slot(&clothing.category);
-        if db_slot != Some(slot_kind) {
-            tracing::warn!(
-                "LLM slot mismatch: '{}' assigned to {} but DB category is {}",
-                clothing.name,
-                ai_item.category,
-                clothing.category
-            );
-            continue;
-        }
-
+    for (slot_kind, clothing) in resolve_outfit(ai_outfit, offered) {
         // Assign ID to the right slot
         match slot_kind {
             SlotKind::Top => top_id = Some(clothing.id.clone()),
@@ -1707,12 +1699,12 @@ async fn select_best_bag(
 
 // ─── Utilities ───
 
-fn find_slot_id(outfit: &[OutfitItem], category: &str, clothes: &[Clothing]) -> Option<String> {
+/// 응답 아이템의 슬롯 id. 응답 아이템은 이미 옷장 id 로 연결돼 있다.
+fn find_slot_id(outfit: &[OutfitItem], category: &str) -> Option<String> {
     outfit
         .iter()
         .find(|o| o.category == category)
-        .and_then(|o| find_matching_clothing(clothes, &o.name))
-        .map(|c| c.id.clone())
+        .map(|o| o.id.clone())
 }
 
 fn category_to_slot(cat: &str) -> Option<SlotKind> {
@@ -1739,31 +1731,90 @@ fn current_season_label() -> Option<String> {
     )
 }
 
-/// LLM 이 돌려준 이름을 옷장 아이템에 맞춘다. 정확히 일치하는 것이 없으면 부분 일치.
-///
-/// 빈 이름을 먼저 걸러내는 이유: 프롬프트가 "확신이 없으면 빈 문자열" 을 허용하는데,
-/// `c.name.contains("")` 는 모든 아이템에 참이라 빈 이름이 목록 맨 앞 아이템으로
-/// 매칭됐다. 슬롯 카테고리가 달라 대부분 뒤에서 걸러졌을 뿐, 맨 앞이 같은 슬롯이면
-/// 요청하지도 않은 아이템이 조용히 들어간다.
-fn find_matching_clothing<'a>(clothes: &'a [Clothing], name: &str) -> Option<&'a Clothing> {
-    let name = name.trim();
-    if name.is_empty() {
-        return None;
+/// 모델 응답(또는 서버가 만든 후보)의 아이템들을 슬롯별 옷으로 바꾼다. id 로만 연결하고
+/// (`item_resolution`), 연결하지 못한 항목은 빠진다. 같은 슬롯이 두 번 오면 첫 항목만 쓴다 —
+/// 예전에는 뒤의 것이 id 를 덮어쓰면서 채점 슬롯에는 두 벌이 다 들어갔다.
+fn resolve_outfit<'a>(
+    ai_outfit: &[crate::models::recommendation::AiOutfitItem],
+    offered: &crate::services::item_resolution::OfferedItems<'a>,
+) -> Vec<(SlotKind, &'a Clothing)> {
+    let mut out: Vec<(SlotKind, &'a Clothing)> = Vec::new();
+    for ai_item in ai_outfit {
+        let Some(clothing) = resolve_logged(ai_item, offered) else {
+            continue;
+        };
+        let Some(slot) = category_to_slot(&clothing.category) else {
+            continue;
+        };
+        if out.iter().any(|(s, _)| *s == slot) {
+            tracing::warn!(
+                event = "ai_item_resolve",
+                outcome = "rejected",
+                code = "duplicate_slot",
+                category = %clothing.category,
+                "같은 슬롯이 두 번 왔다 — 첫 항목만 쓴다"
+            );
+            continue;
+        }
+        out.push((slot, clothing));
     }
-    if let Some(c) = clothes.iter().find(|c| c.name == name) {
-        return Some(c);
+    out
+}
+
+/// 모델(또는 서버가 만든 후보)의 한 항목을 이 요청에서 제공한 옷에 연결한다. 결과를 구조화
+/// 로그로 남긴다 — 이름이 옷장과 달라도 id 로 연결되면 `name_differs` 로 보인다.
+fn resolve_logged<'a>(
+    ai_item: &crate::models::recommendation::AiOutfitItem,
+    offered: &crate::services::item_resolution::OfferedItems<'a>,
+) -> Option<&'a Clothing> {
+    use crate::services::item_resolution::{Resolution, resolve_item};
+    match resolve_item(
+        &ai_item.category,
+        ai_item.id.as_deref(),
+        &ai_item.name,
+        offered,
+    ) {
+        Resolution::Resolved {
+            clothing,
+            name_differs,
+            ..
+        } => {
+            if name_differs {
+                tracing::info!(
+                    event = "ai_item_resolve",
+                    outcome = "resolved",
+                    name_differs = true,
+                    category = %ai_item.category,
+                    model_name = %ai_item.name,
+                    name = %clothing.name,
+                    "모델이 적은 이름이 옷장 이름과 다르다 — id 로 연결했다"
+                );
+            }
+            Some(clothing)
+        }
+        Resolution::Omitted => None,
+        Resolution::Rejected(r) => {
+            tracing::warn!(
+                event = "ai_item_resolve",
+                outcome = "rejected",
+                code = r.code(),
+                category = %ai_item.category,
+                id = ai_item.id.as_deref().unwrap_or(""),
+                model_name = %ai_item.name,
+                "모델 응답 항목을 연결하지 못했다 — 이름으로 복구하지 않는다"
+            );
+            None
+        }
     }
-    clothes
-        .iter()
-        .find(|c| name.contains(c.name.as_str()) || c.name.contains(name))
 }
 
 /// 카테고리별 그룹화된 옷장 데이터를 생성. LLM이 슬롯별 후보만 보게 해서 혼동 방지.
 fn build_grouped_clothes(clothes: &[Clothing]) -> prompts::GroupedClothes {
     let fmt = |c: &Clothing| {
         format!(
-            "- {} | role:{} | tone:{} | style:{}",
+            "- {} | id:{} | role:{} | tone:{} | style:{}",
             c.name,
+            c.id,
             c.role.map(|v| v.as_str()).unwrap_or("-"),
             c.tone.map(|v| v.as_str()).unwrap_or("-"),
             c.style.map(|v| v.as_str()).unwrap_or("-"),
@@ -1806,8 +1857,9 @@ fn build_flat_descriptions(clothes: &[Clothing]) -> Vec<String> {
         .iter()
         .map(|c| {
             format!(
-                "{} | 카테고리:{} | 톤:{} | 역할:{} | 스타일:{}",
+                "{} | id:{} | 카테고리:{} | 톤:{} | 역할:{} | 스타일:{}",
                 c.name,
+                c.id,
                 c.category,
                 c.tone.map(|v| v.as_str()).unwrap_or("-"),
                 c.role.map(|v| v.as_str()).unwrap_or("-"),
@@ -1859,11 +1911,13 @@ mod tests {
 
     fn ai_item(
         category: &str,
+        id: &str,
         name: &str,
         reason: &str,
     ) -> crate::models::recommendation::AiOutfitItem {
         crate::models::recommendation::AiOutfitItem {
             category: category.into(),
+            id: Some(id.into()),
             name: name.into(),
             reason: reason.into(),
         }
@@ -1882,11 +1936,11 @@ mod tests {
         let ai = crate::models::recommendation::AiRecommendation {
             recommendation: "티에 새틴 스커트".into(),
             outfit: vec![
-                ai_item("상의", "화이트 티", "기본"),
-                ai_item("하의", "블랙 새틴 스커트", "광택"),
-                ai_item("신발", "블랙 앵클부츠", "마무리"),
+                ai_item("상의", "t", "화이트 티", "기본"),
+                ai_item("하의", "b", "블랙 새틴 스커트", "광택"),
+                ai_item("신발", "s", "블랙 앵클부츠", "마무리"),
                 // 옷장에 없는 이름 — 채점에서 빠졌다.
-                ai_item("가방", "골드 체인 백", "포인트"),
+                ai_item("가방", "gold", "골드 체인 백", "포인트"),
             ],
             weather_summary: String::new(),
             tips: vec!["골드 체인 백으로 포인트".into(), "부츠로 마무리".into()],
@@ -1931,7 +1985,7 @@ mod tests {
         ];
         let ai = crate::models::recommendation::AiRecommendation {
             recommendation: "코트".into(),
-            outfit: vec![ai_item("아우터", "블랙 아워글라스 롱 울 코트", "선")],
+            outfit: vec![ai_item("아우터", "o", "블랙 아워글라스 롱 울 코트", "선")],
             weather_summary: String::new(),
             tips: vec![],
             focus: None,
@@ -1990,6 +2044,161 @@ mod tests {
         assert_eq!(run(None, 19.6).0, 0);
     }
 
+    /// 실제로 빠졌던 초안(2026-10-18, 하의 '울혼방' → '울혼합' 오타)을 그대로 재현한다.
+    /// - 예전 이름 매칭(정확 → 부분 일치)은 하의를 찾지 못해 상의·하의가 다 있어야 하는
+    ///   후보가 통째로 빠졌다.
+    /// - 새 형식(id 포함)은 이름 오타와 무관하게 같은 옷으로 연결하고, 표시 이름은 옷장의 것이다.
+    /// - id 없는 예전 형식은 새 경로에서 이름으로 받아 주지 않는다(조용한 복구 없음).
+    #[test]
+    fn the_real_typo_draft_resolves_by_id() {
+        let wardrobe = vec![
+            wardrobe_item(
+                "d8929e84-546b-11f1-af43-264d116ef584",
+                "블랙 리브드 슬림 니트",
+                "상의",
+            ),
+            wardrobe_item(
+                "8e2f7e38-598a-11f1-af43-264d116ef584",
+                "블랙 스트레이트 울혼방 슬랙스",
+                "하의",
+            ),
+            wardrobe_item(
+                "0ffd0b00-0000-0000-0000-00000000000f",
+                "블랙 아워글라스 롱 울 코트",
+                "아우터",
+            ),
+            wardrobe_item(
+                "0ffd0700-0000-0000-0000-00000000000c",
+                "블랙 레더 앵클부츠",
+                "신발",
+            ),
+            wardrobe_item(
+                "0ffd0b00-0000-0000-0000-00000000000c",
+                "실버 메탈릭 미니 숄더백",
+                "가방",
+            ),
+        ];
+        let offered = crate::services::item_resolution::OfferedItems::from_clothes(&wardrobe);
+        let name_only: crate::models::recommendation::AiRecommendation = serde_json::from_str(
+            include_str!("../../tests/fixtures/id_linking/typo_draft_name_only.json"),
+        )
+        .unwrap();
+        let with_ids: crate::models::recommendation::AiRecommendation = serde_json::from_str(
+            include_str!("../../tests/fixtures/id_linking/typo_draft_with_ids.json"),
+        )
+        .unwrap();
+
+        // 예전 규칙(지운 `find_matching_clothing` 과 같은 동작)으로는 하의가 없다.
+        let old = |name: &str| {
+            wardrobe.iter().find(|c| c.name == name).or_else(|| {
+                wardrobe
+                    .iter()
+                    .find(|c| name.contains(c.name.as_str()) || c.name.contains(name))
+            })
+        };
+        assert!(old("블랙 스트레이트 울혼합 슬랙스").is_none(), "재현 조건");
+
+        let resolved = resolve_outfit(&with_ids.outfit, &offered);
+        assert_eq!(resolved.len(), 5);
+        let bottom = resolved
+            .iter()
+            .find(|(s, _)| *s == SlotKind::Bottom)
+            .unwrap()
+            .1;
+        assert_eq!(bottom.id, "8e2f7e38-598a-11f1-af43-264d116ef584");
+        assert_eq!(bottom.name, "블랙 스트레이트 울혼방 슬랙스");
+
+        assert!(resolve_outfit(&name_only.outfit, &offered).is_empty());
+    }
+
+    /// 홈 → 카드 → 이력: 연결한 id 가 후보·응답 아이템·이력 슬롯 id 까지 그대로 간다. 응답의
+    /// 이름은 옷장 이름이고, 모델의 이유 문장은 이름이 틀려도 id 로 같은 옷에 붙는다.
+    #[test]
+    fn ids_survive_from_draft_to_card_to_history() {
+        let clothes = vec![
+            wardrobe_item("t1", "블랙 리브드 슬림 니트", "상의"),
+            wardrobe_item("t2", "블랙 리브드 슬림 니트", "상의"), // 같은 이름, 다른 옷
+            wardrobe_item("b1", "블랙 스트레이트 울혼방 슬랙스", "하의"),
+            wardrobe_item("s1", "블랙 레더 앵클부츠", "신발"),
+        ];
+        let offered = crate::services::item_resolution::OfferedItems::from_clothes(&clothes);
+        let ai = crate::models::recommendation::AiRecommendation {
+            recommendation: "니트와 슬랙스".into(),
+            outfit: vec![
+                ai_item("상의", "t2", "블랙 리브드 슬림 니트", "두 번째 니트"),
+                ai_item("하의", "b1", "블랙 스트레이트 울혼합 슬랙스", "곧은 하의"),
+                ai_item("아우터", "", "", ""), // 정상 생략
+                ai_item("신발", "s1", "블랙 레더 앵클부츠", "마무리"),
+            ],
+            weather_summary: String::new(),
+            tips: vec![],
+            focus: None,
+        };
+        let resolved = resolve_outfit(&ai.outfit, &offered);
+        let id_of = |k: SlotKind| {
+            resolved
+                .iter()
+                .find(|(s, _)| *s == k)
+                .map(|(_, c)| c.id.clone())
+        };
+        assert_eq!(id_of(SlotKind::Top).as_deref(), Some("t2"));
+        assert_eq!(id_of(SlotKind::Outer), None);
+        let c = OutfitCandidate::new(
+            id_of(SlotKind::Top),
+            id_of(SlotKind::Bottom),
+            id_of(SlotKind::Outer),
+            id_of(SlotKind::Shoes),
+            None,
+            0,
+        );
+        let items = outfit_items_for(&c, &ai, &clothes, 20.0);
+        let pairs: Vec<(&str, &str)> = items
+            .iter()
+            .map(|i| (i.id.as_str(), i.name.as_str()))
+            .collect();
+        assert_eq!(
+            pairs,
+            [
+                ("t2", "블랙 리브드 슬림 니트"),
+                ("b1", "블랙 스트레이트 울혼방 슬랙스"),
+                ("s1", "블랙 레더 앵클부츠"),
+            ]
+        );
+        assert_eq!(items[0].reason, "두 번째 니트");
+        assert_eq!(items[1].reason, "곧은 하의");
+        assert_eq!(find_slot_id(&items, "상의").as_deref(), Some("t2"));
+        assert_eq!(find_slot_id(&items, "하의").as_deref(), Some("b1"));
+        assert_eq!(find_slot_id(&items, "아우터"), None);
+    }
+
+    /// 모델에게 보여 준 목록 밖의 옷(무드 옷장에는 있어도), 다른 슬롯의 id, 틀린 id + 맞는 이름은
+    /// 연결하지 않는다. 같은 슬롯이 두 번 오면 첫 항목만 쓴다.
+    #[test]
+    fn only_offered_ids_in_their_own_slot_are_used() {
+        let clothes = [
+            wardrobe_item("t1", "화이트 티", "상의"),
+            wardrobe_item("t2", "블랙 티", "상의"),
+            wardrobe_item("b1", "블랙 데님", "하의"),
+            wardrobe_item("o1", "블랙 라이더", "아우터"),
+            wardrobe_item("x1", "목록 밖 니트", "상의"), // 무드 옷장에는 있지만 보여 주지 않았다
+        ];
+        let offered = crate::services::item_resolution::OfferedItems::from_clothes(&clothes[..4]);
+        let resolved = resolve_outfit(
+            &[
+                ai_item("상의", "x1", "목록 밖 니트", ""),
+                ai_item("상의", "zz", "화이트 티", ""),
+                ai_item("아우터", "b1", "블랙 데님", ""),
+                ai_item("상의", "t1", "화이트 티", ""),
+                ai_item("상의", "t2", "블랙 티", ""),
+                ai_item("하의", "b1", "블랙 데님", ""),
+            ],
+            &offered,
+        );
+        let got: Vec<(SlotKind, &str)> =
+            resolved.iter().map(|(s, c)| (*s, c.id.as_str())).collect();
+        assert_eq!(got, [(SlotKind::Top, "t1"), (SlotKind::Bottom, "b1")]);
+    }
+
     /// 보완한 후보의 설명에는 바뀐 옷이 남지 않는다.
     #[test]
     fn a_swapped_candidate_drops_the_old_item_from_its_text() {
@@ -2001,8 +2210,8 @@ mod tests {
         let ai = crate::models::recommendation::AiRecommendation {
             recommendation: "티에 데님".into(),
             outfit: vec![
-                ai_item("상의", "화이트 티", "기본"),
-                ai_item("하의", "블랙 데님", "편함"),
+                ai_item("상의", "t", "화이트 티", "기본"),
+                ai_item("하의", "d", "블랙 데님", "편함"),
             ],
             weather_summary: String::new(),
             tips: vec!["블랙 데님은 밑단을 접어요".into(), "소매를 걷어요".into()],
@@ -2115,44 +2324,5 @@ mod tests {
             created_at: ts(),
             updated_at: ts(),
         }
-    }
-
-    fn wardrobe() -> Vec<Clothing> {
-        vec![
-            item("아이보리 새틴 셔츠 블라우스", "상의"),
-            item("차콜 울 오버사이즈 블레이저", "아우터"),
-            item("베이지 와이드 치노팬츠", "하의"),
-        ]
-    }
-
-    /// 프롬프트는 "확신이 없으면 빈 문자열" 을 허용한다. 그 빈 문자열이 아이템으로
-    /// 해석되면 사용자가 요청하지도 않은 옷이 착장에 들어간다.
-    #[test]
-    fn a_blank_name_matches_nothing() {
-        let w = wardrobe();
-        for name in ["", " ", "\t", "\n"] {
-            assert!(
-                find_matching_clothing(&w, name).is_none(),
-                "빈 이름 {name:?} 이 아이템으로 매칭됐다"
-            );
-        }
-    }
-
-    #[test]
-    fn an_exact_name_wins() {
-        let w = wardrobe();
-        let found = find_matching_clothing(&w, "차콜 울 오버사이즈 블레이저").unwrap();
-        assert_eq!(found.category, "아우터");
-    }
-
-    /// LLM 이 이름에 수식을 덧붙이거나 잘라 보내는 경우.
-    #[test]
-    fn a_partial_name_still_matches() {
-        let w = wardrobe();
-        let longer = find_matching_clothing(&w, "차콜 울 오버사이즈 블레이저 (울)").unwrap();
-        assert_eq!(longer.name, "차콜 울 오버사이즈 블레이저");
-
-        let shorter = find_matching_clothing(&w, "오버사이즈 블레이저").unwrap();
-        assert_eq!(shorter.name, "차콜 울 오버사이즈 블레이저");
     }
 }

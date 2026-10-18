@@ -216,6 +216,8 @@ impl EmbeddingService {
 
 /// Wardrobe 아이템 시맨틱 검색 결과
 pub struct WardrobeMatch {
+    /// 옷장 아이템 id. 이름이 같은 옷이 둘이어도 구분한다.
+    pub id: String,
     pub name: String,
     pub category: String,
     pub similarity: f32,
@@ -272,6 +274,7 @@ impl EmbeddingService {
             .into_iter()
             .take(top_n)
             .map(|(sim, c)| WardrobeMatch {
+                id: c.id.clone(),
                 name: c.name.clone(),
                 category: c.category.clone(),
                 similarity: sim,

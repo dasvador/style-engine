@@ -289,3 +289,18 @@ fn pop_items_name_coloured_patterns_and_vivid_garments_only() {
     );
     assert_eq!(got.len(), 2, "{got:?}");
 }
+
+/// 모델에게 보여 주는 후보 목록 줄에는 옷장 id 가 들어간다 — 응답의 id 로 옷을 고른다
+/// (`services::item_resolution`). 기본·자세한 형식 둘 다다.
+#[test]
+fn shortlist_lines_carry_the_clothing_id() {
+    let none = HashSet::new();
+    let w = wardrobe();
+    let sl = build_all_shortlists(&w, &ctx(19.6, &none));
+    for g in [sl.to_grouped(), sl.to_grouped_detailed()] {
+        assert!(!g.tops.is_empty());
+        for (line, c) in g.tops.iter().zip(&sl.tops) {
+            assert!(line.contains(&format!("| id:{} |", c.id)), "{line}");
+        }
+    }
+}

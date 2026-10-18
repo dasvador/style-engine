@@ -1,6 +1,7 @@
 pub mod candidate_pipeline;
 pub mod cross_mood;
 pub mod embedding;
+pub mod item_resolution;
 pub mod llm;
 pub mod mood_gate;
 pub mod mood_palette;

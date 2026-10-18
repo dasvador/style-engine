@@ -578,8 +578,9 @@ impl<'a> ShortlistResult<'a> {
     pub fn to_grouped(&self) -> crate::services::prompts::GroupedClothes {
         let fmt = |c: &Clothing| {
             format!(
-                "- {} | role:{} | tone:{} | style:{}",
+                "- {} | id:{} | role:{} | tone:{} | style:{}",
                 c.name,
+                c.id,
                 c.role.map(|v| v.as_str()).unwrap_or("-"),
                 c.tone.map(|v| v.as_str()).unwrap_or("-"),
                 c.style.map(|v| v.as_str()).unwrap_or("-"),
@@ -606,8 +607,9 @@ impl<'a> ShortlistResult<'a> {
                 _ => "모름".to_string(),
             };
             format!(
-                "- {} | role:{} | tone:{} | style:{} | 소재:{} | 실루엣:{} | 두께:{} | 특징:{}",
+                "- {} | id:{} | role:{} | tone:{} | style:{} | 소재:{} | 실루엣:{} | 두께:{} | 특징:{}",
                 c.name,
+                c.id,
                 c.role.map(|v| v.as_str()).unwrap_or("모름"),
                 c.tone.map(|v| v.as_str()).unwrap_or("모름"),
                 c.style.map(|v| v.as_str()).unwrap_or("모름"),

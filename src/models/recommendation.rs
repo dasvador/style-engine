@@ -44,10 +44,18 @@ pub struct OutfitItem {
 }
 
 /// Outfit item from OpenAI response (no image_url)
+///
+/// `id` 가 권위 있는 선택값이다 — 후보 목록에 서버가 넣어 보여 준 의류 id 를 그대로 돌려받는다
+/// (`services::item_resolution`). `name` 은 참고용이고, 화면에는 옷장의 이름을 쓴다. 모델이
+/// `clothing_id` 로 적어도 받는다. 빠져 있으면 `None` — 신규 응답에서는 거절된다.
 #[derive(Debug, Clone, Deserialize)]
 pub struct AiOutfitItem {
     pub category: String,
+    #[serde(default, alias = "clothing_id")]
+    pub id: Option<String>,
+    #[serde(default)]
     pub name: String,
+    #[serde(default)]
     pub reason: String,
 }
 

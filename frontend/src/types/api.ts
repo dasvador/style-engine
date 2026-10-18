@@ -239,6 +239,8 @@ export interface ChatItem {
   slot: string;
   category: string;
   name: string;
+  /** 옷장 아이템 id. 화면에 보이지 않는다 — 다음 상담 요청의 previous_items 로 그대로 돌려보낸다. */
+  id?: string | null;
   owned: boolean;
   material?: string | null;
   wear?: string | null;

@@ -141,6 +141,11 @@ struct ChatItem {
     slot: String,
     category: String,
     name: String,
+    /// 옷장 아이템 id. 화면은 표시하지 않고, 다음 요청의 `previous_items` 로 그대로 돌려보낸다 —
+    /// 교체·착용 상태·평가가 이름이 아니라 이 값으로 같은 옷을 찾는다. 옷장에 없는 아이템(유저가
+    /// 말한 미보유 옷)이나 id 를 싣기 전의 예전 기록이면 없다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
     #[serde(default)]
     owned: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -156,12 +161,16 @@ struct ChatItem {
 fn apply_wear(items: &mut [ChatItem], clothes: &[Clothing], temperature: Option<f64>) {
     let Some(t) = temperature else { return };
     for item in items.iter_mut().filter(|i| i.slot == "outer") {
-        item.wear = clothes
-            .iter()
-            .find(|c| c.name == item.name)
+        item.wear = item_clothing(item, clothes)
             .and_then(|c| crate::services::serving_ranker::outer_wear(c, t))
             .map(str::to_string);
     }
+}
+
+/// 상담 카드 한 칸의 옷장 아이템. id 가 있으면 id 로만 찾고(이름으로 복구하지 않는다), id 가
+/// 없는 예전 기록이면 정확히 같은 이름이 하나일 때만 찾는다(`item_resolution`).
+fn item_clothing<'a>(item: &ChatItem, clothes: &'a [Clothing]) -> Option<&'a Clothing> {
+    crate::services::item_resolution::resolve_id_or_legacy(item.id.as_deref(), &item.name, clothes)
 }
 
 /// 옷장 카테고리 → 상담 카드의 슬롯 이름. 화면(`lib/lookbook.ts` 의 `CATEGORY_TO_SLOT`)과 같다.
@@ -183,6 +192,7 @@ impl ChatItem {
             slot: slot_for_category(&c.category)?.to_string(),
             category: c.category.clone(),
             name: c.name.clone(),
+            id: Some(c.id.clone()),
             owned,
             material: c.image_material(),
             wear: None,
@@ -209,12 +219,13 @@ fn chat_tools() -> Vec<ToolDef> {
         ),
         ToolDef::new(
             "get_outfit",
-            "유저가 특정 옷을 지정했을 때, 그 anchor 아이템 기준으로 서버가 최적의 착장을 생성한다. user_query는 유저 원문, anchor_name은 search_wardrobe에서 찾은 정확한 DB 이름. 특정 옷 없이 전체 코디를 원하면 get_outfit_for_today 를 쓴다.",
+            "유저가 특정 옷을 지정했을 때, 그 anchor 아이템 기준으로 서버가 최적의 착장을 생성한다. user_query는 유저 원문, anchor_id는 search_wardrobe 결과에서 고른 아이템의 id(그대로 복사), anchor_name은 그 아이템 이름. 특정 옷 없이 전체 코디를 원하면 get_outfit_for_today 를 쓴다.",
             json!({
                 "type": "object",
                 "properties": {
                     "user_query": { "type": "string", "description": "유저가 언급한 원래 아이템 표현 (예: 올리브 슬립온)" },
-                    "anchor_name": { "type": "string", "description": "search_wardrobe 결과에서 선택한 정확한 DB 이름" },
+                    "anchor_id": { "type": "string", "description": "search_wardrobe 결과에서 선택한 아이템의 id. 서버는 이 값으로 옷을 고른다. 옷장에 없는 옷이면 비워 둔다" },
+                    "anchor_name": { "type": "string", "description": "search_wardrobe 결과에서 선택한 아이템 이름(참고용)" },
                     "avoid_tags": { "type": "array", "items": { "type": "string" }, "description": "피할 스타일 태그" }
                 },
                 "required": ["user_query", "anchor_name"]
@@ -231,13 +242,14 @@ fn chat_tools() -> Vec<ToolDef> {
         ),
         ToolDef::new(
             "evaluate_outfit",
-            "서버가 착장 조합의 품질을 검증한다. 문제가 있으면 이유와 함께 실패를 반환한다. get_outfit·get_outfit_for_today 결과를 검증할 때 사용.",
+            "서버가 착장 조합의 품질을 검증한다. 문제가 있으면 이유와 함께 실패를 반환한다. get_outfit·get_outfit_for_today·swap_item 결과를 검증할 때 사용. 결과 items 의 id 를 item_ids 로 그대로 넘긴다.",
             json!({
                 "type": "object",
                 "properties": {
-                    "item_names": { "type": "array", "items": { "type": "string" }, "description": "검증할 아이템 이름 목록" }
+                    "item_ids": { "type": "array", "items": { "type": "string" }, "description": "검증할 아이템의 id 목록(도구 결과 items 의 id 를 그대로 복사)" },
+                    "item_names": { "type": "array", "items": { "type": "string" }, "description": "id 가 없을 때만 쓰는 아이템 이름 목록" }
                 },
-                "required": ["item_names"]
+                "required": []
             }),
         ),
         ToolDef::new(
@@ -533,8 +545,10 @@ async fn chat(
                             .as_str()
                             .unwrap_or(fn_args["anchor_name"].as_str().unwrap_or(""));
                         let anchor_name = fn_args["anchor_name"].as_str().unwrap_or(user_query);
+                        let anchor_id = fn_args["anchor_id"].as_str();
                         let (outfit_json, mut items, chosen_ids) = tool_get_outfit(
                             user_query,
+                            anchor_id,
                             anchor_name,
                             anchor_category.as_deref(),
                             &clothes,
@@ -556,6 +570,7 @@ async fn chat(
                                 if let Some(item) = items.iter_mut().find(|i| i.slot == sk) {
                                     item.name = uq.clone();
                                     item.owned = false;
+                                    item.id = None;
                                 }
                             }
                         }
@@ -612,7 +627,7 @@ async fn chat(
                                     .map(|i| i.name.clone());
                                 let items_json: Vec<serde_json::Value> = items
                                     .iter()
-                                    .map(|i| json!({"slot": i.slot, "name": i.name, "category": i.category}))
+                                    .map(|i| json!({"slot": i.slot, "id": i.id, "name": i.name, "category": i.category}))
                                     .collect();
                                 final_items = items;
                                 final_item_ids = ids;
@@ -632,15 +647,22 @@ async fn chat(
                     }
                     "evaluate_outfit" => {
                         evaluated = true;
-                        let names: Vec<String> = fn_args["item_names"]
-                            .as_array()
-                            .map(|a| {
-                                a.iter()
-                                    .filter_map(|v| v.as_str().map(String::from))
-                                    .collect()
-                            })
-                            .unwrap_or_default();
-                        tool_evaluate_outfit(&names, &clothes, user_profile.as_ref(), mood)
+                        let strings = |key: &str| -> Vec<String> {
+                            fn_args[key]
+                                .as_array()
+                                .map(|a| {
+                                    a.iter()
+                                        .filter_map(|v| v.as_str().map(String::from))
+                                        .collect()
+                                })
+                                .unwrap_or_default()
+                        };
+                        match evaluation_items(&strings("item_ids"), &strings("item_names"), &clothes) {
+                            Ok(items) => {
+                                tool_evaluate_outfit(&items, user_profile.as_ref(), mood)
+                            }
+                            Err(e) => json!({"pass": false, "issues": [e]}).to_string(),
+                        }
                     }
                     "submit_feedback" => {
                         let fb_type = fn_args["feedback_type"].as_str().unwrap_or("dislike");
@@ -724,6 +746,7 @@ async fn chat(
                             );
                             item.name = uq.clone();
                             item.owned = false;
+                            item.id = None;
                         } else {
                             tracing::warn!(
                                 "anchor override: slot '{}' not found in final_items",
@@ -3257,6 +3280,7 @@ async fn tool_search_wardrobe(
                 .iter()
                 .map(|m| {
                     json!({
+                        "id": m.id,
                         "name": m.name,
                         "category": m.category,
                         "confidence": (m.similarity * 100.0).round() / 100.0,
@@ -3274,7 +3298,7 @@ async fn tool_search_wardrobe(
                 let name_lower = c.name.to_lowercase();
                 if q.split_whitespace().any(|w| name_lower.contains(w)) {
                     results
-                        .push(json!({"name": c.name, "category": c.category, "confidence": 0.6}));
+                        .push(json!({"id": c.id, "name": c.name, "category": c.category, "confidence": 0.6}));
                 }
             }
             results.truncate(5);
@@ -3285,6 +3309,7 @@ async fn tool_search_wardrobe(
 
 async fn tool_get_outfit(
     user_query: &str,
+    anchor_id: Option<&str>,
     anchor_name: &str,
     searched_category: Option<&str>,
     clothes: &[Clothing],
@@ -3300,8 +3325,31 @@ async fn tool_get_outfit(
         .or_else(|| extract_category_from_wardrobe(anchor_name, clothes));
     let cat_hint = cat_hint_str.as_deref();
 
-    // anchor 탐색: 정확 → fuzzy → 임베딩. 못 찾아도 유저 원문 유지.
-    let exact = clothes.iter().find(|c| c.name == anchor_name);
+    // anchor 탐색: id → (id 가 없을 때만) 유일한 정확 이름 → fuzzy → 임베딩. 못 찾아도 유저 원문 유지.
+    // id 를 받았는데 옷장에 없으면 이름으로 복구하지 않는다(`item_resolution`).
+    let anchor_id = anchor_id.map(str::trim).filter(|s| !s.is_empty());
+    let exact = match anchor_id {
+        Some(id) => match clothes.iter().find(|c| c.id == id) {
+            Some(c) => Some(c),
+            None => {
+                tracing::warn!(
+                    event = "ai_item_resolve",
+                    outcome = "rejected",
+                    code = "id_not_offered",
+                    id,
+                    "get_outfit 의 anchor_id 가 이 옷장에 없다 — 이름으로 복구하지 않는다"
+                );
+                return (
+                    json!({"error": "anchor_id 가 옷장에 없다. search_wardrobe 결과의 id 를 그대로 넘겨라."})
+                        .to_string(),
+                    Vec::new(),
+                    Vec::new(),
+                );
+            }
+        },
+        None => crate::services::item_resolution::resolve_legacy_name(anchor_name, clothes).ok(),
+    };
+    let exact_anchor_id = exact.map(|c| c.id.clone());
     let q = anchor_name.to_lowercase();
     let fuzzy = || {
         clothes
@@ -3339,7 +3387,7 @@ async fn tool_get_outfit(
                 .ok()
                 .and_then(|m| m.into_iter().next())
                 .filter(|m| m.similarity > min_similarity)
-                .and_then(|m| clothes.iter().find(|c| c.name == m.name))
+                .and_then(|m| clothes.iter().find(|c| c.id == m.id))
         }
     };
     let anchor_owned = exact.is_some(); // 정확히 DB에 있는 경우만 owned
@@ -3390,6 +3438,7 @@ async fn tool_get_outfit(
                 if !anchor_owned {
                     item.name = display_anchor_name.clone();
                     item.owned = false;
+                    item.id = None;
                 }
             } else {
                 // anchor 슬롯이 결과에 없으면 추가
@@ -3397,6 +3446,7 @@ async fn tool_get_outfit(
                     slot: slot_key.to_string(),
                     category: anchor_slot.to_string(),
                     name: display_anchor_name.clone(),
+                    id: exact_anchor_id.clone(),
                     owned: anchor_owned,
                     material: None,
                     wear: None,
@@ -3410,7 +3460,7 @@ async fn tool_get_outfit(
                 .join("\n");
             apply_wear(&mut items, clothes, ctx.temperature);
             let items_json: Vec<serde_json::Value> = items.iter().map(|i| {
-                json!({"slot": i.slot, "name": i.name, "category": i.category, "owned": i.owned, "wear": i.wear})
+                json!({"slot": i.slot, "id": i.id, "name": i.name, "category": i.category, "owned": i.owned, "wear": i.wear})
             }).collect();
             let response = json!({ "outfit": desc, "items": items_json });
             (response.to_string(), items, chosen_ids)
@@ -3440,23 +3490,8 @@ async fn tool_swap_item(
     temperature: Option<f64>,
 ) -> Option<(Vec<ChatItem>, Vec<String>)> {
     let slot = slot_for_category(category)?;
-    let current = base
-        .iter()
-        .find(|i| i.slot == slot)
-        .map(|i| i.name.as_str());
-    let pool = |from: &[Clothing]| -> Vec<Clothing> {
-        from.iter()
-            .filter(|c| c.category == category && Some(c.name.as_str()) != current)
-            .cloned()
-            .collect()
-    };
-    let mut candidates = pool(clothes);
-
-    let kept: Vec<&Clothing> = base
-        .iter()
-        .filter(|i| i.slot != slot)
-        .filter_map(|i| clothes.iter().find(|c| c.name == i.name))
-        .collect();
+    let (mut candidates, kept) = swap_inputs(base, slot, category, clothes);
+    let pool = |from: &[Clothing]| -> Vec<Clothing> { swap_inputs(base, slot, category, from).0 };
 
     // 유저가 색을 말했으면 그 색 계열 이름만 후보로 둔다. 임베딩 검색은 무조건 1등을
     // 돌려주므로, 색이 없는 후보 중 1등(흰 스니커)이 "카멜색" 의 답이 돼 버린다.
@@ -3487,7 +3522,7 @@ async fn tool_swap_item(
             .await
             .ok()
             .and_then(|m| m.into_iter().next())
-            .and_then(|m| candidates.iter().find(|c| c.name == m.name));
+            .and_then(|m| candidates.iter().find(|c| c.id == m.id));
         // 색이나 종류를 말했으면 이미 걸렀으므로 검색이 실패해도 첫 후보가 답이다.
         found.or_else(|| (!colors.is_empty() || !kinds.is_empty()).then(|| &candidates[0]))
     };
@@ -3500,19 +3535,50 @@ async fn tool_swap_item(
         Some(item) => *item = new_item,
         None => items.push(new_item),
     }
+    // 이력용 id. 새 칸은 고른 옷의 id 이고, 남는 칸은 카드에 실린 id(예전 기록이면 유일한
+    // 이름으로 찾은 옷)다.
     let ids = items
         .iter()
         .filter(|i| i.owned)
-        .filter_map(|i| {
-            clothes
-                .iter()
-                .chain(wide_clothes)
-                .find(|c| c.name == i.name)
-                .map(|c| c.id.clone())
+        .filter_map(|i| match i.id.as_deref() {
+            Some(id) => Some(id.to_string()),
+            None => item_clothing(i, clothes).map(|c| c.id.clone()),
         })
         .collect();
     tracing::info!(category, query, picked = %picked.name, "swap_item");
     Some((items, ids))
+}
+
+/// 바꾸기의 재료: 그 카테고리의 후보(지금 칸의 옷은 뺀다)와 남는 칸의 옷.
+///
+/// 지금 칸의 옷은 id 가 있으면 id 로 비교한다 — 같은 이름의 다른 옷은 후보로 남는다. id 가 없는
+/// 예전 기록이면 이름으로 뺀다. 남는 칸의 옷은 `item_clothing` 으로 찾는다(id 로만, 예전 기록이면
+/// 유일한 이름만). 찾지 못한 칸은 궁합 계산에서 빠진다.
+fn swap_inputs<'a>(
+    base: &[ChatItem],
+    slot: &str,
+    category: &str,
+    clothes: &'a [Clothing],
+) -> (Vec<Clothing>, Vec<&'a Clothing>) {
+    let current = base.iter().find(|i| i.slot == slot);
+    let is_current = |c: &Clothing| match current {
+        Some(i) => match i.id.as_deref() {
+            Some(id) => c.id == id,
+            None => c.name == i.name,
+        },
+        None => false,
+    };
+    let candidates = clothes
+        .iter()
+        .filter(|c| c.category == category && !is_current(c))
+        .cloned()
+        .collect();
+    let kept = base
+        .iter()
+        .filter(|i| i.slot != slot)
+        .filter_map(|i| item_clothing(i, clothes))
+        .collect();
+    (candidates, kept)
 }
 
 /// 유저가 원하는 것을 말하지 않은 바꾸기: 남은 옷과의 궁합 점수 합이 가장 높은 옷.
@@ -3750,16 +3816,61 @@ fn color_family(query: &str) -> Vec<&'static str> {
     out
 }
 
-fn tool_evaluate_outfit(
+/// 평가할 옷. id 가 있으면 id 로만(이 옷장 안에서) 찾는다 — 없는 id 는 이름으로 복구하지 않고
+/// 거절한다. id 가 하나도 없는 예전 호출이면 이름마다 정확히 같은 이름이 하나일 때만 받는다.
+fn evaluation_items<'a>(
+    ids: &[String],
     names: &[String],
-    clothes: &[Clothing],
+    clothes: &'a [Clothing],
+) -> Result<Vec<&'a Clothing>, String> {
+    use crate::services::item_resolution::{LegacyRejection, resolve_legacy_name};
+    let ids: Vec<&str> = ids
+        .iter()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if !ids.is_empty() {
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            match clothes.iter().find(|c| c.id == id) {
+                Some(c) => out.push(c),
+                None => {
+                    tracing::warn!(
+                        event = "ai_item_resolve",
+                        outcome = "rejected",
+                        code = "id_not_offered",
+                        id,
+                        "evaluate_outfit 의 id 가 이 옷장에 없다"
+                    );
+                    return Err(format!(
+                        "id {id} 인 아이템이 옷장에 없습니다 — 도구 결과 items 의 id 를 그대로 넘기세요"
+                    ));
+                }
+            }
+        }
+        return Ok(out);
+    }
+    let mut out = Vec::with_capacity(names.len());
+    for n in names {
+        match resolve_legacy_name(n, clothes) {
+            Ok(c) => out.push(c),
+            Err(LegacyRejection::Ambiguous(k)) => {
+                return Err(format!(
+                    "'{n}' 이름의 아이템이 {k}개라 어느 것인지 모릅니다 — item_ids 로 넘기세요"
+                ));
+            }
+            Err(LegacyRejection::NotFound) => {}
+        }
+    }
+    Ok(out)
+}
+
+fn tool_evaluate_outfit(
+    items: &[&Clothing],
     _user: Option<&crate::models::user_profile::UserStyleProfile>,
     mood: Option<StyleGenre>,
 ) -> String {
-    let items: Vec<&Clothing> = names
-        .iter()
-        .filter_map(|n| clothes.iter().find(|c| c.name == *n))
-        .collect();
+    let items: Vec<&Clothing> = items.to_vec();
 
     if items.len() < 2 {
         return json!({"pass": false, "issues": ["아이템을 2개 이상 찾을 수 없습니다"]})
@@ -3947,7 +4058,7 @@ fn today_outfit(
         apply_wear(&mut items, clothes, ctx.temperature);
         let items_json: Vec<serde_json::Value> = items
             .iter()
-            .map(|i| json!({"slot": i.slot, "name": i.name, "category": i.category, "owned": i.owned, "wear": i.wear}))
+            .map(|i| json!({"slot": i.slot, "id": i.id, "name": i.name, "category": i.category, "owned": i.owned, "wear": i.wear}))
             .collect();
         let response = json!({ "anchor": anchor.name, "outfit": desc, "items": items_json });
         return (response.to_string(), items, chosen_ids);
@@ -4130,14 +4241,21 @@ fn build_final_outfit<'a>(
         desc_parts.push(format!("{}: {}", item.slot, c.name));
         items.push(item);
     }
-    if !items.iter().any(|i| i.name == anchor.name) {
+    if !items
+        .iter()
+        .any(|i| i.id.as_deref() == Some(anchor.id.as_str()))
+    {
         let slot = slot_for_category(&anchor.category).unwrap_or("?");
         desc_parts.push(format!("{}: {}", slot, anchor.name));
         items.push(ChatItem {
             slot: slot.to_string(),
             category: anchor.category.clone(),
             name: anchor.name.clone(),
-            owned: clothes.iter().any(|c| c.name == anchor.name),
+            id: clothes
+                .iter()
+                .any(|c| c.id == anchor.id)
+                .then(|| anchor.id.clone()),
+            owned: clothes.iter().any(|c| c.id == anchor.id),
             material: anchor.image_material(),
             wear: None,
         });
@@ -5376,6 +5494,90 @@ mod tests {
         assert_eq!(
             serde_json::to_value(ImageResponse::flat_lay("/static/images/f.png".into())).unwrap(),
             serde_json::json!({"image_url": "/static/images/f.png", "presentation": "flat_lay"})
+        );
+    }
+
+    /// 상담 → 교체: 카드에 옷장 id 가 실리고, 화면이 돌려보낸 직전 코디(`previous_items`)에서
+    /// 같은 이름의 두 옷을 id 로 구분한다. 지금 칸의 옷만 후보에서 빠지고 같은 이름의 다른 옷은
+    /// 남는다. id 없는 예전 기록은 같은 이름이 하나일 때만 찾고, 둘이면 찾지 않는다. 미보유 칸은
+    /// id 가 없다(가짜 id 를 만들지 않는다).
+    #[test]
+    fn chat_items_carry_ids_through_previous_items_and_swaps() {
+        let clothes = vec![
+            chat_item("k1", "블랙 리브드 슬림 니트", "상의", "knit", "slim"),
+            chat_item("k2", "블랙 리브드 슬림 니트", "상의", "knit", "slim"),
+            chat_item("d1", "인디고 와이드 데님", "하의", "denim", "wide"),
+            chat_item("s1", "블랙 앵클부츠", "신발", "leather", "boot"),
+            chat_item("s2", "화이트 스니커즈", "신발", "leather", "sneaker"),
+        ];
+        let card = vec![
+            ChatItem::from_clothing(&clothes[1], true).unwrap(),
+            ChatItem::from_clothing(&clothes[2], true).unwrap(),
+            ChatItem::from_clothing(&clothes[3], true).unwrap(),
+        ];
+        let json = serde_json::to_value(&card).unwrap();
+        assert_eq!(json[0]["id"], "k2");
+        // 화면이 그대로 돌려보낸다.
+        let back: Vec<ChatItem> = serde_json::from_value(json).unwrap();
+        assert_eq!(
+            item_clothing(&back[0], &clothes).map(|c| c.id.as_str()),
+            Some("k2")
+        );
+
+        // 상의를 바꾼다: 지금 니트(k2)만 빠지고 같은 이름의 k1 은 후보로 남는다.
+        let (candidates, kept) = swap_inputs(&back, "inner", "상의", &clothes);
+        let ids: Vec<&str> = candidates.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, ["k1"]);
+        let kept_ids: Vec<&str> = kept.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(kept_ids, ["d1", "s1"]);
+        // 신발을 바꿀 때 남는 니트는 k2 로 남는다(이름으로는 둘 중 하나를 고를 수 없다).
+        let (_, kept) = swap_inputs(&back, "shoes", "신발", &clothes);
+        assert_eq!(kept[0].id, "k2");
+
+        // id 없는 예전 기록: 같은 이름이 둘인 니트는 찾지 않고, 하나인 데님은 찾는다.
+        let legacy: Vec<ChatItem> = serde_json::from_value(serde_json::json!([
+            {"slot": "inner", "category": "상의", "name": "블랙 리브드 슬림 니트", "owned": true},
+            {"slot": "bottom", "category": "하의", "name": "인디고 와이드 데님", "owned": true},
+        ]))
+        .unwrap();
+        assert!(item_clothing(&legacy[0], &clothes).is_none());
+        assert_eq!(
+            item_clothing(&legacy[1], &clothes).map(|c| c.id.as_str()),
+            Some("d1")
+        );
+        // 틀린 id 는 이름이 맞아도 찾지 않는다.
+        let mut wrong = back[1].clone();
+        wrong.id = Some("gone".into());
+        assert!(item_clothing(&wrong, &clothes).is_none());
+        // 미보유 칸은 id 없이 직렬화된다.
+        let unowned = ChatItem {
+            id: None,
+            owned: false,
+            name: "올리브 슬립온".into(),
+            ..back[2].clone()
+        };
+        assert!(serde_json::to_value(&unowned).unwrap().get("id").is_none());
+    }
+
+    /// 평가 도구: id 가 있으면 id 로만 찾고, 없는 id 는 이름이 맞아도 거절한다. id 가 없는 예전
+    /// 호출은 이름마다 정확히 하나일 때만 받고, 같은 이름이 둘이면 거절한다.
+    #[test]
+    fn evaluation_resolves_ids_and_refuses_ambiguous_names() {
+        let clothes = vec![
+            chat_item("k1", "블랙 니트", "상의", "knit", ""),
+            chat_item("k2", "블랙 니트", "상의", "knit", ""),
+            chat_item("d1", "인디고 데님", "하의", "denim", ""),
+        ];
+        let got = evaluation_items(&["k2".into(), "d1".into()], &[], &clothes).unwrap();
+        assert_eq!(
+            got.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
+            ["k2", "d1"]
+        );
+        assert!(evaluation_items(&["nope".into()], &["인디고 데님".into()], &clothes).is_err());
+        let legacy = evaluation_items(&[], &["인디고 데님".into()], &clothes).unwrap();
+        assert_eq!(legacy[0].id, "d1");
+        assert!(
+            evaluation_items(&[], &["블랙 니트".into(), "인디고 데님".into()], &clothes).is_err()
         );
     }
 
