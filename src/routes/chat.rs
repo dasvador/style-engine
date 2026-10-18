@@ -1670,6 +1670,26 @@ async fn edit_from_base(
     .await
     .ok()
     .flatten();
+    // 지금 프롬프트의 사진이 없으면 같은 코디·무드의 가장 최근 착용 사진을 앞 사진으로 쓴다.
+    // 프롬프트 문구(자세·표정 등)를 고치면 키가 바뀌는데, 화면에 떠 있는 앞 사진은 예전 키로
+    // 만든 것일 수 있다. 편집은 그 사진의 사람·표정·자세를 그대로 두고 옷만 바꾸는 일이라
+    // 새 문구로 다시 그릴 이유가 없다. 의류 배치·실패 기록은 쓰지 않는다.
+    let base_path = if base_path.as_ref().is_some_and(|r| r.0.is_some()) {
+        base_path
+    } else {
+        sqlx::query_as(
+            "SELECT image_path FROM outfit_image \
+             WHERE outfit_hash = ? AND mood = ? AND presentation = 'model' \
+               AND verification_status = 'passed' AND image_path IS NOT NULL \
+             ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(&base_outfit_hash)
+        .bind(genre.as_str())
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten()
+    };
     let base_url = base_path.and_then(|r| r.0)?;
     let base_png = std::fs::read(base_url.trim_start_matches('/')).ok()?;
 
@@ -1954,27 +1974,7 @@ fn pick_light(genre: StyleGenre, hash: u64) -> &'static str {
     lights[((hash >> 40) & 0xFF) as usize % lights.len()]
 }
 
-/// 자세 후보. 장르마다 자세를 하나씩 박아 두었더니 시선과 몸 각도까지 비슷해져 같은
-/// 틀로 찍어 낸 사진처럼 보였다(2026-10-15 사용자 지적). 장르와 상관없이 다섯 중 하나를
-/// 고른다. 편안한 눈맞춤도 자연스러우므로 카메라를 보는 자세도 둔다 — 예전의
-/// "not posing for the photographer" 를 세게 걸면 옆을 보며 걷는 장면으로 수렴한다.
-///
-/// 걷는 자세 말고는 두 발을 디딘 채 서 있다고 못 박는다. 몸을 튼 자세에 걸음이 섞이면
-/// 발끝은 한쪽을 보는데 앞발은 반대쪽에 놓여 두 다리가 엇갈린 그림이 나왔다
-/// (2026-10-16 사용자 지적). 같은 이유로 "발을 살짝 교차" 자세는 뺐다.
-const POSES: [&str; 5] = [
-    "a natural near-frontal stance, standing still with both feet planted, weight on one leg, \
-     eyes resting near the camera",
-    "standing still, body turned twenty to thirty degrees from the camera with both feet \
-     planted and pointing the same way as her hips, face turned back towards it",
-    "walking slowly towards the side her toes point, caught mid-step, only her head turning \
-     slightly towards the camera",
-    "standing still for a moment with both feet planted, looking off down the street",
-    "leaning lightly with one shoulder against the wall or railing beside her, the clothes \
-     neither pressed flat nor hidden",
-];
-
-/// 기대는 자세(`POSES` 의 마지막)는 기댈 것이 있는 장소에서만 고른다.
+/// 기대는 자세(`lookbook_pose::STANCES` 의 leaning)는 기댈 것이 있는 장소에서만 고른다.
 fn has_something_to_lean_on(setting: &str) -> bool {
     [
         "wall",
@@ -1991,16 +1991,6 @@ fn has_something_to_lean_on(setting: &str) -> bool {
     ]
     .iter()
     .any(|w| setting.contains(w))
-}
-
-/// 자세를 고른다. 해시의 48~55비트를 쓴다 — 출신·헤어·장소·빛과 따로 움직인다.
-fn pick_pose(setting: &str, hash: u64) -> &'static str {
-    let n = if has_something_to_lean_on(setting) {
-        POSES.len()
-    } else {
-        POSES.len() - 1
-    };
-    POSES[((hash >> 48) & 0xFF) as usize % n]
 }
 
 /// 무드별 장소(가중치 2)와 공통 장소(가중치 1)에서 착장 해시로 하나를 고른다.
@@ -2379,7 +2369,24 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
     // 비트를 쓰므로, 장소는 하위 자리를 그대로 쓴다.
     let light = pick_light(genre, hash);
     let place = pick_setting(genre, hash);
-    let pose = pick_pose(place, hash);
+    // 몸 방향 → 그 몸과 이 착장이 받쳐 주는 손 → 그 시선에 맞는 표정 순으로 고른다
+    // (`services::lookbook_pose`). 출신·헤어와 다른 소금 해시를 쓴다.
+    let support = crate::services::lookbook_pose::support(
+        &split_image_items(items),
+        hair,
+        has_something_to_lean_on(place),
+    );
+    let photo_pose = crate::services::lookbook_pose::pick(genre, hash, &support);
+    let pose = photo_pose.pose_line.as_str();
+    let moment_expression = photo_pose.expression.text;
+    let faces_camera = photo_pose.stance.gaze == crate::services::lookbook_pose::Gaze::Camera;
+    tracing::debug!(
+        mood = genre.as_str(),
+        stance = photo_pose.stance.key,
+        hand = photo_pose.hand.key(),
+        expression = photo_pose.expression.key,
+        "룩북 사진 자세·손·표정"
+    );
     let setting = format!(
         "{} — the background brings {}",
         place,
@@ -2405,6 +2412,10 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
     // 나왔다. 그걸 걷어낸 뒤에는 질감만 요구하고 건강함을 요구하지 않아서, 이번엔
     // 피부가 칙칙하게 나왔다. 두 실패가 반대 방향이므로 양쪽을 다 적는다 —
     // 모공과 비대칭은 남기되, 윤기 없고 얼룩진 피부는 명시적으로 막는다.
+    // 나이·메이크업·인물의 분위기는 무드가 고르고, 이 순간의 표정은 `lookbook_pose` 가
+    // 자세와 맞춰 고른다(2026-10-18 — 윙크·입술 오므리기·웃음 승인). 무드 문장에 "웃음은 살짝
+    // 까지" 같은 표정을 박아 두면 고른 표정과 부딪친다.
+    //
     // 나이·메이크업·표정은 무드가 고른다. 글램은 "주목받는 것이 편한" 인물이라, 공통
     // 문장("not posed for anyone", "minimal everyday makeup")을 두고 반대 지시를 덧붙이면
     // 모델이 둘 중 하나를 무시한다. 그래서 그 자리만 갈아 끼운다. 다른 무드의 문장은
@@ -2413,28 +2424,26 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
         StyleGenre::Glam => (
             "between her mid-twenties and mid-thirties",
             glam_makeup(hash),
-            "She is comfortable being looked at: a relaxed, self-assured gaze and at most a \
-             slight smile — present and at ease, never performing.",
+            "She is comfortable being looked at: relaxed and self-assured, present and at ease, \
+             never performing.",
         ),
         // 엣지: 편안하면서 자신감 있는 표정. 화장은 다른 무드처럼 가볍게 둔다 — 짙은 눈화장·
         // 어두운 입술로 무드를 만들지 않는다.
         StyleGenre::Edgy => (
             "in her twenties or early thirties",
             "minimal everyday makeup, natural lips",
-            "Her expression is relaxed and self-possessed: a calm, steady look, confident \
-             without performing.",
+            "She is relaxed and self-possessed, confident without performing.",
         ),
         // 팝: 밝고 편안한 자신감. 화장은 가볍게 — 옷 색에 맞춘 색조로 무드를 만들지 않는다.
         StyleGenre::Pop => (
             "in her twenties or early thirties",
             "minimal everyday makeup, natural lips",
-            "Her expression is bright and relaxed — an easy, confident smile or a cheerful \
-             glance, never a posed advertising grin.",
+            "She is bright and relaxed, never wearing a posed advertising grin.",
         ),
         _ => (
             "in her twenties",
             "minimal everyday makeup, natural lips",
-            "Her expression is relaxed and spontaneous, not posed for anyone.",
+            "She is relaxed and spontaneous, never posing.",
         ),
     };
     let base_face = format!(
@@ -2445,7 +2454,7 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
          and well-rested — even in tone and warm in colour, never sallow, grey, blotchy or \
          tired — but it is never smoothed. Groomed natural brows, {makeup}, \
          realistic eyes with subtle reflections and a clear catchlight. \
-         {expression} \
+         {expression} In this moment: {moment_expression}. \
          Hairstyle: {}, individual strands and a few loose hairs visible.",
         model_origin(hash),
         hair
@@ -2459,16 +2468,18 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
          neck long, chin level — with natural weight distribution. Each leg runs straight from its own hip to its own \
          foot; the legs never cross over or swap sides.";
 
-    // 자세는 `POSES` 다섯 중 착장 해시로 고른다(`pick_pose`).
+    // 자세는 `lookbook_pose::pick` 이 고른다.
     //
     // 한때 모든 arm 을 같은 보행 포즈로 통일했더니 서로 다른 코디를 같은 자리에 세워
     // 찍은 것처럼 보였고, 그다음엔 장르마다 자세를 하나씩 박아 두었더니 같은 장르는
     // 시선과 몸 각도까지 똑같아졌다. 지금은 장르와 상관없이 후보에서 고르고, 아래
     // 규칙만 공통으로 건다.
-    let base_pose_rule = "Relaxed and unforced — she is not touching her hair or face, and \
-         a calm, easy look at the camera is fine. Full body visible from head to shoes. \
-         Her arms and bag never cover the main details of the top. No exaggerated twisting, \
-         no strict profile or back view.";
+    // 손은 `lookbook_pose` 가 착장이 받쳐 주는 동작 중에서 고른다. 예전의 "머리나 얼굴을
+    // 만지지 않는다" 는 손을 늘 옆에 붙게 해 뺐다(2026-10-18 사용자 승인).
+    let base_pose_rule = "Relaxed and unforced, a natural moment rather than a pose. Her hands \
+         are anatomically natural and hold nothing that is not in the outfit. Full body visible \
+         from head to shoes. Her arms, hands and bag never cover the neckline, print or main \
+         details of the top. No exaggerated twisting, no strict profile or back view.";
 
     // 촬영 조건은 장르와 무관하게 같다. 인물을 묘사하기 전에 "어떤 카메라로 어떤
     // 상황에서 찍은 사진인지" 를 먼저 정해야 사진처럼 나온다. 그래서 카메라·구도·
@@ -2494,6 +2505,11 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
         StyleGenre::Edgy | StyleGenre::Pop => {
             "Candid editorial photography: she is out in the city on her own errand, aware of \
              the camera and unbothered by it, photographed from across the pavement."
+        }
+        // 카메라를 보는 자세면 "카메라를 모른다" 와 부딪친다 — 방금 알아챈 순간으로 둔다.
+        _ if faces_camera => {
+            "Candid editorial photography: she is going about her own business and has just \
+             noticed the camera, at ease with it, photographed from across the pavement."
         }
         _ => {
             "Candid editorial photography: she is going about her own business and is not \
@@ -2600,8 +2616,7 @@ fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
         StyleGenre::Glam => (
             "heavy contouring, strong eye makeup and strong lip colour together, glitter \
              makeup, false lashes",
-            "exaggerated runway posing, pouting lips, sultry or seductive expression, fixed \
-             advertising smile",
+            "exaggerated runway posing, sultry or seductive expression, fixed advertising smile",
             "oily or shiny skin, blown-out highlights on satin or metallic fabric",
         ),
         // 엣지: 무광 가죽을 번들거리게 그리지 않는다. 화난 듯한 표정으로 무드를 만들지 않는다.
@@ -5133,7 +5148,9 @@ mod tests {
             assert!(eyes ^ lips, "{h}: 눈 {eyes} 입술 {lips}");
             // 과한 화장·연출을 막는 조건은 구체적으로 남아 있다.
             assert!(p.contains("strong eye makeup and strong lip colour together"));
-            assert!(p.contains("pouting lips"));
+            // 입술 오므리기는 고를 수 있는 표정이라 막지 않는다(2026-10-18 승인).
+            assert!(!p.contains("pouting lips"));
+            assert!(p.contains("sultry or seductive expression"));
             assert!(p.contains("blown-out highlights on satin or metallic fabric"));
             // 소품과 노출을 더하지 않는다.
             assert!(p.contains("necklaces"));
@@ -5602,7 +5619,7 @@ mod tests {
             assert!(!p.contains("restrained saturation"));
             assert!(p.contains("true-to-life saturation"));
             assert!(p.contains("in her twenties or early thirties"));
-            assert!(p.contains("never a posed advertising grin"));
+            assert!(p.contains("posed advertising grin"));
             for w in [
                 "amusement park",
                 "candy shop",
@@ -5668,15 +5685,10 @@ mod tests {
                 "{g}"
             );
             assert!(
-                p.contains(
-                    "Her expression is relaxed and spontaneous, not posed for anyone. Hairstyle:"
-                ),
+                p.contains("She is relaxed and spontaneous, never posing. In this moment: "),
                 "{g}"
             );
-            assert!(
-                p.contains("going about her own business and is not aware of the camera"),
-                "{g}"
-            );
+            assert!(p.contains("going about her own business"), "{g}");
             assert!(p.contains("oversharpening, excessive makeup, generic stock-photo smile, fashion-model posing,"), "{g}");
             assert!(
                 p.contains("fake metallic reflections, excessive gloss,"),
@@ -5927,24 +5939,38 @@ mod image_prompt_tests {
     }
 
     #[test]
-    fn poses_vary_and_leaning_needs_a_wall() {
+    fn leaning_needs_a_wall_and_the_old_hands_rule_is_gone() {
+        let items = "top/inner: 회색 후드티 (cotton fleece), pants: 블랙 와이드 슬랙스 (wool)";
         let hashes: Vec<u64> = (0..2000u64)
             .map(|h| h.wrapping_mul(0x9E37_79B9_7F4A_7C15))
             .collect();
-        let lean = POSES[POSES.len() - 1];
+        let pick = |setting: &str, h: u64| {
+            let support = crate::services::lookbook_pose::support(
+                &split_image_items(items),
+                "long straight hair worn down",
+                has_something_to_lean_on(setting),
+            );
+            crate::services::lookbook_pose::pick(StyleGenre::Street, h, &support)
+                .stance
+                .key
+        };
         let with_wall: std::collections::HashSet<&str> = hashes
             .iter()
-            .map(|&h| pick_pose("a pale stucco wall", h))
+            .map(|&h| pick("a pale stucco wall", h))
             .collect();
-        assert_eq!(with_wall.len(), POSES.len());
+        assert_eq!(
+            with_wall.len(),
+            crate::services::lookbook_pose::STANCES.len()
+        );
         assert!(
             hashes
                 .iter()
-                .all(|&h| pick_pose("a wide open plaza with pale paving", h) != lean)
+                .all(|&h| pick("a wide open plaza with pale paving", h) != "leaning")
         );
-        let p = build_image_prompt(StyleGenre::Street, "회색 후드티", 99);
+        let p = build_image_prompt(StyleGenre::Street, items, 99);
         assert!(!p.contains("not posing for the photographer"));
-        assert!(p.contains("Her arms and bag never cover the main details of the top"));
+        assert!(!p.contains("not touching her hair or face"));
+        assert!(p.contains("never cover the neckline, print or main details of the top"));
     }
 
     /// 모든 장르에 장소 후보가 둘 이상 있어야 한다. 하나뿐이면 그 장르는
@@ -6009,5 +6035,83 @@ mod image_prompt_tests {
         assert!(p.contains("네이비 블레이저, 치노"));
         assert!(p.contains("do not add, remove or substitute"));
         assert!(p.contains("Keep the fit and the material"));
+    }
+
+    /// 모든 무드 × 지원 조건(아우터 없음·주머니 모름·가방·벽 없는 장소)에서 조립한 프롬프트가
+    /// 착장에 없는 구조를 쓰지 않고, 예전 "머리·얼굴을 만지지 않는다" 와 글램의 "pouting lips"
+    /// 처럼 고른 표정·손과 부딪치는 문장이 남지 않는다. 의상 충실 문장과 전신·신발 조건은 그대로다.
+    #[test]
+    fn assembled_prompts_never_invent_structure_or_conflict() {
+        let cases = [
+            // 아우터·가방 없음, 스커트(주머니 모름)
+            "top/inner: 블랙 리브 탱크탑 (ribbed cotton), pants: 샴페인 새틴 슬립 미디스커트 (satin, bias cut), shoes: 누드베이지 플랫 (leather)",
+            // 이름만 "팬츠" — 주머니 모름, 클러치
+            "top/inner: 화이트 셔츠 (cotton poplin), pants: 코발트 와이드 팬츠 (crepe, wide leg), shoes: 블랙 로퍼 (leather), bag: 블랙 새틴 미니 클러치 (satin)",
+            // 데님 + 아우터 + 가방
+            "top/inner: 화이트 티 (cotton jersey), pants: 인디고 와이드 데님 (denim, wide leg), outerwear: 블랙 레더 라이더 자켓 (leather, cropped biker), shoes: 블랙 부츠 (leather), bag: 블랙 숄더백 (leather)",
+        ];
+        let mut seen = std::collections::HashSet::new();
+        for g in StyleGenre::ALL {
+            for items in cases {
+                let slots = split_image_items(items);
+                let has_outer = slots.iter().any(|(s, _)| s == "outerwear");
+                let has_bag = slots.iter().any(|(s, _)| s == "bag");
+                let has_denim = items.contains("데님");
+                for h in (0..300u64).map(|i| i.wrapping_mul(0x9E37_79B9_7F4A_7C15)) {
+                    let p = build_image_prompt(*g, items, h);
+                    let pose = p
+                        .split("Pose: ")
+                        .nth(1)
+                        .and_then(|x| x.split(". Relaxed and unforced").next())
+                        .unwrap();
+                    assert!(!p.contains("not touching her hair or face"), "{g}");
+                    assert!(!p.contains("pouting lips"), "{g}");
+                    assert!(!p.contains("at most a slight smile"), "{g}");
+                    assert!(p.contains("In this moment: "), "{g}");
+                    assert!(p.contains("Full body visible from head to shoes"));
+                    assert!(p.contains("hold nothing that is not in the outfit"));
+                    assert!(p.contains("do not add, remove or substitute"));
+                    if !has_outer {
+                        assert!(!pose.contains("front edge of her"), "{g} {h}: {pose}");
+                    }
+                    if !has_bag {
+                        assert!(!pose.contains("bag") && !pose.contains("clutch"), "{pose}");
+                    }
+                    if !has_denim {
+                        assert!(!pose.contains("pocket"), "{g} {h}: {pose}");
+                    }
+                    if !has_something_to_lean_on(pick_setting(*g, h)) {
+                        assert!(!pose.contains("leaning"), "{g} {h}: {pose}");
+                    }
+                    // 윙크를 고른 사진은 카메라를 아는 장면이어야 한다.
+                    if p.contains("wink at the camera") {
+                        assert!(!p.contains("is not aware of the camera"), "{g} {h}");
+                    }
+                    for k in [
+                        "wink",
+                        "pursed",
+                        "pocket",
+                        "front edge",
+                        "hip",
+                        "behind her ear",
+                    ] {
+                        if p.contains(k) {
+                            seen.insert(k);
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(seen.len(), 6, "{seen:?}");
+    }
+
+    /// 같은 입력은 같은 프롬프트·캐시 키다. 자세·표정 문구가 바뀌었으므로 착용 사진의 프롬프트
+    /// 해시도 바뀌어 새 사진에 적용된다(룩북에 담은 사진은 `pinned_image` 로 그대로).
+    #[test]
+    fn same_outfit_keeps_its_pose_and_key() {
+        let items = "top/inner: 화이트 티 (cotton jersey), pants: 인디고 와이드 데님 (denim)";
+        for g in StyleGenre::ALL {
+            assert_eq!(image_cache_keys(items, *g), image_cache_keys(items, *g));
+        }
     }
 }

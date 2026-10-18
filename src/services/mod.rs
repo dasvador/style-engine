@@ -4,6 +4,7 @@ pub mod embedding;
 pub mod item_resolution;
 pub mod llm;
 pub mod look_signature;
+pub mod lookbook_pose;
 pub mod mood_gate;
 pub mod mood_palette;
 pub mod mood_rules;
