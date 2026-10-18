@@ -7,8 +7,8 @@ use crate::models::outfit::{
 use crate::models::style_vocab::{Role, Saturation, Style, Tone, Weight};
 
 // --- 감점 상수 ---
-const DEDUCT_BANCHAN_OVERLOAD: i32 = 20;
-const DEDUCT_BANCHAN_WRONG_SLOT: i32 = 25; // 이너+하의에 포인트가 있으면 더 심각
+pub const DEDUCT_BANCHAN_OVERLOAD: i32 = 20;
+pub const DEDUCT_BANCHAN_WRONG_SLOT: i32 = 25; // 이너+하의에 포인트가 있으면 더 심각
 const DEDUCT_NO_AXIS: i32 = 15;
 const DEDUCT_ALL_DARK: i32 = 15;
 const DEDUCT_ALL_BRIGHT: i32 = 15;

@@ -592,6 +592,7 @@ impl<'a> ShortlistResult<'a> {
             shoes: self.shoes.iter().map(|c| fmt(c)).collect(),
             bags: self.bags.iter().map(|c| fmt(c)).collect(),
             colour_items: Vec::new(),
+            texture_pair: None,
         }
     }
 
@@ -623,7 +624,24 @@ impl<'a> ShortlistResult<'a> {
             shoes: self.shoes.iter().map(|c| fmt(c)).collect(),
             bags: self.bags.iter().map(|c| fmt(c)).collect(),
             colour_items: Vec::new(),
+            texture_pair: None,
         }
+    }
+
+    /// 글램 소재 대비 짝의 재료: 목록의 퍼·시어링 아우터와 무광 트리밍 상의. 둘 중 하나라도
+    /// 없으면 `None`. 깨진 이름은 넣지 않는다.
+    pub fn glam_texture_pair(&self) -> Option<crate::services::prompts::TexturePair> {
+        use crate::services::mood_rules::{is_fur_or_shearling_outer, is_trimmed_matte_top};
+        let names = |v: &[&Clothing], f: fn(&Clothing) -> bool| -> Vec<String> {
+            v.iter()
+                .filter(|c| !has_broken_name(c) && f(c))
+                .map(|c| c.name.clone())
+                .collect()
+        };
+        let outers = names(&self.outers, is_fur_or_shearling_outer);
+        let tops = names(&self.tops, is_trimmed_matte_top);
+        (!outers.is_empty() && !tops.is_empty())
+            .then_some(crate::services::prompts::TexturePair { outers, tops })
     }
 
     /// 목록의 색 있는 상의·아우터(`mood_palette::colour_family`), "이름(계열)" 꼴.

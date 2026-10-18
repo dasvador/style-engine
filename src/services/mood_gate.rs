@@ -781,6 +781,52 @@ mod tests {
 
     use crate::models::style_vocab::Saturation::{High, Low, Mid};
 
+    /// 레이스 트리밍·셔링만으로는 글램도 엣지도 아니다 — 부드러운 장식은 로맨틱의 질감이다.
+    /// 같은 셔링 저지라도 비대칭 랩넥이면 글램 형태가 있다. 밝은 색 긴팔도 절개 구조
+    /// (deconstructed)가 실제로 있으면 엣지다 — 색이 아니라 구조로 본다. 일부에만 새틴이 붙은
+    /// 무광 저지 탑은 옷 전체가 빛을 받는 소재가 아니라 글램 옷으로 세지 않는다(2026-10-18 사진 참고).
+    #[test]
+    fn lace_and_ruching_alone_open_neither_glam_nor_edgy() {
+        let mut lace = garment(
+            "라이트그레이 레이스 트리밍 셔링 티",
+            "상의",
+            "라이트그레이",
+            Some(Low),
+            "soft jersey, lace-trimmed neckline, side ruching, long sleeves",
+        );
+        lace.material_primary = Some("jersey".into());
+        assert!(!is_glam_piece(&lace));
+        assert!(!is_edgy_piece(&lace));
+
+        let mut wrap = lace.clone();
+        wrap.texture_keywords =
+            Some("soft jersey, asymmetric wrap neckline edged with lace, side ruching".into());
+        assert!(is_glam_piece(&wrap));
+
+        let mut slashed = garment(
+            "화이트 저지 롱슬리브",
+            "상의",
+            "화이트",
+            Some(Low),
+            "fine jersey, one-piece top with a deconstructed front of slashed strips over an attached opaque inner panel",
+        );
+        slashed.material_primary = Some("jersey".into());
+        assert!(is_edgy_piece(&slashed));
+        let mut plain_white = slashed.clone();
+        plain_white.texture_keywords = Some("fine jersey, scoop neck, long sleeves".into());
+        assert!(!is_edgy_piece(&plain_white));
+
+        let mut band = garment(
+            "그레이 셔링 튜브탑",
+            "상의",
+            "그레이/퍼플",
+            Some(Low),
+            "ruched grey stretch mesh over an opaque lining, attached satin band edged with lace",
+        );
+        band.material_primary = Some("jersey".into());
+        assert!(!is_glam_piece(&band));
+    }
+
     /// 팝 한 벌의 근거: 색 있는 배색·그래픽·대담한 패턴. 흑백 그래픽, 안감 무늬, 무늬 없는 단색,
     /// 가방은 아니다. 업로드 옷처럼 설명이 비어도 이름의 형태 단어와 색으로 본다.
     #[test]

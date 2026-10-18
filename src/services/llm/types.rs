@@ -226,6 +226,34 @@ pub struct ImageRequest {
     pub prompt: String,
     pub size: String,
     pub quality: String,
+    /// 생성 안전 검사의 엄격도. `None` 이면 provider 기본값(OpenAI: auto)을 쓴다.
+    pub moderation: Option<ImageModeration>,
+}
+
+/// OpenAI GPT Image 생성의 `moderation` 값. 금지 콘텐츠를 허용하는 옵션이 아니라, 성인
+/// 패션 같은 정상 용도에서 연령 부적합 콘텐츠 필터의 엄격도를 고르는 공식 옵션이다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImageModeration {
+    Auto,
+    Low,
+}
+
+impl ImageModeration {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ImageModeration::Auto => "auto",
+            ImageModeration::Low => "low",
+        }
+    }
+
+    /// 설정 문자열(`auto`·`low`)을 읽는다. 다른 값이면 `None` — 호출자가 기본값을 정한다.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "auto" => Some(ImageModeration::Auto),
+            "low" => Some(ImageModeration::Low),
+            _ => None,
+        }
+    }
 }
 
 /// 이미 있는 그림을 바탕으로 일부만 바꾸는 요청.

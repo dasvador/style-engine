@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use super::error::LlmError;
+use super::error::{ApiErrorDetail, LlmError, ModerationDetails};
 use super::provider::{ChatProvider, EmbeddingProvider, ImageProvider, ProviderId};
 use super::types::{
     ChatRequest, ChatResponse, ContentPart, EmbeddingResult, ImageEditRequest, ImageRequest,
@@ -47,14 +47,11 @@ impl OpenAiProvider {
             .await?;
 
         let status = resp.status();
+        let request_id = request_id_header(&resp);
         let text = resp.text().await?;
 
         if !status.is_success() {
-            return Err(LlmError::Status {
-                provider: ProviderId::OpenAi,
-                status: status.as_u16(),
-                body: truncate(&text, 500),
-            });
+            return Err(status_error(status.as_u16(), request_id, &text));
         }
 
         serde_json::from_str(&text)
@@ -78,14 +75,11 @@ impl OpenAiProvider {
             .await?;
 
         let status = resp.status();
+        let request_id = request_id_header(&resp);
         let text = resp.text().await?;
 
         if !status.is_success() {
-            return Err(LlmError::Status {
-                provider: ProviderId::OpenAi,
-                status: status.as_u16(),
-                body: truncate(&text, 500),
-            });
+            return Err(status_error(status.as_u16(), request_id, &text));
         }
 
         serde_json::from_str(&text)
@@ -317,14 +311,7 @@ impl ImageProvider for OpenAiProvider {
     }
 
     async fn generate(&self, model: &str, req: &ImageRequest) -> Result<ImageResult, LlmError> {
-        let body = json!({
-            "model": model,
-            "prompt": req.prompt,
-            "n": 1,
-            "size": req.size,
-            "quality": req.quality,
-        });
-
+        let body = image_generation_body(model, req);
         let resp = self.post(IMAGES_URL, &body).await?;
         image_result(&resp)
     }
@@ -347,6 +334,22 @@ impl ImageProvider for OpenAiProvider {
     }
 }
 
+/// 이미지 생성 요청 본문. `moderation` 을 지정하지 않으면 API 기본값(auto)이다. 공식 문서는
+/// GPT Image 생성에 auto·low 를 두고 편집(edits)에 대해서는 말하지 않아, 편집 요청에는 싣지 않는다.
+fn image_generation_body(model: &str, req: &ImageRequest) -> Value {
+    let mut body = json!({
+        "model": model,
+        "prompt": req.prompt,
+        "n": 1,
+        "size": req.size,
+        "quality": req.quality,
+    });
+    if let Some(m) = req.moderation {
+        body["moderation"] = json!(m.as_str());
+    }
+    body
+}
+
 /// 생성과 편집은 응답 형식이 같다.
 fn image_result(resp: &Value) -> Result<ImageResult, LlmError> {
     let b64 = resp["data"][0]["b64_json"]
@@ -360,6 +363,66 @@ fn image_result(resp: &Value) -> Result<ImageResult, LlmError> {
             output_tokens: resp["usage"]["output_tokens"].as_u64().unwrap_or(0) as u32,
         },
     })
+}
+
+/// 응답 헤더의 요청 ID. 지원 문의에 쓴다.
+fn request_id_header(resp: &reqwest::Response) -> Option<String> {
+    resp.headers()
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string)
+}
+
+/// non-2xx 응답을 오류로 바꾼다. 원문을 500자로 자르기 전에 `error.code`·`error.type`·요청 ID·
+/// `moderation_details` 를 꺼내 둔다 — 예전에는 잘린 원문만 남아 차단 단계와 요청 ID 를 잃었다.
+/// 요약(`body`)은 `error.message` 가 있으면 그것을, 없으면 원문을 자른 것이다. 오류 응답에는
+/// 요청 본문이 들어 있지 않으므로 프롬프트가 로그에 남지 않는다.
+fn status_error(status: u16, header_request_id: Option<String>, text: &str) -> LlmError {
+    let parsed: Option<Value> = serde_json::from_str(text).ok();
+    let err = parsed.as_ref().map(|v| &v["error"]);
+    let str_of = |key: &str| {
+        err.and_then(|e| e[key].as_str())
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    let message = str_of("message");
+    let request_id = header_request_id.or_else(|| {
+        message.as_deref().and_then(|m| {
+            m.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .find(|w| w.starts_with("req_") && w.len() > 4)
+                .map(str::to_string)
+        })
+    });
+    let moderation = err
+        .map(|e| &e["moderation_details"])
+        .filter(|m| m.is_object())
+        .map(|m| ModerationDetails {
+            stage: m["moderation_stage"].as_str().map(str::to_string),
+            categories: m["categories"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|c| c.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default(),
+        });
+    LlmError::Status {
+        provider: ProviderId::OpenAi,
+        status,
+        body: truncate(message.as_deref().unwrap_or(text), 500),
+        detail: Box::new(ApiErrorDetail {
+            code: str_of("code"),
+            kind: str_of("type"),
+            request_id,
+            moderation,
+        }),
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn status_error_for_tests(status: u16, body: &str) -> LlmError {
+    status_error(status, None, body)
 }
 
 fn truncate(s: &str, max: usize) -> String {
@@ -547,5 +610,90 @@ mod tests {
     fn no_tools_field_when_none_declared() {
         let body = body_of(&ChatRequest::new(vec![Message::user_text("hi")]));
         assert!(body.get("tools").is_none());
+    }
+
+    /// 2026-10-18 실제 차단 응답 원문(요청 ID 만 그대로 둔 것). 예전에는 500자로 자른 원문만
+    /// 남았다. 이제 코드·종류·요청 ID·차단 단계·분류를 따로 꺼낸다.
+    const BLOCKED: &str = r#"{
+  "error": {
+    "message": "Your request was rejected by the safety system. If you believe this is an error, contact us at help.openai.com and include the request ID req_eb5d36417eb04e0d883ada7ffc4f97af. safety_violations=[sexual].",
+    "type": "image_generation_user_error",
+    "param": null,
+    "code": "moderation_blocked",
+    "moderation_details": {
+      "moderation_stage": "output",
+      "categories": ["sexual"]
+    }
+  }
+}"#;
+
+    #[test]
+    fn a_moderation_block_keeps_its_code_request_id_and_stage() {
+        let e = status_error(400, None, BLOCKED);
+        assert!(e.is_moderation_blocked());
+        assert!(!e.is_retryable());
+        let d = e.api_detail().unwrap();
+        assert_eq!(d.code.as_deref(), Some("moderation_blocked"));
+        assert_eq!(d.kind.as_deref(), Some("image_generation_user_error"));
+        assert_eq!(
+            d.request_id.as_deref(),
+            Some("req_eb5d36417eb04e0d883ada7ffc4f97af")
+        );
+        let m = d.moderation.as_ref().unwrap();
+        assert_eq!(m.stage.as_deref(), Some("output"));
+        assert_eq!(m.categories, vec!["sexual".to_string()]);
+        let line = e.to_string();
+        assert!(line.contains("code=moderation_blocked"));
+        assert!(line.contains("request_id=req_eb5d36417eb04e0d883ada7ffc4f97af"));
+        assert!(line.contains("moderation_stage=output categories=[sexual]"));
+        // 요약은 error.message 다 — JSON 원문 전체가 아니다.
+        assert!(!line.contains("\"param\""));
+    }
+
+    /// 단계 정보는 선택 항목이다. 없으면 단계를 모르는 것이고, 헤더의 요청 ID 가 메시지보다
+    /// 먼저다. JSON 이 아닌 본문도 잘린 원문으로 남는다.
+    #[test]
+    fn optional_fields_stay_optional() {
+        let no_details = r#"{"error":{"message":"blocked","type":"image_generation_user_error","code":"moderation_blocked"}}"#;
+        let e = status_error(400, Some("req_header".into()), no_details);
+        assert!(e.is_moderation_blocked());
+        let d = e.api_detail().unwrap();
+        assert_eq!(d.request_id.as_deref(), Some("req_header"));
+        assert_eq!(d.moderation, None);
+        assert!(!e.to_string().contains("moderation_stage"));
+
+        let other = status_error(
+            429,
+            None,
+            r#"{"error":{"message":"slow down","code":"rate_limit_exceeded"}}"#,
+        );
+        assert!(!other.is_moderation_blocked());
+        assert!(other.is_retryable());
+
+        let html = "<html>bad gateway</html>".repeat(40);
+        let e = status_error(502, None, &html);
+        assert_eq!(e.api_detail().unwrap(), &ApiErrorDetail::default());
+        assert!(e.to_string().contains("bad gateway"));
+        assert!(e.to_string().chars().count() < 600);
+    }
+
+    /// moderation 은 지정했을 때만 본문에 실린다(미지정 = API 기본값 auto).
+    #[test]
+    fn image_generation_carries_moderation_only_when_set() {
+        let mut req = ImageRequest {
+            prompt: "p".into(),
+            size: "1024x1536".into(),
+            quality: "low".into(),
+            moderation: None,
+        };
+        assert!(image_generation_body("m", &req).get("moderation").is_none());
+        req.moderation = Some(super::super::types::ImageModeration::Low);
+        assert_eq!(image_generation_body("m", &req)["moderation"], "low");
+        req.moderation = Some(super::super::types::ImageModeration::Auto);
+        assert_eq!(image_generation_body("m", &req)["moderation"], "auto");
+        use super::super::types::ImageModeration as M;
+        assert_eq!(M::parse(" LOW "), Some(M::Low));
+        assert_eq!(M::parse("auto"), Some(M::Auto));
+        assert_eq!(M::parse("off"), None);
     }
 }

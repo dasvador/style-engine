@@ -41,7 +41,8 @@ pub use provider::ProviderId;
 #[allow(unused_imports)]
 pub use types::{
     ChatRequest, ChatResponse, ContentPart, EmbeddingResult, ImageDetail, ImageEditRequest,
-    ImageRequest, ImageResult, Message, ResponseFormat, StopReason, ToolCall, ToolDef,
+    ImageModeration, ImageRequest, ImageResult, Message, ResponseFormat, StopReason, ToolCall,
+    ToolDef,
 };
 pub use usage::Usage;
 
@@ -357,6 +358,12 @@ impl LlmClient {
             }
         }
     }
+}
+
+/// 테스트용: OpenAI 오류 응답 본문을 `LlmError` 로 바꾼다(실제 경로와 같은 파서).
+#[cfg(test)]
+pub fn openai_status_error_for_tests(status: u16, body: &str) -> LlmError {
+    openai::status_error_for_tests(status, body)
 }
 
 #[cfg(test)]

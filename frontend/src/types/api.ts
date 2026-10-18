@@ -278,6 +278,10 @@ export interface OutfitImageBody {
 
 export interface OutfitImageResponse {
   image_url: string | null;
+  /** 이미지를 주지 못한 일반적인 이유 (src/routes/chat.rs :: ImageUnavailable). 일시적 실패면 없다. */
+  unavailable_reason?: 'safety' | 'verification' | 'budget';
+  /** 이미지 종류. model=착용 사진, flat_lay=인물 없는 의류 배치(착용 사진이 막혔을 때). */
+  presentation?: 'model' | 'flat_lay';
 }
 
 // ─── 피드백 (src/models/feedback.rs :: FeedbackRequest) ───

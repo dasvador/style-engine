@@ -912,3 +912,272 @@ fn a_cropped_jacket_is_less_warm_than_a_long_coat() {
         TodayFitLevel::Fail
     );
 }
+
+/// 무광 트리밍 상의 — 시드에 없는 옷(이름은 규칙과 무관하다).
+fn trimmed_top(name: &str, keywords: &str, sat: Saturation) -> Clothing {
+    let mut c = item(name, "상의", Mid, Accent, 3, Thin, "jersey", keywords);
+    c.silhouette_volume = Some(style_engine::models::style_vocab::Silhouette::Slim);
+    c.saturation = Some(sat);
+    c
+}
+
+fn shearling_jacket() -> Clothing {
+    coat(
+        "블랙 레더 시어링 재킷",
+        Accent,
+        "leather",
+        "시어링자켓",
+        "matte black leather, thick shearling lining, shearling collar, hip-length",
+        Saturation::Low,
+    )
+}
+
+fn matte_skirt() -> Clothing {
+    let mut c = item(
+        "블랙 저지 드레이프 맥시스커트",
+        "하의",
+        Dark,
+        Base,
+        3,
+        Medium,
+        "jersey",
+        "matte stretch jersey, draped ruching at one hip, ankle-length maxi",
+    );
+    c.saturation = Some(Saturation::Low);
+    c
+}
+
+fn eval_glam(
+    o: &[Clothing],
+    m: Option<StyleGenre>,
+) -> style_engine::models::outfit::EvaluationResult {
+    mood_rules::evaluate_for_mood(&ctx(o), Some("가을"), m)
+}
+
+fn deduction(o: &[Clothing], m: Option<StyleGenre>, code: &IssueCode) -> i32 {
+    eval_glam(o, m)
+        .problems
+        .iter()
+        .filter(|p| &p.code == code)
+        .map(|p| p.deduction)
+        .sum()
+}
+
+fn lace_top() -> Clothing {
+    trimmed_top(
+        "그레이 레이스 랩 탑",
+        "soft matte jersey, wrap neckline edged with lace, side ruching, long sleeves, fitted",
+        Saturation::Low,
+    )
+}
+
+fn ruched_top() -> Clothing {
+    trimmed_top(
+        "모카 셔링 튜브탑",
+        "ruched stretch mesh over an opaque lining, strapless, fitted",
+        Saturation::Low,
+    )
+}
+
+/// 퍼·시어링 아우터 + 몸에 붙는 무광 트리밍 상의 + 받쳐 주는 무광 하의(규칙 7, 2026-10-18 사진
+/// 참고 — 퍼 하프코트 + 셔링 튜브탑 + 데님, 레이스 랩넥 탑 + 저지 드레이프 맥시 + 시어링).
+///
+/// 역할 라벨로는 '포인트' 가 둘이지만 실제로 겨루는 강한 옷은 하나다 — 결 있는 아우터와 섬세한
+/// 무광 상의는 소재 대비로 한 중심을 이룬다. 그래서 포인트 과다·강한 이너·상의 슬롯 역할을
+/// 모두 지운다(규칙 6·7). 남는 포인트가 가방뿐이면 가방의 포인트 과다·슬롯 역할도 지우고, 가방
+/// 규칙("가방까지 포인트")만 한 번 깎는다. 가산점은 없다.
+#[test]
+fn fur_and_a_trimmed_matte_top_over_a_quiet_bottom_form_one_center() {
+    let look = |top: Clothing, bottom: Clothing, outer: Clothing| {
+        vec![top, bottom, outer, ankle_boots(), clutch()]
+    };
+    for (name, o) in [
+        (
+            "셔링 튜브탑 + 데님 + 퍼",
+            look(ruched_top(), denim(), fur_half_coat()),
+        ),
+        (
+            "레이스 탑 + 저지 맥시 + 시어링",
+            look(lace_top(), matte_skirt(), shearling_jacket()),
+        ),
+        (
+            "레이스 탑 + 데님 + 퍼",
+            look(lace_top(), denim(), fur_half_coat()),
+        ),
+    ] {
+        let plain = |c: IssueCode| deduction(&o, None, &c);
+        let glam = |c: IssueCode| deduction(&o, Some(StyleGenre::Glam), &c);
+        assert_eq!(plain(IssueCode::TooManyAccents), 25, "{name}: 재현 조건");
+        assert_eq!(plain(IssueCode::StrongInner), 10, "{name}");
+        assert_eq!(glam(IssueCode::TooManyAccents), 0, "{name}");
+        assert_eq!(glam(IssueCode::StrongInner), 0, "{name}");
+        assert!(
+            !eval_glam(&o, Some(StyleGenre::Glam))
+                .problems
+                .iter()
+                .any(|p| p.code == IssueCode::SlotRoleMismatch && p.detail.contains(&o[0].name)),
+            "{name}"
+        );
+        assert!(mood_rules::fur_and_trim_form_one_center(&ctx(&o)), "{name}");
+    }
+
+    // 가방까지 포인트면: 포인트 과다·가방 슬롯 역할은 지우고, 가방 규칙은 한 번 남긴다.
+    let mut accent_bag = chain_bag();
+    accent_bag.role = Some(Accent);
+    let with_bag = vec![
+        ruched_top(),
+        denim(),
+        fur_half_coat(),
+        ankle_boots(),
+        accent_bag,
+    ];
+    let glam = |c: IssueCode| deduction(&with_bag, Some(StyleGenre::Glam), &c);
+    assert!(deduction(&with_bag, None, &IssueCode::TooManyAccents) > 0);
+    assert_eq!(glam(IssueCode::TooManyAccents), 0);
+    assert_eq!(
+        deduction(&with_bag, Some(StyleGenre::Glam), &IssueCode::BagConflict),
+        deduction(&with_bag, None, &IssueCode::BagConflict)
+    );
+}
+
+/// 규칙 6만 해당하고 7은 아닌 경우 — 하의가 광택(새틴)이면 세 번째 강한 소재라 한 중심이
+/// 아니다. 겹친 감점만 지우고 포인트 과다의 기본 몫(−20)은 남는다.
+#[test]
+fn a_sheen_bottom_keeps_the_two_point_deduction() {
+    let o = vec![
+        lace_top(),
+        black_satin_skirt(),
+        shearling_jacket(),
+        ankle_boots(),
+        clutch(),
+    ];
+    assert!(mood_rules::pile_outer_over_trimmed_matte_top(&ctx(&o)));
+    assert!(!mood_rules::fur_and_trim_form_one_center(&ctx(&o)));
+    assert_eq!(
+        deduction(&o, Some(StyleGenre::Glam), &IssueCode::TooManyAccents),
+        20
+    );
+    assert_eq!(
+        deduction(&o, Some(StyleGenre::Glam), &IssueCode::StrongInner),
+        0
+    );
+}
+
+/// 부정 사례: 실제로 겨루는 조합은 예전대로 깎인다(무드 없는 평가와 같은 감점).
+/// 강한 광택·볼륨·무늬, 서로 다른 선명한 색, 강한 하의, 속성을 모르는 옷.
+/// 선명한 색 한 벌만으로는 부정 사례가 아니다 — 무채색 퍼와 입은 선명한 레이스 탑은 한 중심이다.
+#[test]
+fn competing_strong_pieces_are_still_penalised() {
+    let look = |top: Clothing, bottom: Clothing, outer: Clothing| {
+        vec![top, bottom, outer, ankle_boots(), clutch()]
+    };
+    let metallic = trimmed_top(
+        "실버 루렉스 레이스 탑",
+        "fine lurex knit, metallic sheen, lace-trimmed neckline, fitted",
+        Saturation::Low,
+    );
+    let mut velvet_trim = lace_top();
+    velvet_trim.material_primary = Some("velvet".into());
+    let mut patterned = lace_top();
+    patterned.texture_keywords =
+        Some("matte jersey, bold check, lace-trimmed neckline, fitted".into());
+    let plain_matte = trimmed_top(
+        "그레이 무지 저지 탑",
+        "soft matte jersey, crew neck, fitted",
+        Saturation::Low,
+    );
+    let mut loose = lace_top();
+    loose.silhouette_volume = Some(style_engine::models::style_vocab::Silhouette::Oversized);
+    loose.texture_keywords = Some("soft matte jersey, lace-trimmed hem, oversized".into());
+    let mut cobalt_top = lace_top();
+    cobalt_top.color = Some("코발트".into());
+    cobalt_top.saturation = Some(Saturation::High);
+    let mut red_fur = fur_half_coat();
+    red_fur.color = Some("레드".into());
+    red_fur.saturation = Some(Saturation::High);
+    let mut unknown_sat = lace_top();
+    unknown_sat.saturation = None;
+    let mut unknown_material = lace_top();
+    unknown_material.material_primary = None;
+    let mut accent_bottom = denim();
+    accent_bottom.role = Some(Accent);
+    let mut check_bottom = denim();
+    check_bottom.texture_keywords = Some("wool, bold check, wide leg".into());
+
+    let negatives = [
+        ("새틴 상의", look(emerald_top(), denim(), fur_half_coat())),
+        ("메탈릭 상의", look(metallic, denim(), fur_half_coat())),
+        (
+            "벨벳 레이스 상의",
+            look(velvet_trim, denim(), fur_half_coat()),
+        ),
+        ("굵은 무늬 상의", look(patterned, denim(), fur_half_coat())),
+        (
+            "트리밍 없는 무광 상의",
+            look(plain_matte, denim(), fur_half_coat()),
+        ),
+        ("볼륨 있는 상의", look(loose, denim(), fur_half_coat())),
+        (
+            "코발트 상의 + 레드 퍼",
+            look(cobalt_top.clone(), denim(), red_fur),
+        ),
+        ("채도 모름", look(unknown_sat, denim(), fur_half_coat())),
+        (
+            "소재 모름",
+            look(unknown_material, denim(), fur_half_coat()),
+        ),
+        ("벨벳 블레이저", look(lace_top(), denim(), velvet_blazer())),
+    ];
+    for (name, o) in negatives {
+        assert!(
+            !mood_rules::pile_outer_over_trimmed_matte_top(&ctx(&o)),
+            "{name}"
+        );
+        for code in [
+            IssueCode::TooManyAccents,
+            IssueCode::StrongInner,
+            IssueCode::SlotRoleMismatch,
+        ] {
+            assert_eq!(
+                deduction(&o, Some(StyleGenre::Glam), &code),
+                deduction(&o, None, &code),
+                "{name} {code:?}"
+            );
+        }
+    }
+    // 하의가 받쳐 주지 않으면(포인트 하의·굵은 무늬 하의) 한 중심이 아니다.
+    for (name, o) in [
+        (
+            "포인트 하의",
+            look(lace_top(), accent_bottom, fur_half_coat()),
+        ),
+        ("체크 하의", look(lace_top(), check_bottom, fur_half_coat())),
+    ] {
+        assert!(
+            !mood_rules::fur_and_trim_form_one_center(&ctx(&o)),
+            "{name}"
+        );
+        assert!(
+            deduction(&o, Some(StyleGenre::Glam), &IssueCode::TooManyAccents) > 0,
+            "{name}"
+        );
+    }
+    // 선명한 색 한 벌 + 무채색 퍼는 부딪치지 않는다.
+    let one_vivid = look(cobalt_top, denim(), fur_half_coat());
+    assert!(mood_rules::fur_and_trim_form_one_center(&ctx(&one_vivid)));
+
+    // 다른 무드는 무드 없는 평가 그대로다.
+    let o = look(lace_top(), denim(), fur_half_coat());
+    for m in [
+        StyleGenre::Edgy,
+        StyleGenre::Romantic,
+        StyleGenre::Minimal,
+        StyleGenre::Pop,
+    ] {
+        assert_eq!(
+            eval_glam(&o, Some(m)).score,
+            eval_glam(&o, None).score,
+            "{m}"
+        );
+    }
+}

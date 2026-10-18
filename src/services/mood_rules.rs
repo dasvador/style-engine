@@ -24,6 +24,7 @@
 //! 걸치고 이동하는 장면이라 안의 착장이 가벼워도 되지만(보온은 코트를 포함해 판정한다),
 //! 코트가 주인공인 글램도 있어서 코트를 착장 밖으로 빼지 않는다. 퍼 코트와 강한 상의처럼
 //! 옷 두 곳이 강하면 "착장마다 중심 소재 하나" 기준으로 계속 깎는다(2026-10-17 사용자).
+//! 단, 퍼·시어링 + 몸에 붙는 무광 트리밍 상의는 아래 "글램 6·7" 로 고쳤다(2026-10-18 사용자 승인).
 //!
 //! 날씨·계절·스타일 충돌·텍스처 충돌 감점은 건드리지 않는다.
 //!
@@ -48,6 +49,29 @@
 //! 지운다. 가방 규칙·슬롯 역할 감점은 남긴다. 유색 가방·신발이거나 옷 두 곳이 포인트면
 //! 그대로 깎는다.
 
+//!
+//! ## 글램 6·7 — 퍼·시어링 아우터 + 무광 트리밍 상의(2026-10-18, 사용자 승인)
+//!
+//! 위의 "퍼 코트와 강한 상의는 계속 깎는다"(2026-10-17)를 이 조합에 한해 고친다. 역할 라벨의
+//! 개수가 실제 충돌과 같지 않았다 — 퍼·시어링의 결과 몸에 붙는 무광 레이스·셔링 상의는 소재
+//! 대비로 한 중심을 이루는데, 라벨이 둘 다 '포인트' 라서 운영 엔진이 포인트 과다(−25 =
+//! 기본 −20 + 이너 가중 5, `style_engine::rule_base_accent`), 이너 규칙(−10, `rule_inner`),
+//! 상의 슬롯 역할(−8, `rule_slot_role`)로 같은 사실을 세 번 깎았다.
+//!
+//! - 규칙 6(`pile_outer_over_trimmed_matte_top`): 퍼·시어링 아우터 + 몸에 붙는 무광 트리밍
+//!   상의이고 둘의 색이 부딪치지 않으면(둘 다 선명하고 계열이 다를 때만 부딪친다 — 선명한 색
+//!   한 벌은 괜찮다), 겹친 몫(+5·−10·−8)을 지운다.
+//! - 규칙 7(`fur_and_trim_form_one_center`): 여기에 하의가 받쳐 주면(베이스·구조템·연결템, 무광,
+//!   무늬 없음, 색 충돌 없음) 포인트 과다의 기본 몫까지 지운다. 남는 포인트가 가방뿐이면 가방의
+//!   슬롯 역할도 지우고 가방 규칙("가방까지 포인트")만 한 번 깎는다 — 규칙 2와 같다.
+//!
+//! 새틴·메탈릭·벨벳 상의, 볼륨 있는 상의, 굵은 무늬, 서로 다른 선명한 색, 새틴처럼 광택 있는
+//! 하의(세 번째 강한 소재), 포인트 하의, 소재·채도를 모르는 옷은 해당하지 않는다 — 실제로 겨루는
+//! 강한 옷이 둘이므로 예전대로 깎인다. 퍼 코트 + 새틴 강한 상의도 그대로다.
+//!
+//! 전수 채점 shadow(8·19.6°C, 규칙 6만 있던 상태 대비): 바뀐 조합은 받쳐 주는 하의가 있는
+//! 864개뿐이고 내려간 조합은 없다. 사진 참고 조합은 64~69 → 92~95. 상위 60개 중 21~22개가 이
+//! 조합이 됐고 나머지는 그대로다. 다른 무드 점수는 바뀌지 않는다.
 //!
 //! ## 팝(2026-10-17)
 //!
@@ -194,6 +218,123 @@ pub fn dark_look_reads_for(mood: Option<StyleGenre>, garments: &[&Clothing]) -> 
     }
 }
 
+/// 굵은 무늬를 가리키는 말(설명·이름). 무늬 옷은 소재 대비 짝의 받침이 되지 못한다.
+const BOLD_PATTERN_WORDS: [&str; 11] = [
+    "check",
+    "plaid",
+    "stripe",
+    "graphic",
+    "print",
+    "leopard",
+    "zebra",
+    "animal",
+    "colour-block",
+    "color-block",
+    "checkerboard",
+];
+const BOLD_PATTERN_NAMES: [&str; 7] = [
+    "체크",
+    "스트라이프",
+    "그래픽",
+    "프린트",
+    "호피",
+    "레오파드",
+    "배색",
+];
+
+fn has_bold_pattern(c: &Clothing) -> bool {
+    let k = c.texture_keywords.as_deref().unwrap_or("").to_lowercase();
+    BOLD_PATTERN_WORDS.iter().any(|w| k.contains(w))
+        || BOLD_PATTERN_NAMES.iter().any(|w| c.name.contains(w))
+}
+
+/// 퍼·시어링 아우터인가. 결 있는 표면 중 퍼·시어링만이다 — 벨벳 블레이저는 `surface` 에서 같은
+/// 결로 묶이지만 여기서는 아니다. 채도를 모르면 조화를 확정할 수 없어 아니라고 본다.
+pub fn is_fur_or_shearling_outer(c: &Clothing) -> bool {
+    let k = c.texture_keywords.as_deref().unwrap_or("").to_lowercase();
+    c.category == "아우터"
+        && (matches!(
+            c.material_primary.as_deref(),
+            Some("faux fur" | "fur" | "shearling")
+        ) || ["faux fur", "shearling"].iter().any(|w| k.contains(w)))
+        && surface(c) == Surface::Pile
+        && c.saturation.is_some()
+}
+
+/// 몸에 붙는 무광의 섬세한 트리밍 상의인가 — 레이스·셔링이 있고, 새틴·메탈릭·광택 가죽·벨벳이
+/// 아니며, 굵은 무늬가 없다. 소재·채도를 모르면 아니라고 본다.
+pub fn is_trimmed_matte_top(c: &Clothing) -> bool {
+    let k = c.texture_keywords.as_deref().unwrap_or("").to_lowercase();
+    let trimmed = [
+        "lace", "ruched", "ruching", "shirred", "shirring", "gathered",
+    ]
+    .iter()
+    .any(|w| k.contains(w))
+        || ["레이스", "셔링"].iter().any(|w| c.name.contains(w));
+    let fitted = c.silhouette_volume == Some(crate::models::style_vocab::Silhouette::Slim)
+        || k.contains("fitted")
+        || k.contains("close fit");
+    c.category == "상의"
+        && c.material_primary.is_some()
+        && c.material_primary.as_deref() != Some("velvet")
+        && c.saturation.is_some()
+        && surface(c) == Surface::Matte
+        && trimmed
+        && fitted
+        && !has_bold_pattern(c)
+}
+
+/// 두 옷의 색이 부딪치는가 — 둘 다 채도가 높고 색 계열이 다르거나(모르면 다르다고 본다).
+/// 선명한 색 한 벌만으로는 부딪치지 않는다.
+fn colours_clash(a: &Clothing, b: &Clothing) -> bool {
+    let high = Some(crate::models::style_vocab::Saturation::High);
+    if a.saturation != high || b.saturation != high {
+        return false;
+    }
+    let fa = crate::services::mood_palette::colour_family(a);
+    let fb = crate::services::mood_palette::colour_family(b);
+    fa.is_none() || fb.is_none() || fa != fb
+}
+
+/// 글램 규칙 6의 조건 — 퍼·시어링 아우터 + 무광 트리밍 상의이고 둘의 색이 부딪치지 않는다.
+/// 볼륨 있는 결 아래 가는 질감이라 소재가 서로 겨루지 않는다.
+///
+/// 강한 광택(새틴·메탈릭·벨벳) 상의, 굵은 무늬 상의, 볼륨 있는 상의, 서로 다른 선명한 색끼리는
+/// 해당하지 않아 예전대로 깎인다.
+pub fn pile_outer_over_trimmed_matte_top(ctx: &OutfitContext) -> bool {
+    let slot = |k: SlotKind| ctx.slots.iter().find(|s| s.slot == k).map(|s| &s.clothing);
+    let (Some(outer), Some(top)) = (slot(SlotKind::Outer), slot(SlotKind::Top)) else {
+        return false;
+    };
+    is_fur_or_shearling_outer(outer) && is_trimmed_matte_top(top) && !colours_clash(top, outer)
+}
+
+/// 글램 규칙 7의 조건 — 규칙 6의 짝에 하의가 받쳐 준다: 역할이 베이스·구조템·연결템이고,
+/// 무광이고, 무늬가 없고, 상의·아우터와 색이 부딪치지 않는다. 소재·채도·역할을 모르면 아니다.
+/// 이때 퍼와 트리밍 상의는 소재 대비로 한 중심을 이룬다 — 역할 라벨이 둘 다 '포인트' 여도
+/// 실제로 겨루는 강한 옷은 하나다.
+pub fn fur_and_trim_form_one_center(ctx: &OutfitContext) -> bool {
+    let slot = |k: SlotKind| ctx.slots.iter().find(|s| s.slot == k).map(|s| &s.clothing);
+    let (Some(outer), Some(top), Some(bottom)) = (
+        slot(SlotKind::Outer),
+        slot(SlotKind::Top),
+        slot(SlotKind::Bottom),
+    ) else {
+        return false;
+    };
+    pile_outer_over_trimmed_matte_top(ctx)
+        && matches!(
+            bottom.role,
+            Some(Role::Base | Role::Structural | Role::Connector)
+        )
+        && bottom.material_primary.is_some()
+        && bottom.saturation.is_some()
+        && surface(bottom) == Surface::Matte
+        && !has_bold_pattern(bottom)
+        && !colours_clash(bottom, top)
+        && !colours_clash(bottom, outer)
+}
+
 fn apply_waivers(ctx: &OutfitContext, e: &mut EvaluationResult, mood: StyleGenre) {
     let glam = mood == StyleGenre::Glam;
     let pop = mood == StyleGenre::Pop;
@@ -253,6 +394,10 @@ fn apply_waivers(ctx: &OutfitContext, e: &mut EvaluationResult, mood: StyleGenre
             .filter(|s| is_garment(s.slot) && s.slot != SlotKind::Bottom)
             .all(|s| !point_like(&s.clothing));
     let daily = matches!(ctx.situation.as_deref(), Some("일상" | "캐주얼") | None);
+    // 6. 퍼·시어링 아우터 + 무광의 섬세한 트리밍 상의 (글램만)
+    let pile_and_trim = glam && pile_outer_over_trimmed_matte_top(ctx);
+    // 7. 위의 짝을 하의가 받쳐 주면 퍼와 트리밍 상의는 한 중심이다 (글램만)
+    let one_center = glam && fur_and_trim_form_one_center(ctx);
 
     let mut waived = 0;
     let mut notes: Vec<String> = Vec::new();
@@ -337,6 +482,45 @@ fn apply_waivers(ctx: &OutfitContext, e: &mut EvaluationResult, mood: StyleGenre
                     continue;
                 }
                 back
+            }
+            // 7. 퍼와 트리밍 상의가 한 중심이면 포인트 과다를 지운다 — 남는 포인트가 가방·
+            //    신발뿐이면 규칙 2와 같다(하의는 받침이라 포인트가 아니다). 가방의 슬롯 역할도
+            //    같은 이유로 지운다. 가방 규칙("가방까지 포인트")은 그 문제를 한 번 깎으므로 남긴다.
+            IssueCode::TooManyAccents if one_center => {
+                notes.push("퍼와 섬세한 상의가 소재 대비로 한 중심을 이룹니다".into());
+                p.deduction
+            }
+            IssueCode::SlotRoleMismatch
+                if one_center && accessory_names.iter().any(|n| about(n)) =>
+            {
+                p.deduction
+            }
+            // 6. 퍼·시어링 아우터 + 무광의 섬세한 트리밍 상의: 아우터 아래 포인트 상의라는 한
+            //    가지 사실이 포인트 과다의 가중(+5)·이너 규칙·상의 슬롯 역할로 세 번 깎인다.
+            //    포인트 과다(기본 몫)는 남기고 겹친 몫만 되돌린다.
+            IssueCode::TooManyAccents
+                if pile_and_trim
+                    && p.deduction == style_engine::DEDUCT_BANCHAN_WRONG_SLOT
+                    && bottom.is_none_or(|b| b.clothing.role != Some(Role::Accent)) =>
+            {
+                let back =
+                    style_engine::DEDUCT_BANCHAN_WRONG_SLOT - style_engine::DEDUCT_BANCHAN_OVERLOAD;
+                notes.push("결이 있는 아우터와 무광 트리밍 상의는 소재로 어우러집니다".into());
+                keep.push(crate::models::outfit::RuleProblem {
+                    deduction: p.deduction - back,
+                    ..p
+                });
+                waived += back;
+                continue;
+            }
+            IssueCode::StrongInner if pile_and_trim => {
+                notes.push("결이 있는 아우터와 무광 트리밍 상의는 소재로 어우러집니다".into());
+                p.deduction
+            }
+            IssueCode::SlotRoleMismatch
+                if pile_and_trim && top.is_some_and(|t| about(&t.clothing.name)) =>
+            {
+                p.deduction
             }
             // 5. 소재·형태 차이가 있는 올블랙
             IssueCode::LackOfContrast

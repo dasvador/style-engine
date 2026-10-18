@@ -1,8 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/endpoints';
 import { buildImagePrompt } from '../lib/lookbook';
+import type { OutfitImageResponse } from '../types/api';
 
-type ImageState = { status: 'loading' } | { status: 'ready'; url: string } | { status: 'failed' };
+type UnavailableReason = OutfitImageResponse['unavailable_reason'];
+type Presentation = NonNullable<OutfitImageResponse['presentation']>;
+
+type ImageState =
+  | { status: 'loading' }
+  | { status: 'ready'; url: string; presentation: Presentation }
+  | { status: 'failed'; reason?: UnavailableReason };
+
+/** 받아 온 이미지의 종류. 의류 배치 사진은 착용 사진과 다르게 표시한다. */
+const presentations = new Map<string, Presentation>();
+
+/** 서버가 알려 준 "이미지를 줄 수 없는 이유". 같은 착장으로 다시 요청해도 바뀌지 않는다. */
+const unavailable = new Map<string, NonNullable<UnavailableReason>>();
 
 type ImageItems = readonly {
   slot: string;
@@ -77,7 +90,10 @@ function loadImage(
   const task = api.chat
     .image({ items: prompt, mood, base_items: basePrompt || undefined })
     .then((r) => {
-      if (r.image_url) publish(key, r.image_url);
+      if (r.image_url) {
+        presentations.set(key, r.presentation ?? 'model');
+        publish(key, r.image_url);
+      } else if (r.unavailable_reason) unavailable.set(key, r.unavailable_reason);
       return r.image_url ?? null;
     })
     .catch(() => null)
@@ -137,14 +153,18 @@ export function useOutfitImage(
     // 이미 받아 둔 이미지면 깜빡임 없이 바로 보여준다.
     const hit = imageCache.get(key);
     if (hit) {
-      setState({ status: 'ready', url: hit });
+      setState({ status: 'ready', url: hit, presentation: presentations.get(key) ?? 'model' });
       return;
     }
 
     setState({ status: 'loading' });
     void loadImage(key, prompt, mood, basePrompt).then((url) => {
       if (!alive.current) return;
-      setState(url ? { status: 'ready', url } : { status: 'failed' });
+      setState(
+        url
+          ? { status: 'ready', url, presentation: presentations.get(key) ?? 'model' }
+          : { status: 'failed', reason: unavailable.get(key) },
+      );
     });
 
     return () => {

@@ -116,6 +116,28 @@ pub struct GroupedClothes {
     /// 색 다양성 무드(`mood_palette::targets`)에서 목록의 색 있는 상의·아우터("이름(계열)").
     /// 다른 무드는 비어 있다.
     pub colour_items: Vec<String>,
+    /// 글램 소재 대비 짝의 재료 — 목록에 퍼·시어링 아우터와 무광 트리밍 상의가 둘 다 있을 때만.
+    /// 다른 무드는 `None` 이다.
+    pub texture_pair: Option<TexturePair>,
+}
+
+/// 글램 소재 대비 짝의 재료(`mood_rules::is_fur_or_shearling_outer`·`is_trimmed_matte_top`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TexturePair {
+    pub outers: Vec<String>,
+    pub tops: Vec<String>,
+}
+
+/// 추운 날 글램의 소재 대비 후보(2026-10-18). 퍼·시어링 아우터 아래 레이스·셔링이 있는 무광
+/// 상의는 결과 섬세함의 대비로 한 중심을 이룬다(`mood_rules` 규칙 7). 실제 초안 6개 중 그런
+/// 조합은 1개뿐이었고, 그마저 받쳐 주는 하의가 없어 밀렸다. 목록에 둘 다 있을 때 이름으로
+/// 알려 주고, 받쳐 주는 무광 하의를 함께 고르게 한다. 강제하지 않는다 — "1개".
+fn glam_texture_pair_task(pair: &TexturePair) -> String {
+    format!(
+        "- 글램(소재 대비): 5개 중 1개는 퍼·시어링 아우터({}) 아래 레이스·셔링이 있는 몸에 붙는 무광 상의({})를 입고, role 이 베이스인 무광 하의(새틴·메탈릭·굵은 무늬가 아닌 것)로 받쳐 보세요. 결 있는 아우터와 섬세한 무광 상의는 한 중심이 됩니다 — 새틴·메탈릭 상의를 퍼와 함께 강조하는 것과는 다릅니다.\n",
+        pair.outers.join(", "),
+        pair.tops.join(", ")
+    )
 }
 
 /// 후보 생성의 기본 원칙 3~5. 무드가 없거나 글램이 아닌 무드에 쓴다.
@@ -234,6 +256,14 @@ fn pop_tasks(pop_items: &[String], temperature: f64) -> String {
     out
 }
 
+/// 로맨틱 후보의 톤 대비(2026-10-18). 로맨틱 옷장은 밝은 톤이 대부분이라, 초안이 밝은 상의·
+/// 밝은 하의·밝은 아우터로만 짜이면 채점이 모두 "밝기 대비 부족"(−15)을 준다 — 데이터를 넣기 전
+/// 전수 채점에서 로맨틱 8400 조합 전부가 이 감점을 받았고 최고점이 74점이었다. 세이지 셔링 탑 +
+/// 워싱 데님처럼 중간 톤 하의가 있는 조합은 86점인데, 실제 초안 15개 중 그 조합은 0개였다.
+/// 옷 이름이 아니라 목록의 tone 값으로 지시한다. 다른 무드에는 넣지 않는다.
+const ROMANTIC_TASKS: &str = "- 로맨틱: 5개 중 1개 이상은 밝은 톤끼리만 맞추지 말고, 레이스·셔링처럼 부드러운 상의에 tone 이 중간이나 어두움인 하의를 맞춰 밝기 대비가 있는 후보로 만드세요. 꽃무늬·리본이 없는 로맨틱 후보도 1개 이상 넣으세요. 그런 옷이 목록에 없으면 억지로 만들지 마세요.
+";
+
 /// 추운 날 엣지. 보온 판정(`serving_ranker`)과 같은 기준을 미리 알려, 안감 없는 라이더·
 /// 레더 블레이저나 맨다리 미니가 후보로 나왔다가 날씨 게이트에서 빠지는 일을 줄인다.
 const EDGY_COLD_TASK: &str = "- 엣지(추운 날): 오늘 밖에서 입고 다니는 착장입니다. 코트는 소매에 팔을 넣고 여며 입는다고 보고 고르세요. 5°C 아래에서는 보온 안감(insulated lining, shearling lining 등)이 적힌 두꺼운 아우터를 고르고, 안감이 적히지 않은 라이더·레더 블레이저·크롭 재킷에 기대지 마세요.
@@ -312,6 +342,7 @@ pub fn outfit_candidate_prompts(
     let glam = mood == Some(crate::models::style_vocab::StyleGenre::Glam);
     let edgy = mood == Some(crate::models::style_vocab::StyleGenre::Edgy);
     let pop = mood == Some(crate::models::style_vocab::StyleGenre::Pop);
+    let romantic = mood == Some(crate::models::style_vocab::StyleGenre::Romantic);
     let clothes_grouped = format!(
         "[상의 후보]\n{tops}\n\n[하의 후보]\n{bottoms}\n\n[아우터 후보]\n{outers}\n\n[신발 후보]\n{shoes}\n\n[가방 후보]\n{bags}",
         tops = if clothes.tops.is_empty() {
@@ -479,7 +510,12 @@ pub fn outfit_candidate_prompts(
         },
         mood_tasks = if glam {
             if weather.temperature < GLAM_COVER_COAT_BELOW_C {
-                format!("{GLAM_TASKS}{GLAM_COLD_TASK}")
+                let pair = clothes
+                    .texture_pair
+                    .as_ref()
+                    .map(glam_texture_pair_task)
+                    .unwrap_or_default();
+                format!("{GLAM_TASKS}{GLAM_COLD_TASK}{pair}")
             } else {
                 GLAM_TASKS.to_string()
             }
@@ -498,6 +534,8 @@ pub fn outfit_candidate_prompts(
             pop_tasks(&clothes.colour_items, weather.temperature)
         } else if palette_principle.is_some() {
             palette_tasks(mood, &clothes.colour_items)
+        } else if romantic {
+            ROMANTIC_TASKS.to_string()
         } else {
             String::new()
         },
@@ -1033,6 +1071,24 @@ mod outfit_candidate_prompt_tests {
         palette: bool,
         colour_items: &[String],
     ) -> (String, String) {
+        prompts_pair(
+            mood,
+            temperature,
+            colour_variety,
+            palette,
+            colour_items,
+            None,
+        )
+    }
+
+    fn prompts_pair(
+        mood: Option<StyleGenre>,
+        temperature: f64,
+        colour_variety: bool,
+        palette: bool,
+        colour_items: &[String],
+        texture_pair: Option<TexturePair>,
+    ) -> (String, String) {
         let w = CurrentWeather {
             temperature,
             apparent_temperature: 16.0,
@@ -1048,6 +1104,7 @@ mod outfit_candidate_prompt_tests {
             shoes: vec!["- 스니커".into()],
             bags: vec![],
             colour_items: colour_items.to_vec(),
+            texture_pair,
         };
         outfit_candidate_prompts(
             &w,
@@ -1068,14 +1125,16 @@ mod outfit_candidate_prompt_tests {
     fn other_moods_get_the_unchanged_prompt() {
         for t in [17.0, 2.0] {
             let base = prompts_at(None, t);
-            for g in StyleGenre::ALL
-                .iter()
-                .filter(|g| !matches!(g, StyleGenre::Glam | StyleGenre::Edgy | StyleGenre::Pop))
-            {
+            for g in StyleGenre::ALL.iter().filter(|g| {
+                !matches!(
+                    g,
+                    StyleGenre::Glam | StyleGenre::Edgy | StyleGenre::Pop | StyleGenre::Romantic
+                )
+            }) {
                 assert_eq!(prompts_at(Some(*g), t), base, "{g}");
             }
             assert!(base.0.contains(DEFAULT_PRINCIPLES));
-            for word in ["글램", "엣지", "팝 "] {
+            for word in ["글램", "엣지", "팝 ", "로맨틱"] {
                 assert!(!base.0.contains(word) && !base.1.contains(word));
             }
         }
@@ -1128,6 +1187,60 @@ mod outfit_candidate_prompt_tests {
         // 팝 옷이 없으면 이름 목록 문장이 없다.
         let (_, user) = prompts_full(Some(StyleGenre::Pop), 19.6, true, false, &[]);
         assert!(!user.contains("이번 목록의 팝 옷"));
+    }
+
+    /// 글램 소재 대비 지시는 코트를 입는 날(12°C 미만)에, 목록에 퍼·시어링 아우터와 무광 트리밍
+    /// 상의가 둘 다 있을 때만 들어간다. 이름은 목록이 준 그대로다. 다른 문장은 바뀌지 않는다.
+    #[test]
+    fn glam_texture_pair_task_needs_cold_weather_and_both_pieces() {
+        let pair = TexturePair {
+            outers: vec!["에스프레소 퍼 하프코트".into()],
+            tops: vec!["그레이 셔링 탑".into()],
+        };
+        let with = |t: f64| {
+            prompts_pair(
+                Some(StyleGenre::Glam),
+                t,
+                true,
+                false,
+                &[],
+                Some(pair.clone()),
+            )
+        };
+        let without = |t: f64| prompts_pair(Some(StyleGenre::Glam), t, true, false, &[], None);
+        let (_, cold) = with(8.0);
+        assert!(cold.contains("글램(소재 대비)"));
+        assert!(cold.contains("퍼·시어링 아우터(에스프레소 퍼 하프코트)"));
+        assert!(cold.contains("무광 상의(그레이 셔링 탑)"));
+        assert_eq!(
+            cold.replacen(&glam_texture_pair_task(&pair), "", 1),
+            without(8.0).1
+        );
+        assert_eq!(with(19.6), without(19.6));
+        // 다른 무드에는 재료가 있어도 들어가지 않는다.
+        assert_eq!(
+            prompts_pair(
+                Some(StyleGenre::Edgy),
+                8.0,
+                true,
+                false,
+                &[],
+                Some(pair.clone())
+            ),
+            prompts_pair(Some(StyleGenre::Edgy), 8.0, true, false, &[], None)
+        );
+    }
+
+    /// 로맨틱은 원칙·다른 문장은 그대로 두고 톤 대비 지시 한 줄만 더한다. 기온과 무관하다.
+    #[test]
+    fn romantic_adds_only_the_tone_contrast_task() {
+        for t in [19.6, 8.0] {
+            let (base_sys, base_user) = prompts_at(None, t);
+            let (sys, user) = prompts_at(Some(StyleGenre::Romantic), t);
+            assert_eq!(sys, base_sys);
+            assert!(user.contains(ROMANTIC_TASKS));
+            assert_eq!(user.replacen(ROMANTIC_TASKS, "", 1), base_user);
+        }
     }
 
     /// 엣지의 색 다양성 문장은 기본으로 들어가고, 밝은색 비선호 사용자에게는 빠진다. 형태·

@@ -351,6 +351,12 @@ async fn get_multi_recommendation(
     } else {
         shortlist.to_grouped()
     };
+    if mood == Some(StyleGenre::Glam) {
+        grouped.texture_pair = shortlist.glam_texture_pair();
+        if let Some(p) = &grouped.texture_pair {
+            tracing::info!(outers = ?p.outers, tops = ?p.tops, "글램 소재 대비 재료");
+        }
+    }
     if palette {
         grouped.colour_items = shortlist.colour_items();
         tracing::info!(colour_items = ?grouped.colour_items, "무드 색 다양성 후보");
@@ -1790,6 +1796,7 @@ fn build_grouped_clothes(clothes: &[Clothing]) -> prompts::GroupedClothes {
             .map(fmt)
             .collect(),
         colour_items: Vec::new(),
+        texture_pair: None,
     }
 }
 

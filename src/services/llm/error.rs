@@ -28,12 +28,15 @@ pub enum LlmError {
     #[error("타임아웃 ({0}초)")]
     Timeout(u64),
 
-    /// non-2xx 응답.
-    #[error("{provider} API 오류 ({status}): {body}")]
+    /// non-2xx 응답. `body` 는 사람이 읽을 요약(잘린 원문)이고, 구조화할 수 있는 값은
+    /// `detail` 에 따로 둔다 — 요약을 자르면서 request ID·차단 단계가 사라지지 않게.
+    #[error("{provider} API 오류 ({status}){detail}: {body}")]
     Status {
         provider: ProviderId,
         status: u16,
         body: String,
+        /// 박스로 둔다 — 모든 `Result<_, LlmError>` 의 크기를 키우지 않게.
+        detail: Box<ApiErrorDetail>,
     },
 
     /// 응답 형식이 예상과 다름 (JSON 파싱 실패, 필드 누락 등).
@@ -45,7 +48,65 @@ pub enum LlmError {
     Refusal { category: String },
 }
 
+/// 오류 응답에서 꺼낸 값. 전부 선택 항목이다 — provider 가 주지 않으면 `None` 이다.
+/// 요청 본문(프롬프트)이나 API 키는 담지 않는다.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ApiErrorDetail {
+    /// `error.code` (예: `moderation_blocked`).
+    pub code: Option<String>,
+    /// `error.type` (예: `image_generation_user_error`).
+    pub kind: Option<String>,
+    /// 지원 문의에 쓰는 요청 ID. 응답 헤더 `x-request-id`, 없으면 메시지 안의 `req_…`.
+    pub request_id: Option<String>,
+    /// `error.moderation_details` — `moderation_blocked` 일 때만, 그것도 선택적으로 온다.
+    pub moderation: Option<ModerationDetails>,
+}
+
+/// 안전 검사 차단의 대략적인 정보(공식 문서: 내부 분류기 점수가 아닌 디버깅용 맥락).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ModerationDetails {
+    /// `input`·`output`·`unknown`. 값이 없으면 `None` — 단계를 모르는 것이다.
+    pub stage: Option<String>,
+    /// `sexual`·`violence` 같은 대략적인 분류.
+    pub categories: Vec<String>,
+}
+
+impl std::fmt::Display for ApiErrorDetail {
+    /// 로그 한 줄에 붙는 꼬리표. 값이 없으면 아무것도 쓰지 않는다.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(code) = &self.code {
+            write!(f, " code={code}")?;
+        }
+        if let Some(id) = &self.request_id {
+            write!(f, " request_id={id}")?;
+        }
+        if let Some(m) = &self.moderation {
+            write!(
+                f,
+                " moderation_stage={} categories=[{}]",
+                m.stage.as_deref().unwrap_or("unknown"),
+                m.categories.join(",")
+            )?;
+        }
+        Ok(())
+    }
+}
+
 impl LlmError {
+    /// 안전 검사에 막힌 요청인가(`error.code == "moderation_blocked"`). 같은 요청을 다시 보내도
+    /// 결과가 같을 가능성이 높아 재시도하지 않는다.
+    pub fn is_moderation_blocked(&self) -> bool {
+        matches!(self, LlmError::Status { detail, .. } if detail.code.as_deref() == Some("moderation_blocked"))
+    }
+
+    /// 구조화된 오류 정보. `Status` 가 아니면 `None`.
+    pub fn api_detail(&self) -> Option<&ApiErrorDetail> {
+        match self {
+            LlmError::Status { detail, .. } => Some(detail.as_ref()),
+            _ => None,
+        }
+    }
+
     /// 같은 요청을 그대로 다시 보내볼 가치가 있는가.
     ///
     /// 4xx는 요청 자체가 잘못된 것이므로 재시도해도 같은 결과다. 단 429(rate limit)와
@@ -77,6 +138,7 @@ mod tests {
             provider: ProviderId::OpenAi,
             status: 400,
             body: "bad request".into(),
+            detail: Default::default(),
         };
         assert!(!e.is_retryable());
     }
@@ -88,6 +150,7 @@ mod tests {
                 provider: ProviderId::OpenAi,
                 status,
                 body: String::new(),
+                detail: Default::default(),
             };
             assert!(e.is_retryable(), "status {status} should be retryable");
         }

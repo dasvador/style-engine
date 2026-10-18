@@ -875,6 +875,85 @@ struct ImageRequest {
 #[derive(Debug, Serialize)]
 struct ImageResponse {
     image_url: Option<String>,
+    /// 이미지의 종류. 착용 사진(`model`)과 인물 없는 의류 배치(`flat_lay`)를 화면이 구분해 표시한다.
+    /// 이미지가 없으면 없다.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    presentation: Option<ImagePresentation>,
+    /// 이미지를 주지 못한 이유. 사용자에게 보일 일반적인 구분만 담는다 — 차단 단계·분류 같은
+    /// 세부는 서버 로그에만 남긴다. 이미지가 있거나 일시적인 실패면 없다.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    unavailable_reason: Option<ImageUnavailable>,
+}
+
+impl ImageResponse {
+    fn ready(path: String) -> Self {
+        Self {
+            image_url: Some(path),
+            presentation: Some(ImagePresentation::Model),
+            unavailable_reason: None,
+        }
+    }
+
+    fn flat_lay(path: String) -> Self {
+        Self {
+            image_url: Some(path),
+            presentation: Some(ImagePresentation::FlatLay),
+            unavailable_reason: None,
+        }
+    }
+
+    fn none(reason: Option<ImageUnavailable>) -> Self {
+        Self {
+            image_url: None,
+            presentation: None,
+            unavailable_reason: reason,
+        }
+    }
+}
+
+/// 이미지 종류(`outfit_image.presentation` 과 같은 값).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ImagePresentation {
+    /// 여성 모델이 착장을 입은 사진(성별 검증을 거친다).
+    Model,
+    /// 인물 없이 옷만 평평하게 놓은 의류 배치 사진. 착용 사진이 안전 검사에 막혔을 때만 만든다.
+    FlatLay,
+}
+
+impl ImagePresentation {
+    fn as_str(self) -> &'static str {
+        match self {
+            ImagePresentation::Model => "model",
+            ImagePresentation::FlatLay => "flat_lay",
+        }
+    }
+}
+
+/// 이미지를 주지 못한 이유(응답에 실리는 값).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ImageUnavailable {
+    /// 이미지 생성 안전 검사에 막혔다. 같은 코디는 다시 생성하지 않는다(코디를 바꾸면 새로 요청).
+    Safety,
+    /// 생성한 이미지가 검수(여성 모델)를 통과하지 못했다.
+    Verification,
+    /// 이미지 예산이 소진됐다.
+    Budget,
+}
+
+/// 이미지 생성 안전 검사의 엄격도. `IMAGE_MODERATION=auto|low`, 기본은 low.
+///
+/// 이 기능은 성인 모델이 실제 옷을 입은 패션 룩북이다. OpenAI 의 `moderation` 은 GPT Image
+/// 생성의 공식 옵션(auto: 연령 부적합 가능성이 있는 범주를 표준으로 거른다, low: 덜 엄격)이고
+/// 금지 콘텐츠를 허용하지 않는다. 2026-10-18 실측에서 스트랩리스 튜브탑 + 사이드 슬릿 맥시 글램
+/// 룩북이 auto 에서 출력 단계(`moderation_stage=output`, sexual)로 막혔다 — 같은 옷을 입은 일상
+/// 룩북이 막히지 않게 low 를 쓴다. 통과를 보장하지는 않는다.
+fn image_moderation() -> crate::services::llm::ImageModeration {
+    std::env::var("IMAGE_MODERATION")
+        .ok()
+        .and_then(|v| crate::services::llm::ImageModeration::parse(&v))
+        .unwrap_or(crate::services::llm::ImageModeration::Low)
 }
 
 /// 이미지 캐시 키.
@@ -917,9 +996,7 @@ async fn generate_image(
     if let Some(path) =
         crate::routes::lookbook::pinned_image(&state.db, &body.items, body.mood.as_deref()).await
     {
-        return Ok(Json(ImageResponse {
-            image_url: Some(path),
-        }));
+        return Ok(Json(ImageResponse::ready(path)));
     }
 
     // DB 캐시 확인.
@@ -927,8 +1004,8 @@ async fn generate_image(
     // 캐시에는 두 종류의 결과가 들어 있다. 통과한 이미지(image_path 있음)와,
     // 통과하지 못했다는 사실(image_path 없음)이다. 후자를 남기지 않으면 검증을
     // 통과하지 못하는 착장이 요청마다 이미지를 새로 생성한다.
-    let cached: Option<(Option<String>, i32)> = sqlx::query_as(
-        "SELECT image_path, generation_attempts FROM outfit_image \
+    let cached: Option<(Option<String>, i32, String)> = sqlx::query_as(
+        "SELECT image_path, generation_attempts, CAST(verification_status AS CHAR) FROM outfit_image \
          WHERE outfit_hash = ? AND prompt_hash = ? LIMIT 1",
     )
     .bind(&outfit_hash)
@@ -939,7 +1016,7 @@ async fn generate_image(
     .flatten();
 
     let mut prior_attempts: u32 = 0;
-    if let Some((path, attempts)) = cached {
+    if let Some((path, attempts, status)) = cached {
         if let Some(path) = path {
             tracing::info!("image cache hit: {}", path);
             // 적중 횟수는 이 기능의 실제 비용을 좌우한다 — 장당 단가는 미스일 때 값이다.
@@ -952,9 +1029,17 @@ async fn generate_image(
             .bind(&prompt_hash)
             .execute(&state.db)
             .await;
-            return Ok(Json(ImageResponse {
-                image_url: Some(path),
-            }));
+            return Ok(Json(ImageResponse::ready(path)));
+        }
+        // 안전 검사에 막힌 코디다. 같은 요청(같은 옷·같은 프롬프트)은 다시 생성하지 않는다 —
+        // 차단은 재시도로 바뀌지 않고, 화면은 카드를 넘길 때마다 다시 요청한다. 옷이 바뀌면
+        // 캐시 키가 달라져 새로 요청한다.
+        if status == VerificationStatus::ModerationBlocked.as_str() {
+            tracing::info!(
+                outfit_hash = %outfit_hash,
+                "안전 검사에 막혔던 착장 — 착용 사진은 다시 만들지 않고 의류 배치로 대신한다"
+            );
+            return Ok(Json(flat_lay_fallback(&state, &body.items, genre).await));
         }
         // 통과하지 못한 이력이 있다. 몇 번이나 시도했는지 보고 더 태울지 정한다.
         prior_attempts = attempts.max(0) as u32;
@@ -964,7 +1049,9 @@ async fn generate_image(
                 attempts = prior_attempts,
                 "검증을 통과하지 못한 착장 — 재생성하지 않고 이미지 없이 응답한다"
             );
-            return Ok(Json(ImageResponse { image_url: None }));
+            return Ok(Json(ImageResponse::none(Some(
+                ImageUnavailable::Verification,
+            ))));
         }
     }
 
@@ -991,7 +1078,7 @@ async fn generate_image(
         )
         .execute(&state.db)
         .await;
-        return Ok(Json(ImageResponse { image_url: None }));
+        return Ok(Json(ImageResponse::none(Some(ImageUnavailable::Budget))));
     }
 
     // 이미지 생성 + 성별 검증.
@@ -1025,6 +1112,7 @@ async fn generate_image(
                 prompt: prompt.clone(),
                 size: "1024x1536".to_string(),
                 quality: "low".to_string(),
+                moderation: Some(image_moderation()),
             })
             .await;
         m.generate_elapsed += started.elapsed();
@@ -1032,6 +1120,25 @@ async fn generate_image(
 
         let image = match image {
             Ok(image) => image,
+            Err(e) if e.is_moderation_blocked() => {
+                // 구조화된 값만 남긴다. 프롬프트·옷 목록은 남기지 않는다(출력 단계 차단은
+                // 특정 단어가 원인이라고 말할 수 없다).
+                let d = e.api_detail().cloned().unwrap_or_default();
+                let m_d = d.moderation.clone().unwrap_or_default();
+                tracing::warn!(
+                    event = "image_moderation_blocked",
+                    genre = genre.as_str(),
+                    outfit_hash = %outfit_hash,
+                    code = d.code.as_deref().unwrap_or(""),
+                    request_id = d.request_id.as_deref().unwrap_or(""),
+                    moderation_stage = m_d.stage.as_deref().unwrap_or("unknown"),
+                    categories = %m_d.categories.join(","),
+                    moderation = image_moderation().as_str(),
+                    "이미지 생성이 안전 검사에 막혔다 — 재시도하지 않고 이미지 없이 응답한다"
+                );
+                outcome = Some((None, VerificationStatus::ModerationBlocked));
+                break;
+            }
             Err(e) => {
                 tracing::warn!("image generation failed (attempt {attempt}): {e}");
                 break;
@@ -1089,7 +1196,7 @@ async fn generate_image(
     // 생성 자체가 실패한 경우. 기존과 같이 image_url: null 을 돌려주고,
     // 프런트가 이미지 없이 룩북을 그린다.
     let Some((url, status)) = outcome else {
-        return Ok(Json(ImageResponse { image_url: None }));
+        return Ok(Json(ImageResponse::none(None)));
     };
 
     // 검증기 장애는 이 착장의 문제가 아니다. 캐시에 남기면 검증기가 회복된 뒤에도
@@ -1125,13 +1232,277 @@ async fn generate_image(
     m.record_spend(&state.db, &state.llm).await;
     m.record(&state.llm, status, genre, prior_attempts);
 
+    // 착용 사진이 막혔으면 인물 없는 의류 배치로 대신한다(별도 프롬프트·캐시·상태).
+    if status == VerificationStatus::ModerationBlocked {
+        return Ok(Json(flat_lay_fallback(&state, &body.items, genre).await));
+    }
+
     // 사진 없이 담아 둔 룩이면 이 사진을 붙인다.
     if let Some(path) = &url {
         crate::routes::lookbook::pin_image(&state.db, &body.items, body.mood.as_deref(), path)
             .await;
     }
 
-    Ok(Json(ImageResponse { image_url: url }))
+    Ok(Json(match url {
+        Some(path) => ImageResponse::ready(path),
+        None => ImageResponse::none(Some(match status {
+            VerificationStatus::ModerationBlocked => ImageUnavailable::Safety,
+            _ => ImageUnavailable::Verification,
+        })),
+    }))
+}
+
+// ─── 의류 배치(flat lay) 대체 이미지 ───
+//
+// 착용 사진이 provider 안전 검사에 막힌 착장(2026-10-18: 튜브탑 + 사이드 슬릿 맥시 글램이 출력
+// 단계에서 auto·low 모두 차단)은 같은 인물 프롬프트를 다시 보내거나 다른 모델로 돌리지 않는다.
+// 대신 내용 자체를 바꿔, 인물·신체·마네킹이 전혀 없는 의류 배치 사진을 따로 만든다(사용자 승인).
+// 인물 프롬프트(나이·성별·포즈·메이크업)와 여성 검증 루프는 쓰지 않는다. 캐시 행·상태·화면
+// 표시가 착용 사진과 구분된다(`presentation = 'flat_lay'`, `verification_status = 'not_applicable'`).
+
+/// 한 착장의 의류 배치 생성 시도 상한(일시적 오류 포함). 차단되면 1회로 끝난다.
+const FLAT_LAY_MAX_ATTEMPTS: u32 = 2;
+
+/// 착용 상태를 가리키는 문구를 뺀 옷 목록. 의류 배치에는 "팔을 넣고 여민" 같은 인물 동작이 없다.
+fn flat_lay_items(items: &str) -> String {
+    let mut out = String::with_capacity(items.len());
+    let mut rest = items;
+    while let Some(i) = rest.find("; worn") {
+        out.push_str(&rest[..i]);
+        rest = &rest[i..];
+        match rest.find(')') {
+            Some(j) => rest = &rest[j..],
+            None => {
+                rest = "";
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// 의류 배치 프롬프트. 무드와 무관하다 — 무드 연출이 옷을 바꾸거나 소품을 더하지 않게, 무드
+/// 문장을 넣지 않는다. 인물·신체 관련 지시도 없다(부정 지시 외에는 언급하지 않는다).
+fn build_flat_lay_prompt(items: &str) -> String {
+    format!(
+        "Overhead flat lay product photograph of exactly these garments and accessories, laid out \
+         flat and separately on a plain light neutral surface: {}. \
+         There is no person anywhere in the image: no body, no head, no face, no hands, no legs, no \
+         mannequin, no dress form and no hanger. Each piece is shown complete and fully visible, \
+         with its true colour, fabric texture, length, neckline, trims and construction exactly as \
+         listed. Do not add, remove or restyle anything: no extra jewellery, accessories, props, \
+         flowers, prints, logos or text. Soft even daylight, realistic fabric detail, catalogue \
+         style, nothing cropped.",
+        flat_lay_items(items)
+    )
+}
+
+/// 의류 배치 캐시 키. 옷 해시는 착용 사진과 같고, 프롬프트 해시는 의류 배치 프롬프트의 것이다 —
+/// 같은 착장의 착용 사진 행(차단 기록)과 다른 행이 된다.
+fn flat_lay_cache_keys(items: &str) -> (String, String, String) {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut h = DefaultHasher::new();
+    items.hash(&mut h);
+    let outfit_hash = format!("{:016x}", h.finish());
+    let prompt = build_flat_lay_prompt(items);
+    let mut ph = DefaultHasher::new();
+    "flat_lay:v1".hash(&mut ph);
+    prompt.hash(&mut ph);
+    (outfit_hash, format!("{:016x}", ph.finish()), prompt)
+}
+
+/// 캐시된 의류 배치 기록을 보고 다음에 할 일을 정한다.
+#[derive(Debug, PartialEq, Eq)]
+enum FlatLayStep {
+    /// 이미 만든 의류 배치 사진을 보여 준다.
+    Serve(String),
+    /// 새로 만든다. 앞선 시도 횟수를 넘긴다.
+    Generate { prior_attempts: u32 },
+    /// 더 만들지 않는다(차단됐거나 시도 상한에 닿았다). 일반 안내만 보인다.
+    GiveUp,
+}
+
+fn flat_lay_step(cached: Option<(Option<&str>, &str, i32)>) -> FlatLayStep {
+    let Some((path, status, attempts)) = cached else {
+        return FlatLayStep::Generate { prior_attempts: 0 };
+    };
+    if let Some(path) = path {
+        return FlatLayStep::Serve(path.to_string());
+    }
+    let attempts = attempts.max(0) as u32;
+    if status == VerificationStatus::GenerationError.as_str() && attempts < FLAT_LAY_MAX_ATTEMPTS {
+        return FlatLayStep::Generate {
+            prior_attempts: attempts,
+        };
+    }
+    FlatLayStep::GiveUp
+}
+
+/// 생성 결과의 상태. 차단은 영구(`moderation_blocked`), 그 밖의 오류는 일시적(`generation_error`).
+fn flat_lay_status<T>(result: &Result<T, crate::services::llm::LlmError>) -> VerificationStatus {
+    match result {
+        Ok(_) => VerificationStatus::NotApplicable,
+        Err(e) if e.is_moderation_blocked() => VerificationStatus::ModerationBlocked,
+        Err(_) => VerificationStatus::GenerationError,
+    }
+}
+
+/// 같은 착장의 의류 배치를 동시에 두 번 만들지 않게 키마다 잠근다. 잠금을 얻은 뒤 캐시를 다시 본다.
+fn flat_lay_lock(key: &str) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    static LOCKS: OnceLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> = OnceLock::new();
+    let mut map = LOCKS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    // 끝난 잠금은 치운다 — 이 맵이 착장 수만큼 자라지 않게.
+    map.retain(|_, v| Arc::strong_count(v) > 1);
+    map.entry(key.to_string())
+        .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+        .clone()
+}
+
+/// 착용 사진이 막힌 착장의 의류 배치 사진. 막히거나 상한에 닿으면 이미지 없이 일반 안내만 준다.
+async fn flat_lay_fallback(state: &AppState, items: &str, genre: StyleGenre) -> ImageResponse {
+    let (outfit_hash, prompt_hash, prompt) = flat_lay_cache_keys(items);
+    let lock = flat_lay_lock(&format!("{outfit_hash}:{prompt_hash}"));
+    let _guard = lock.lock().await;
+
+    let cached: Option<(Option<String>, String, i32)> = sqlx::query_as(
+        "SELECT image_path, CAST(verification_status AS CHAR), generation_attempts \
+         FROM outfit_image WHERE outfit_hash = ? AND prompt_hash = ? LIMIT 1",
+    )
+    .bind(&outfit_hash)
+    .bind(&prompt_hash)
+    .fetch_optional(&state.db)
+    .await
+    .ok()
+    .flatten();
+    let step = flat_lay_step(
+        cached
+            .as_ref()
+            .map(|(p, s, a)| (p.as_deref(), s.as_str(), *a)),
+    );
+    let prior_attempts = match step {
+        FlatLayStep::Serve(path) => return ImageResponse::flat_lay(path),
+        FlatLayStep::GiveUp => {
+            tracing::info!(outfit_hash = %outfit_hash, "의류 배치도 만들 수 없는 착장 — 이미지 없이 응답한다");
+            return ImageResponse::none(Some(ImageUnavailable::Safety));
+        }
+        FlatLayStep::Generate { prior_attempts } => prior_attempts,
+    };
+
+    let daily_budget = budget_from_env("IMAGE_DAILY_BUDGET_USD", DEFAULT_DAILY_BUDGET_USD);
+    let monthly_budget = budget_from_env("IMAGE_MONTHLY_BUDGET_USD", DEFAULT_MONTHLY_BUDGET_USD);
+    if BUDGET_ENFORCED
+        && !budget_allows_image(&image_spend(&state.db).await, daily_budget, monthly_budget)
+    {
+        return ImageResponse::none(Some(ImageUnavailable::Budget));
+    }
+
+    let mut m = ImageGenMetrics::default();
+    let started = std::time::Instant::now();
+    let result = state
+        .llm
+        .generate_image(&LlmImageRequest {
+            prompt: prompt.clone(),
+            size: "1024x1536".to_string(),
+            quality: "low".to_string(),
+            moderation: Some(image_moderation()),
+        })
+        .await;
+    m.generate_elapsed += started.elapsed();
+    m.generate_calls += 1;
+    let status = flat_lay_status(&result);
+
+    let path = match &result {
+        Ok(image) => {
+            m.generate_usage.input_tokens += image.usage.input_tokens;
+            m.generate_usage.output_tokens += image.usage.output_tokens;
+            use base64::Engine;
+            match base64::engine::general_purpose::STANDARD.decode(image.b64_png.as_str()) {
+                Ok(bytes) => {
+                    let filename = format!("{}.png", uuid::Uuid::new_v4());
+                    let path = format!("static/images/{filename}");
+                    match std::fs::write(&path, &bytes) {
+                        Ok(()) => Some(format!("/static/images/{filename}")),
+                        Err(e) => {
+                            tracing::warn!("의류 배치 저장 실패: {e}");
+                            None
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("의류 배치 디코드 실패: {e}");
+                    None
+                }
+            }
+        }
+        Err(e) => {
+            let d = e.api_detail().cloned().unwrap_or_default();
+            let md = d.moderation.clone().unwrap_or_default();
+            tracing::warn!(
+                event = "flat_lay_failed",
+                genre = genre.as_str(),
+                outfit_hash = %outfit_hash,
+                status = status.as_str(),
+                code = d.code.as_deref().unwrap_or(""),
+                request_id = d.request_id.as_deref().unwrap_or(""),
+                moderation_stage = md.stage.as_deref().unwrap_or("unknown"),
+                categories = %md.categories.join(","),
+                "의류 배치 생성 실패"
+            );
+            None
+        }
+    };
+    // 저장에 실패한 성공 응답은 일시적 오류로 남긴다.
+    let status = if status == VerificationStatus::NotApplicable && path.is_none() {
+        VerificationStatus::GenerationError
+    } else {
+        status
+    };
+
+    let _ = sqlx::query(
+        "INSERT INTO outfit_image \
+         (id, outfit_hash, prompt_hash, image_path, prompt_text, mood, verification_status, generation_attempts, presentation) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'flat_lay') AS new \
+         ON DUPLICATE KEY UPDATE \
+           image_path = new.image_path, \
+           verification_status = new.verification_status, \
+           generation_attempts = outfit_image.generation_attempts + new.generation_attempts",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(&outfit_hash)
+    .bind(&prompt_hash)
+    .bind(&path)
+    .bind(
+        prompt
+            .char_indices()
+            .nth(500)
+            .map_or(&prompt[..], |(i, _)| &prompt[..i]),
+    )
+    .bind(genre.as_str())
+    .bind(status.as_str())
+    .bind(m.generate_calls)
+    .execute(&state.db)
+    .await;
+
+    m.record_spend(&state.db, &state.llm).await;
+    m.record(&state.llm, status, genre, prior_attempts);
+    tracing::info!(
+        event = "flat_lay",
+        presentation = ImagePresentation::FlatLay.as_str(),
+        status = status.as_str(),
+        outfit_hash = %outfit_hash,
+        "의류 배치 결과"
+    );
+
+    match path {
+        Some(p) => ImageResponse::flat_lay(p),
+        None => ImageResponse::none(Some(ImageUnavailable::Safety)),
+    }
 }
 
 /// 편집 입력 이미지 토큰의 단가 차이 (이미지 $8 − 단가표의 텍스트 $5, 100만 토큰당).
@@ -2783,6 +3154,12 @@ enum VerificationStatus {
     Rejected,
     /// 검증기를 부를 수 없었다. 검증하지 못한 이미지도 내보내지 않는다.
     CheckError,
+    /// 이미지 생성이 provider 안전 검사에 막혔다. 이미지가 없다.
+    ModerationBlocked,
+    /// 성별 검증 대상이 아니다 — 인물이 없는 의류 배치 사진이다. `passed` 로 적지 않는다.
+    NotApplicable,
+    /// 생성 API 의 일시적 오류(의류 배치에서만 남긴다). 영구 차단이 아니라 상한 안에서 다시 시도한다.
+    GenerationError,
 }
 
 impl VerificationStatus {
@@ -2791,6 +3168,9 @@ impl VerificationStatus {
             VerificationStatus::Passed => "passed",
             VerificationStatus::Rejected => "rejected",
             VerificationStatus::CheckError => "check_error",
+            VerificationStatus::ModerationBlocked => "moderation_blocked",
+            VerificationStatus::NotApplicable => "not_applicable",
+            VerificationStatus::GenerationError => "generation_error",
         }
     }
 }
@@ -4861,6 +5241,142 @@ mod tests {
         ] {
             assert!(best_fit_swap(&only_puffer, &kept, mood, t).is_some());
         }
+    }
+
+    /// 이미지 응답: 사진이 있으면 사유를 싣지 않고, 없으면 일반적인 사유 코드만 싣는다.
+    /// 일시적 실패(사유 없음)는 예전 응답과 같은 모양이다. 차단 상태 문자열은 DB ENUM 과 같다.
+    #[test]
+    fn image_responses_carry_only_a_generic_reason() {
+        let j = |r: ImageResponse| serde_json::to_value(r).unwrap();
+        assert_eq!(
+            j(ImageResponse::ready("/static/images/a.png".into())),
+            serde_json::json!({"image_url": "/static/images/a.png", "presentation": "model"})
+        );
+        assert_eq!(
+            j(ImageResponse::none(None)),
+            serde_json::json!({"image_url": null})
+        );
+        assert_eq!(
+            j(ImageResponse::none(Some(ImageUnavailable::Safety))),
+            serde_json::json!({"image_url": null, "unavailable_reason": "safety"})
+        );
+        assert_eq!(
+            VerificationStatus::ModerationBlocked.as_str(),
+            "moderation_blocked"
+        );
+        let migration =
+            include_str!("../../migrations/20261018000001_outfit_image_moderation_blocked.sql");
+        assert!(migration.contains("'moderation_blocked'"));
+    }
+
+    /// 의류 배치의 상태 전이 — 외부 요청 없이 본다.
+    /// - 기록 없음 → 생성. 만든 사진 → 그대로 보여 줌.
+    /// - 차단(`moderation_blocked`) → 다시 만들지 않음. 일시 오류 → 상한 전까지만 다시 시도.
+    /// - 생성 결과: 성공은 `not_applicable`(성별 검증을 하지 않으므로 passed 가 아니다),
+    ///   차단은 영구, 그 밖의 오류는 일시적이다.
+    #[test]
+    fn flat_lay_state_transitions() {
+        assert_eq!(
+            flat_lay_step(None),
+            FlatLayStep::Generate { prior_attempts: 0 }
+        );
+        assert_eq!(
+            flat_lay_step(Some((Some("/static/images/a.png"), "not_applicable", 1))),
+            FlatLayStep::Serve("/static/images/a.png".into())
+        );
+        assert_eq!(
+            flat_lay_step(Some((None, "moderation_blocked", 1))),
+            FlatLayStep::GiveUp
+        );
+        assert_eq!(
+            flat_lay_step(Some((None, "generation_error", 1))),
+            FlatLayStep::Generate { prior_attempts: 1 }
+        );
+        assert_eq!(
+            flat_lay_step(Some((
+                None,
+                "generation_error",
+                FLAT_LAY_MAX_ATTEMPTS as i32
+            ))),
+            FlatLayStep::GiveUp
+        );
+
+        use crate::services::llm::LlmError;
+        let blocked = r#"{"error":{"message":"rejected","type":"image_generation_user_error","code":"moderation_blocked","moderation_details":{"moderation_stage":"output","categories":["sexual"]}}}"#;
+        let moderation: Result<(), LlmError> = Err(
+            crate::services::llm::openai_status_error_for_tests(400, blocked),
+        );
+        assert_eq!(
+            flat_lay_status(&moderation),
+            VerificationStatus::ModerationBlocked
+        );
+        let timeout: Result<(), LlmError> = Err(LlmError::Timeout(60));
+        assert_eq!(
+            flat_lay_status(&timeout),
+            VerificationStatus::GenerationError
+        );
+        let server: Result<(), LlmError> = Err(
+            crate::services::llm::openai_status_error_for_tests(503, "upstream"),
+        );
+        assert_eq!(
+            flat_lay_status(&server),
+            VerificationStatus::GenerationError
+        );
+        assert_eq!(flat_lay_status(&Ok(())), VerificationStatus::NotApplicable);
+        assert_ne!(VerificationStatus::NotApplicable.as_str(), "passed");
+        let migration = include_str!("../../migrations/20261018000002_outfit_image_flat_lay.sql");
+        for v in ["'flat_lay'", "'not_applicable'", "'generation_error'"] {
+            assert!(migration.contains(v), "{v}");
+        }
+    }
+
+    /// 의류 배치 프롬프트: 인물 프롬프트의 문장(나이·성별·포즈·메이크업·표정)이 없고, 착용 동작
+    /// 문구를 뺀 옷 목록이 그대로 들어간다. 무드와 무관하다. 캐시 키는 옷 해시는 같고 프롬프트
+    /// 해시는 착용 사진과 다르다 — 같은 착장의 차단 기록과 다른 행이 된다.
+    #[test]
+    fn flat_lay_prompt_has_no_person_and_its_own_cache_key() {
+        let items = "top/inner: 그레이 셔링 튜브탑 (jersey, ruched mesh over an opaque lining), \
+                     pants: 블랙 맥시스커트 (matte jersey, ankle-length), \
+                     outerwear: 에스프레소 퍼 하프코트 (plush faux fur; worn closed with its own fastening, arms in the sleeves), \
+                     shoes: 블랙 앵클부츠 (leather), bag: 블랙 클러치 (satin)";
+        let p = build_flat_lay_prompt(items);
+        for w in [
+            "woman",
+            "female",
+            "twenties",
+            "makeup",
+            "pose",
+            "expression",
+            "hairstyle",
+            "smile",
+            "arms in the sleeves",
+            "worn closed",
+            "She ",
+        ] {
+            assert!(!p.contains(w), "{w}");
+        }
+        for w in [
+            "그레이 셔링 튜브탑 (jersey, ruched mesh over an opaque lining)",
+            "에스프레소 퍼 하프코트 (plush faux fur)",
+            "블랙 클러치 (satin)",
+            "no mannequin",
+            "no person",
+        ] {
+            assert!(p.contains(w), "{w}");
+        }
+        let (flat_outfit, flat_prompt, _) = flat_lay_cache_keys(items);
+        for g in [StyleGenre::Glam, StyleGenre::Edgy] {
+            let (model_outfit, model_prompt, _, _) = image_cache_keys(items, g);
+            assert_eq!(flat_outfit, model_outfit);
+            assert_ne!(flat_prompt, model_prompt);
+        }
+        // 무드가 달라도 같은 의류 배치다(무드 연출이 옷을 바꾸지 않는다).
+        assert_eq!(flat_lay_cache_keys(items), flat_lay_cache_keys(items));
+        // 응답에 종류가 실린다.
+        assert_eq!(
+            serde_json::to_value(ImageResponse::flat_lay("/static/images/f.png".into())).unwrap(),
+            serde_json::json!({"image_url": "/static/images/f.png", "presentation": "flat_lay"})
+        );
     }
 
     const POP_ITEMS: &str = "top/inner: 코발트 블루 크롭 니트 (soft cotton-blend knit, cropped length, crew neck, long sleeves), \

@@ -231,6 +231,7 @@ impl ChatProvider for AnthropicProvider {
                 provider: ProviderId::Anthropic,
                 status: status.as_u16(),
                 body: truncate(&text, 500),
+                detail: Default::default(),
             });
         }
 

@@ -245,3 +245,36 @@ fn pop_rollback_targets_exactly_the_seeded_existing_items() {
         }
     }
 }
+
+/// 착장 폭 시드(`editorial.sql`)는 무드 칩을 만들지 않고, 롤백은 시드가 태그를 붙인 기존 옷만
+/// 지운다 — 두 파일의 기존 옷 목록이 같고, 장르 태그 전체를 지우는 문장이 없다.
+#[test]
+fn editorial_rollback_targets_exactly_the_seeded_existing_items() {
+    let seed = include_str!("../seeds/demo/editorial.sql");
+    let rollback = include_str!("../seeds/demo/editorial_rollback.sql");
+    assert!(!seed.contains("INSERT INTO style_mood"));
+    let tag_block = &seed[seed
+        .find("INSERT IGNORE INTO clothing_style_genre")
+        .expect("태그 블록")..];
+    let mut seeded: Vec<String> = clothing_ids(tag_block)
+        .into_iter()
+        .filter(|id| !id.starts_with("0ffd1000"))
+        .collect();
+    let mut rolled: Vec<String> = clothing_ids(rollback)
+        .into_iter()
+        .filter(|id| !id.starts_with("0ffd1000"))
+        .collect();
+    seeded.sort();
+    rolled.sort();
+    assert!(!seeded.is_empty());
+    assert_eq!(seeded, rolled);
+    for stmt in rollback.split(';') {
+        let s = stmt.to_lowercase();
+        if s.contains("style_genre =") {
+            assert!(
+                s.contains("source = 'seed'") && s.contains("clothing_id ="),
+                "{stmt}"
+            );
+        }
+    }
+}

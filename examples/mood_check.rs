@@ -200,6 +200,19 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     }
+    // shadow 비교용: `MOOD_CHECK_DUMP=파일` 이면 모든 조합(점수·무드·감점·옷)을 TSV 로 남긴다.
+    if let Ok(path) = std::env::var("MOOD_CHECK_DUMP") {
+        let mut out = String::new();
+        for (score, reads, codes, v) in &rows {
+            let names: Vec<&str> = v.iter().map(|i| i.c.name.as_str()).collect();
+            out.push_str(&format!(
+                "{score}\t{reads}\t{}\t{}\n",
+                codes.join(" "),
+                names.join(" / ")
+            ));
+        }
+        std::fs::write(path, out)?;
+    }
     rows.sort_by_key(|r| std::cmp::Reverse(r.0));
     let reading = rows.iter().filter(|r| r.1).count();
     println!(

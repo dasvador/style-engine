@@ -32,16 +32,29 @@ export function OutfitImage({ items, mood, baseItems }: Props) {
             className="caption"
             style={{ padding: "20px 0", textAlign: "center" }}
           >
-            이미지를 불러올 수 없습니다
+            {state.reason === "safety"
+              ? "이 코디는 사진으로 만들 수 없었어요. 추천은 그대로 참고해 주세요."
+              : "이미지를 불러올 수 없습니다"}
           </div>
         )}
-        {state.status === "ready" && <img src={state.url} alt="추천 착장" />}
+        {state.status === "ready" && (
+          <img
+            src={state.url}
+            alt={state.presentation === "flat_lay" ? "추천 코디의 의류 배치" : "추천 착장"}
+          />
+        )}
       </div>
       {/* 룩북은 남성 장르를 골라도 여성 모델로 그려진다. 이건 제약이 아니라 이
           기능의 의도라서, 결과만 내놓지 말고 무엇을 하고 있는지 한 줄로 밝힌다.
           (프롬프트 쪽 설명은 src/routes/chat.rs :: build_image_prompt) */}
       {/* 이미지가 뜬 뒤에만 보여준다. 생성 중에 먼저 뜨면 설명만 떠 있는 것처럼 보인다. */}
-      {state.status === "ready" && (
+      {/* 착용 사진이 막혀 대신 만든 의류 배치는 착용 사진과 구분해 표시한다. */}
+      {state.status === "ready" && state.presentation === "flat_lay" && (
+        <p className="lookbook-img-note">
+          의류 배치 이미지 — 이 코디는 착용 사진을 만들 수 없어 옷만 펼쳐 보여 드려요.
+        </p>
+      )}
+      {state.status === "ready" && state.presentation !== "flat_lay" && (
         <p className="lookbook-img-note">
           남성복과 여성복의 경계를 두지 않고, 선택한 아이템을 여성 모델의 새로운
           룩으로 구성합니다.
