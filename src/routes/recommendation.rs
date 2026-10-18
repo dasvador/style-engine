@@ -294,8 +294,16 @@ async fn get_multi_recommendation(
         tracing::info!(dropped, "팝: 온화한 날 겨울 외투 제외");
     }
 
-    let recent_hint = build_recent_hint(&state.db, &clothes, user_id).await;
+    let mut recent_hint = build_recent_hint(&state.db, &clothes, user_id).await;
     let current_season = current_season_label();
+    // 엣지: 화면에 실제로 보인 카드(`avoid_outfits`)의 룩. 이력에는 대표 카드만 남아 다른
+    // 카드로 노출된 하의·배색은 반복으로 잡히지 않았다(2026-10-18 사용자: "늘 블랙 상의 + 차콜
+    // 하의"). 후보 지시와 선택에 쓴다. 다른 무드는 그대로다.
+    let shown = if mood == Some(StyleGenre::Edgy) {
+        shown_looks(&body.avoid_outfits, &clothes, weather.temperature)
+    } else {
+        Vec::new()
+    };
     let feedback = load_feedback(&state.db, user_id).await;
 
     // 최근 추천 아이템 ID 수집 (shortlist recency penalty용)
@@ -335,6 +343,11 @@ async fn get_multi_recommendation(
     // 색 계열을 남기고 후보 지시의 원칙 5 를 장르의 색 조합으로 바꾼다
     // (`services::mood_palette`). 밝은색을 싫어한다고 적은 사용자에게는 켜지 않는다.
     let dislikes_bright = dislikes_bright_colors(&state.db, user_id).await;
+    // 엣지 최근 화면 반복 지시. 밝은색을 싫어한다고 적은 사용자에게는 색을 권하지 않는다.
+    if let Some(note) = crate::services::look_signature::repetition_note(&shown, !dislikes_bright) {
+        tracing::info!(note = %note.trim_end(), "엣지 최근 화면 반복 지시");
+        recent_hint.push_str(&note);
+    }
     let palette =
         crate::services::mood_palette::enabled(body.gender.as_deref(), mood, dislikes_bright);
     if crate::services::mood_palette::targets(body.gender.as_deref(), mood) {
@@ -412,16 +425,8 @@ async fn get_multi_recommendation(
 
     // style_engine 점수 + 이력 penalty/bonus 계산. 모델 응답의 id 는 모델에게 보여 준 후보
     // 목록(슬롯별 shortlist) 안에서만 연결한다 — 무드 옷장 전체로 넓히지 않는다.
-    let offered = crate::services::item_resolution::OfferedItems::from_clothes(
-        shortlist
-            .tops
-            .iter()
-            .chain(&shortlist.bottoms)
-            .chain(&shortlist.outers)
-            .chain(&shortlist.shoes)
-            .chain(&shortlist.bags)
-            .copied(),
-    );
+    // 이름 충돌은 무드 옷장 전체로 알아본다(고르는 범위는 그대로 shortlist).
+    let offered = shortlist.offered_items().with_known(&clothes);
     let mut scored_candidates = Vec::new();
     for (i, ai_c) in ai_candidates.candidates.iter().enumerate() {
         if let Some(oc) = build_outfit_candidate(
@@ -460,13 +465,45 @@ async fn get_multi_recommendation(
         tracing::info!(added = ?supplemented, "후보를 옷장 안에서 보완했다");
     }
 
-    let reranked = recommendation_service::rerank_candidates_with_history(
+    let mut reranked = recommendation_service::rerank_candidates_with_history(
         &state.db,
         user_id,
         scored_candidates,
     )
     .await
     .unwrap_or_default();
+
+    // 엣지: 최근 보인 카드와 같아 보이는 후보(같은 배색·하의 형태, 같은 하의)에 노출 반복 감점.
+    // 상한이 있어 품질이 크게 낮은 후보가 오르지 않고, 모든 후보가 같은 처지면 순위는 그대로다.
+    if !shown.is_empty() {
+        for c in &mut reranked {
+            let items = candidate_items(c, &clothes);
+            let by = |cat: &str| items.iter().copied().find(|i| i.category == cat);
+            let (Some(sig), Some(bottom)) = (
+                crate::services::look_signature::signature(
+                    by("상의"),
+                    by("하의"),
+                    by("아우터"),
+                    Some(weather.temperature),
+                ),
+                by("하의"),
+            ) else {
+                continue;
+            };
+            let p = crate::services::look_signature::shown_look_penalty(&sig, &bottom.id, &shown);
+            if p > 0 {
+                c.final_score -= p;
+                c.recency_penalty += p;
+                tracing::info!(
+                    idx = c.ai_candidate_index,
+                    penalty = p,
+                    look = %sig.label(),
+                    "엣지 노출 반복 감점"
+                );
+            }
+        }
+        reranked.sort_by_key(|c| std::cmp::Reverse(c.final_score));
+    }
 
     // 이미 보여 준 코디와 거의 같은 후보를 뺀다. 무드를 바꿔 요청해도 같은 코디가 다시
     // 나오던 문제 — 화면이 무드마다 따로 요청해서 서버는 앞서 보여 준 것을 몰랐다.
@@ -1698,6 +1735,38 @@ async fn select_best_bag(
 }
 
 // ─── Utilities ───
+
+/// 요청의 `avoid_outfits`(화면에 보인 카드의 아이템 id, 오래된 것부터)를 룩으로 복원한다.
+/// 이 옷장에 없는 id(다른 무드의 옷)는 무시하고, 하의가 없는 카드는 건너뛴다.
+fn shown_looks(
+    avoid: &[Vec<String>],
+    clothes: &[Clothing],
+    temperature: f64,
+) -> Vec<crate::services::look_signature::ShownLook> {
+    avoid
+        .iter()
+        .filter_map(|ids| {
+            let items: Vec<&Clothing> = ids
+                .iter()
+                .filter_map(|id| clothes.iter().find(|c| &c.id == id))
+                .collect();
+            let by = |cat: &str| items.iter().copied().find(|c| c.category == cat);
+            let bottom = by("하의")?;
+            let signature = crate::services::look_signature::signature(
+                by("상의"),
+                Some(bottom),
+                by("아우터"),
+                Some(temperature),
+            )?;
+            Some(crate::services::look_signature::ShownLook {
+                signature,
+                bottom_id: bottom.id.clone(),
+                bottom_name: bottom.name.clone(),
+                top_name: by("상의").map(|c| c.name.clone()),
+            })
+        })
+        .collect()
+}
 
 /// 응답 아이템의 슬롯 id. 응답 아이템은 이미 옷장 id 로 연결돼 있다.
 fn find_slot_id(outfit: &[OutfitItem], category: &str) -> Option<String> {

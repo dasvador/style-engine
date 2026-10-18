@@ -33,26 +33,96 @@ pub fn slot_of_category(category: &str) -> Option<SlotKind> {
     }
 }
 
+/// 요청 범위 참조: 슬롯 머리글자 + 목록 순번(1부터). 상의 T1, 하의 B1, 아우터 O1, 신발 S1, 가방 G1.
+///
+/// 2026-10-18 엣지 실측: 데모 시드의 무채색 원본(`0ffd0c00-…NN`)과 색 추가분(`0ffd0d00-…NN`)이
+/// 끝자리가 같아, 모델이 색 있는 옷 이름을 적고 무채색 옷의 UUID 를 베끼는 일이 6요청에 3~6번
+/// 있었다. 색 초안이 조용히 무채색 코디로 바뀌었다. 짧은 참조는 그 요청의 목록에서만 뜻이 있고
+/// 서로 헷갈릴 자릿수가 없다.
+pub fn slot_ref(slot: SlotKind, index: usize) -> String {
+    let prefix = match slot {
+        SlotKind::Top => "T",
+        SlotKind::Bottom => "B",
+        SlotKind::Outer => "O",
+        SlotKind::Shoes => "S",
+        SlotKind::Bag => "G",
+    };
+    format!("{prefix}{}", index + 1)
+}
+
 /// 이 요청에서 슬롯마다 제공한 옷. id 는 여기 안에서만 찾는다.
 #[derive(Debug, Default)]
 pub struct OfferedItems<'a> {
-    items: Vec<(SlotKind, &'a Clothing)>,
+    /// (슬롯, 요청 범위 참조, 옷). 참조는 `from_slot_lists` 로 만든 목록에만 있다.
+    items: Vec<(SlotKind, Option<String>, &'a Clothing)>,
+    /// 고를 수는 없지만 이름 충돌을 알아보는 데만 쓰는 옷(무드 옷장 전체). `with_known`.
+    known: Vec<&'a Clothing>,
 }
 
 impl<'a> OfferedItems<'a> {
-    /// 옷마다 자기 카테고리의 슬롯에 둔다. 슬롯이 없는 카테고리는 넣지 않는다.
+    /// 옷마다 자기 카테고리의 슬롯에 둔다. 슬롯이 없는 카테고리는 넣지 않는다. 실제 id 로만 찾는다.
     pub fn from_clothes<I: IntoIterator<Item = &'a Clothing>>(clothes: I) -> Self {
         Self {
             items: clothes
                 .into_iter()
-                .filter_map(|c| slot_of_category(&c.category).map(|s| (s, c)))
+                .filter_map(|c| slot_of_category(&c.category).map(|s| (s, None, c)))
                 .collect(),
+            known: Vec::new(),
         }
     }
 
-    /// id 의 아이템과 그 슬롯.
+    /// 모델에게 슬롯별 목록을 보여 준 순서 그대로 둔다. 각 옷은 `slot_ref` 참조로도, 실제 id 로도
+    /// 찾을 수 있다(서버가 만든 변형 후보는 실제 id 를 쓴다).
+    pub fn from_slot_lists(
+        tops: &[&'a Clothing],
+        bottoms: &[&'a Clothing],
+        outers: &[&'a Clothing],
+        shoes: &[&'a Clothing],
+        bags: &[&'a Clothing],
+    ) -> Self {
+        let mut items = Vec::new();
+        for (slot, list) in [
+            (SlotKind::Top, tops),
+            (SlotKind::Bottom, bottoms),
+            (SlotKind::Outer, outers),
+            (SlotKind::Shoes, shoes),
+            (SlotKind::Bag, bags),
+        ] {
+            for (i, c) in list.iter().enumerate() {
+                items.push((slot, Some(slot_ref(slot, i)), *c));
+            }
+        }
+        Self {
+            items,
+            known: Vec::new(),
+        }
+    }
+
+    /// 이름 충돌 검사 범위를 넓힌다. 이 옷들은 **고를 수 없다** — id 는 여전히 제공 목록에서만
+    /// 찾는다. 모델이 목록에 없는 옷의 이름(예: 프롬프트의 "최근 화면" 문장에 나온 옷)을 적고 다른
+    /// 옷의 참조를 붙이면, 오타가 아니라 다른 옷을 뜻한 것이므로 거절한다(2026-10-18 실측 1건:
+    /// 딥 바이올렛 니트 이름 + 블랙 하이넥 탑 참조).
+    pub fn with_known<I: IntoIterator<Item = &'a Clothing>>(mut self, clothes: I) -> Self {
+        self.known = clothes.into_iter().collect();
+        self
+    }
+
+    /// 참조 또는 id 의 아이템과 그 슬롯. 참조를 먼저 본다.
     fn find(&self, id: &str) -> Option<(SlotKind, &'a Clothing)> {
-        self.items.iter().find(|(_, c)| c.id == id).copied()
+        self.items
+            .iter()
+            .find(|(_, r, _)| r.as_deref() == Some(id))
+            .or_else(|| self.items.iter().find(|(_, _, c)| c.id == id))
+            .map(|(s, _, c)| (*s, *c))
+    }
+
+    /// 제공 목록이나 `with_known` 옷장에 이름이 정확히 같은 다른 옷이 있는가(`id` 의 옷 말고).
+    fn other_named(&self, name: &str, id: &str) -> Option<&'a Clothing> {
+        self.items
+            .iter()
+            .map(|(_, _, c)| *c)
+            .chain(self.known.iter().copied())
+            .find(|c| c.name == name && c.id != id)
     }
 }
 
@@ -71,6 +141,9 @@ pub enum Rejection {
         offered_in: SlotKind,
         claimed: SlotKind,
     },
+    /// id 가 가리키는 옷과 모델이 적은 이름이 서로 다른 두 옷이다(이름 쪽은 목록 밖 옷장 옷일 수 있다) — 어느 쪽을 골랐는지
+    /// 모른다. 이름 오타(목록 어느 옷과도 같지 않은 이름)는 여기에 들지 않는다.
+    IdNameConflict { id: String, named_id: String },
 }
 
 impl Rejection {
@@ -81,6 +154,7 @@ impl Rejection {
             Rejection::MissingId => "missing_id",
             Rejection::NotOffered { .. } => "id_not_offered",
             Rejection::SlotMismatch { .. } => "slot_mismatch",
+            Rejection::IdNameConflict { .. } => "id_name_conflict",
         }
     }
 }
@@ -149,11 +223,20 @@ pub fn resolve_item<'a>(
             offered_in: slot,
             claimed,
         }),
-        Some((slot, clothing)) => Resolution::Resolved {
-            clothing,
-            slot,
-            name_differs: !name.is_empty() && name != clothing.name,
-        },
+        Some((slot, clothing)) => {
+            let name_differs = !name.is_empty() && name != clothing.name;
+            if name_differs && let Some(other) = offered.other_named(name, &clothing.id) {
+                return Resolution::Rejected(Rejection::IdNameConflict {
+                    id: id.to_string(),
+                    named_id: other.id.clone(),
+                });
+            }
+            Resolution::Resolved {
+                clothing,
+                slot,
+                name_differs,
+            }
+        }
     }
 }
 
@@ -372,5 +455,98 @@ mod tests {
             Some("out-a")
         );
         assert!(resolve_id_or_legacy(None, "블랙 리브드 슬림 니트", &w).is_none());
+    }
+
+    /// 2026-10-18 실측 꼴: 색 있는 옷의 이름 + 무채색 짝의 id. 둘 다 목록에 있으면 어느 쪽인지
+    /// 모르므로 거절한다(무채색으로 조용히 바꾸지 않는다). 목록에 없는 이름이면 오타로 보고 id 를 쓴다.
+    #[test]
+    fn an_id_that_names_another_listed_item_is_a_conflict() {
+        let w = vec![
+            item("0ffd0c00-01", "차콜 비대칭 헴 저지 롱슬리브", "상의"),
+            item("0ffd0d00-01", "체리 레드 사선 헴 보트넥 저지 탑", "상의"),
+        ];
+        let offered = OfferedItems::from_clothes(&w);
+        assert_eq!(
+            resolve_item(
+                "상의",
+                Some("0ffd0c00-01"),
+                "체리 레드 사선 헴 보트넥 저지 탑",
+                &offered
+            ),
+            Resolution::Rejected(Rejection::IdNameConflict {
+                id: "0ffd0c00-01".into(),
+                named_id: "0ffd0d00-01".into(),
+            })
+        );
+        assert!(matches!(
+            resolve_item(
+                "상의",
+                Some("0ffd0c00-01"),
+                "차콜 비대칭 헴 저지 롱 슬리브",
+                &offered
+            ),
+            Resolution::Resolved {
+                name_differs: true,
+                ..
+            }
+        ));
+    }
+
+    /// 목록 밖 옷장 옷의 이름 + 목록 안 참조도 충돌이다. 그 옷을 고르지도 않는다.
+    #[test]
+    fn a_known_but_unoffered_name_is_a_conflict_not_a_choice() {
+        let w = wardrobe();
+        let tops = [&w[0]];
+        let offered = OfferedItems::from_slot_lists(&tops, &[], &[], &[], &[]).with_known(&w);
+        assert_eq!(
+            resolve_item("상의", Some("T1"), "그레이 니트 터틀넥 탑", &offered),
+            Resolution::Rejected(Rejection::IdNameConflict {
+                id: "T1".into(),
+                named_id: "not-offered".into(),
+            })
+        );
+        assert!(matches!(
+            resolve_item(
+                "상의",
+                Some("not-offered"),
+                "그레이 니트 터틀넥 탑",
+                &offered
+            ),
+            Resolution::Rejected(Rejection::NotOffered { .. })
+        ));
+    }
+
+    /// 짧은 참조는 그 요청의 슬롯 목록 순서대로 붙고, 다른 슬롯의 참조는 슬롯 불일치다.
+    #[test]
+    fn slot_refs_resolve_within_the_request_lists() {
+        let w = wardrobe();
+        let tops = [&w[0], &w[1]];
+        let bottoms = [&w[2]];
+        let outers = [&w[3]];
+        let offered = OfferedItems::from_slot_lists(&tops, &bottoms, &outers, &[], &[]);
+        assert_eq!(slot_ref(SlotKind::Outer, 0), "O1");
+        for (cat, r, id) in [
+            ("상의", "T2", "top-b"),
+            ("하의", "B1", "bot-a"),
+            ("아우터", "O1", "out-a"),
+        ] {
+            match resolve_item(cat, Some(r), "", &offered) {
+                Resolution::Resolved { clothing, .. } => assert_eq!(clothing.id, id),
+                other => panic!("{r}: {other:?}"),
+            }
+        }
+        assert!(matches!(
+            resolve_item("상의", Some("B1"), "", &offered),
+            Resolution::Rejected(Rejection::SlotMismatch { .. })
+        ));
+        assert!(matches!(
+            resolve_item("상의", Some("T3"), "", &offered),
+            Resolution::Rejected(Rejection::NotOffered { .. })
+        ));
+        // 목록 밖 옷은 실제 id 로도 찾지 않는다.
+        assert!(matches!(
+            resolve_item("상의", Some("not-offered"), "", &offered),
+            Resolution::Rejected(Rejection::NotOffered { .. })
+        ));
     }
 }

@@ -293,14 +293,35 @@ fn pop_items_name_coloured_patterns_and_vivid_garments_only() {
 /// 모델에게 보여 주는 후보 목록 줄에는 옷장 id 가 들어간다 — 응답의 id 로 옷을 고른다
 /// (`services::item_resolution`). 기본·자세한 형식 둘 다다.
 #[test]
-fn shortlist_lines_carry_the_clothing_id() {
+fn shortlist_lines_carry_request_refs_that_resolve_to_the_listed_item() {
+    use style_engine::services::item_resolution::{Resolution, resolve_item};
     let none = HashSet::new();
     let w = wardrobe();
     let sl = build_all_shortlists(&w, &ctx(19.6, &none));
+    let offered = sl.offered_items();
     for g in [sl.to_grouped(), sl.to_grouped_detailed()] {
         assert!(!g.tops.is_empty());
-        for (line, c) in g.tops.iter().zip(&sl.tops) {
-            assert!(line.contains(&format!("| id:{} |", c.id)), "{line}");
+        for (lines, items, cat, p) in [
+            (&g.tops, &sl.tops, "상의", "T"),
+            (&g.bottoms, &sl.bottoms, "하의", "B"),
+        ] {
+            for (i, (line, c)) in lines.iter().zip(items).enumerate() {
+                let r = format!("{p}{}", i + 1);
+                assert!(line.contains(&format!("| id:{r} |")), "{line}");
+                assert!(
+                    !line.contains(&format!("id:{}", c.id)),
+                    "실제 UUID 는 보이지 않는다: {line}"
+                );
+                match resolve_item(cat, Some(&r), &c.name, &offered) {
+                    Resolution::Resolved { clothing, .. } => assert_eq!(clothing.id, c.id),
+                    other => panic!("{r}: {other:?}"),
+                }
+                // 서버가 만든 변형 후보는 실제 id 로도 연결된다.
+                assert!(matches!(
+                    resolve_item(cat, Some(&c.id), "", &offered),
+                    Resolution::Resolved { .. }
+                ));
+            }
         }
     }
 }

@@ -8,7 +8,9 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::models::clothing::Clothing;
+use crate::models::outfit::SlotKind;
 use crate::models::style_vocab::{Role, Style, StyleGenre, Weight};
+use crate::services::item_resolution::slot_ref;
 
 /// 슬롯별 shortlist 크기
 const TOP_K_TOP: usize = 12;
@@ -576,22 +578,47 @@ pub struct ShortlistResult<'a> {
 impl<'a> ShortlistResult<'a> {
     /// GroupedClothes로 변환 (LLM 프롬프트용)
     pub fn to_grouped(&self) -> crate::services::prompts::GroupedClothes {
-        let fmt = |c: &Clothing| {
+        let fmt = |c: &Clothing, r: String| {
             format!(
                 "- {} | id:{} | role:{} | tone:{} | style:{}",
                 c.name,
-                c.id,
+                r,
                 c.role.map(|v| v.as_str()).unwrap_or("-"),
                 c.tone.map(|v| v.as_str()).unwrap_or("-"),
                 c.style.map(|v| v.as_str()).unwrap_or("-"),
             )
         };
         crate::services::prompts::GroupedClothes {
-            tops: self.tops.iter().map(|c| fmt(c)).collect(),
-            bottoms: self.bottoms.iter().map(|c| fmt(c)).collect(),
-            outers: self.outers.iter().map(|c| fmt(c)).collect(),
-            shoes: self.shoes.iter().map(|c| fmt(c)).collect(),
-            bags: self.bags.iter().map(|c| fmt(c)).collect(),
+            tops: self
+                .tops
+                .iter()
+                .enumerate()
+                .map(|(i, c)| fmt(c, slot_ref(SlotKind::Top, i)))
+                .collect(),
+            bottoms: self
+                .bottoms
+                .iter()
+                .enumerate()
+                .map(|(i, c)| fmt(c, slot_ref(SlotKind::Bottom, i)))
+                .collect(),
+            outers: self
+                .outers
+                .iter()
+                .enumerate()
+                .map(|(i, c)| fmt(c, slot_ref(SlotKind::Outer, i)))
+                .collect(),
+            shoes: self
+                .shoes
+                .iter()
+                .enumerate()
+                .map(|(i, c)| fmt(c, slot_ref(SlotKind::Shoes, i)))
+                .collect(),
+            bags: self
+                .bags
+                .iter()
+                .enumerate()
+                .map(|(i, c)| fmt(c, slot_ref(SlotKind::Bag, i)))
+                .collect(),
             colour_items: Vec::new(),
             texture_pair: None,
         }
@@ -601,7 +628,7 @@ impl<'a> ShortlistResult<'a> {
     /// 어떤 옷이 빛을 받는지, 어떤 형태인지가 판단의 중심인데 이름만으로는 모자라다.
     /// 값이 없으면 "모름" 이라고 적는다 — 채워 넣지 않는다.
     pub fn to_grouped_detailed(&self) -> crate::services::prompts::GroupedClothes {
-        let fmt = |c: &Clothing| {
+        let fmt = |c: &Clothing, r: String| {
             let known = |v: Option<&str>| match v.map(str::trim) {
                 Some(v) if !v.is_empty() => v.to_string(),
                 _ => "모름".to_string(),
@@ -609,7 +636,7 @@ impl<'a> ShortlistResult<'a> {
             format!(
                 "- {} | id:{} | role:{} | tone:{} | style:{} | 소재:{} | 실루엣:{} | 두께:{} | 특징:{}",
                 c.name,
-                c.id,
+                r,
                 c.role.map(|v| v.as_str()).unwrap_or("모름"),
                 c.tone.map(|v| v.as_str()).unwrap_or("모름"),
                 c.style.map(|v| v.as_str()).unwrap_or("모름"),
@@ -620,14 +647,50 @@ impl<'a> ShortlistResult<'a> {
             )
         };
         crate::services::prompts::GroupedClothes {
-            tops: self.tops.iter().map(|c| fmt(c)).collect(),
-            bottoms: self.bottoms.iter().map(|c| fmt(c)).collect(),
-            outers: self.outers.iter().map(|c| fmt(c)).collect(),
-            shoes: self.shoes.iter().map(|c| fmt(c)).collect(),
-            bags: self.bags.iter().map(|c| fmt(c)).collect(),
+            tops: self
+                .tops
+                .iter()
+                .enumerate()
+                .map(|(i, c)| fmt(c, slot_ref(SlotKind::Top, i)))
+                .collect(),
+            bottoms: self
+                .bottoms
+                .iter()
+                .enumerate()
+                .map(|(i, c)| fmt(c, slot_ref(SlotKind::Bottom, i)))
+                .collect(),
+            outers: self
+                .outers
+                .iter()
+                .enumerate()
+                .map(|(i, c)| fmt(c, slot_ref(SlotKind::Outer, i)))
+                .collect(),
+            shoes: self
+                .shoes
+                .iter()
+                .enumerate()
+                .map(|(i, c)| fmt(c, slot_ref(SlotKind::Shoes, i)))
+                .collect(),
+            bags: self
+                .bags
+                .iter()
+                .enumerate()
+                .map(|(i, c)| fmt(c, slot_ref(SlotKind::Bag, i)))
+                .collect(),
             colour_items: Vec::new(),
             texture_pair: None,
         }
+    }
+
+    /// 모델에게 보여 준 슬롯별 목록과 같은 순서·참조의 연결 범위.
+    pub fn offered_items(&self) -> crate::services::item_resolution::OfferedItems<'a> {
+        crate::services::item_resolution::OfferedItems::from_slot_lists(
+            &self.tops,
+            &self.bottoms,
+            &self.outers,
+            &self.shoes,
+            &self.bags,
+        )
     }
 
     /// 글램 소재 대비 짝의 재료: 목록의 퍼·시어링 아우터와 무광 트리밍 상의. 둘 중 하나라도

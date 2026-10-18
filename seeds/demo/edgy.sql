@@ -67,7 +67,7 @@ VALUES
    '스커트', 'smooth matte leather, straight cut, midi length, back slit'),
   ('0ffd0c00-0000-0000-0000-000000000007', '차콜 울 배럴 레그 팬츠', '하의', 'female', 'edgy',
    '차콜', 'medium', '어두움', '낮음', '베이직', '중간', '구조템', 3, 'relaxed', 'wool',
-   '와이드팬츠', 'wool blend, curved barrel leg, front pleats, high waist, ankle length'),
+   '와이드팬츠', 'wool blend, softly curved barrel leg that narrows to a clean open hem at the ankle bone, no elastic, cuff or gathering at the hem, front pleats, high waist, ankle length'),
   ('0ffd0c00-0000-0000-0000-000000000008', '그레이 워시드 크로스오버 웨이스트 데님', '하의', 'female', 'edgy',
    '그레이', 'medium', '중간', '낮음', '베이직', '중간', '베이스', 2, 'relaxed', 'denim',
    '데님팬츠', 'washed grey denim, asymmetric crossover waistband, wide straight leg, full length'),
