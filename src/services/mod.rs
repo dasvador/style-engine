@@ -9,6 +9,7 @@ pub mod mood_gate;
 pub mod mood_palette;
 pub mod mood_rules;
 pub mod mood_shadow;
+pub mod outfit_comparison;
 pub mod outfit_scorer;
 pub mod prompts;
 pub mod recommendation_diversity;

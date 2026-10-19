@@ -146,6 +146,10 @@ pub struct MultiModeRecommendationResponse {
     /// 있는 후보가 없어 기본 코디가 섞였을 때다.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notice: Option<String>,
+    /// 서버에 남긴 이 응답의 id(`recommendation_batch`). 화면은 두 코디 비교를 열 때 이 값만
+    /// 보낸다 — 비교할 코디는 서버가 여기서 꺼낸다. 기록에 실패하면 비어 있다.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub batch_id: Option<String>,
 }
 
 impl OutfitCandidate {

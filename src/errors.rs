@@ -13,6 +13,10 @@ pub enum AppError {
     #[error("Validation error: {0}")]
     Validation(String),
 
+    /// 이미 다른 값이 저장돼 있어 이번 요청을 받아들이지 않았다(먼저 쓴 것이 남는다).
+    #[error("Conflict: {0}")]
+    Conflict(String),
+
     #[error("Internal server error")]
     Internal(#[from] anyhow::Error),
 
@@ -26,6 +30,7 @@ impl IntoResponse for AppError {
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             AppError::Validation(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg.clone()),
+            AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
             AppError::Internal(err) => {
                 tracing::error!("Internal error: {:?}", err);
                 (

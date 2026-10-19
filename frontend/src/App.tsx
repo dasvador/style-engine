@@ -9,6 +9,7 @@ import { RegionModal } from './components/RegionModal';
 import { HomePage } from './pages/HomePage';
 import { ChatPage } from './pages/ChatPage';
 import { EvaluatePage } from './pages/EvaluatePage';
+import { ComparePage } from './pages/ComparePage';
 import { LookbookPage } from './pages/LookbookPage';
 import { WardrobePage } from './pages/WardrobePage';
 import { ItemDetailPage } from './pages/ItemDetailPage';
@@ -95,6 +96,9 @@ export function App() {
             }
           />
           <Route path="evaluate" element={<EvaluatePage clothes={clothes.items} />} />
+          {/* 두 코디 비교. 홈에서 추천 id 를 들고 들어오면 비교를 열고 주소를 비교 id 로 바꾼다. */}
+          <Route path="compare" element={<ComparePage clothes={clothes.items} moods={moods} />} />
+          <Route path="compare/:id" element={<ComparePage clothes={clothes.items} moods={moods} />} />
           <Route path="lookbook" element={<LookbookPage />} />
           <Route
             path="wardrobe"

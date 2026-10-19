@@ -161,6 +161,8 @@ export interface MultiModeRecommendation {
   weather_summary: string;
   /** 후보가 모자랐을 때 서버가 알리는 한 줄(날씨에 맞는 후보 없음·무드 요소 부족). */
   notice?: string;
+  /** 서버에 남은 이 추천의 id. 두 코디 비교를 열 때 이 값만 보낸다. */
+  batch_id?: string;
 }
 
 export interface RecommendationBody {
@@ -390,4 +392,54 @@ export interface SaveLookBody {
 export interface HealthResponse {
   status: string;
   database: boolean;
+}
+
+// ─── 두 코디 비교 (src/services/outfit_comparison.rs) ───
+
+export type ComparisonChoice = 'a' | 'b' | 'neither';
+
+/** 고른 이유. 'neither' 일 때는 둘 다 아쉬웠던 점으로 읽힌다. */
+export type ComparisonReason =
+  | 'color_combo'
+  | 'silhouette'
+  | 'personal_taste'
+  | 'practicality'
+  | 'weather_fit';
+
+export interface ComparisonItem {
+  id: string;
+  name: string;
+  category: string;
+  color: string | null;
+  sub_category: string | null;
+  material: string | null;
+  has_image: boolean;
+}
+
+export interface ComparisonVote {
+  choice: ComparisonChoice;
+  reasons: ComparisonReason[];
+  comment: string | null;
+  submitted_at: string;
+}
+
+export interface Comparison {
+  id: string;
+  created_at: string;
+  context: {
+    mood_key: string | null;
+    temperature: number | null;
+    weather_description: string | null;
+  };
+  options: [
+    { slot: 'a'; items: ComparisonItem[] },
+    { slot: 'b'; items: ComparisonItem[] },
+  ];
+  vote: ComparisonVote | null;
+}
+
+export interface ComparisonVoteBody {
+  choice: ComparisonChoice;
+  reasons: ComparisonReason[];
+  comment?: string;
 }

@@ -243,14 +243,16 @@ async fn get_multi_recommendation(
     .map_err(AppError::Internal)?;
     // 개발용: 같은 옷장·피드백으로 기온만 바꿔 추천 경로를 비교한다. 서버를
     // `ALLOW_DEBUG_WEATHER=1` 로 띄웠을 때만 받는다 — 운영에서는 무시된다.
-    if let Some(t) = debug_temperature(
+    let debug_t = debug_temperature(
         body.debug_temperature,
         std::env::var("ALLOW_DEBUG_WEATHER").ok().as_deref(),
-    ) {
+    );
+    if let Some(t) = debug_t {
         tracing::warn!(temperature = t, "debug_temperature 로 기온을 덮어쓴다");
         weather.temperature = t;
         weather.apparent_temperature = t;
     }
+    let debug_override = debug_t.is_some();
 
     let mood = crate::routes::parse_genre(body.style_mood.as_deref())?;
     let mut clothes = if body.gender.is_some() || body.style_mood.is_some() {
@@ -618,6 +620,7 @@ async fn get_multi_recommendation(
                 "오늘 날씨에 맞는 코디 후보가 부족해요. 다른 무드를 고르거나 옷장에 날씨에 맞는 옷을 더해 보세요."
                     .to_string(),
             ),
+            batch_id: None,
         }));
     }
 
@@ -898,11 +901,80 @@ async fn get_multi_recommendation(
     )
     .await;
 
+    // 응답에 실린 코디를 서버에 남긴다. 두 코디 비교는 화면이 보낸 코디가 아니라 이 기록에서
+    // 꺼낸다(`services::outfit_comparison`). 곁가지라 실패해도 추천은 그대로 돌려준다.
+    let batch_id = record_batch(
+        &state,
+        user_id,
+        &body,
+        mood,
+        &weather,
+        debug_override,
+        &modes,
+        &clothes,
+    )
+    .await;
+
     Ok(Json(MultiModeRecommendationResponse {
         modes,
         weather_summary: shared_weather,
         notice,
+        batch_id,
     }))
+}
+
+/// 홈 추천 응답 한 번을 `recommendation_batch` 에 남긴다. 실패하면 `None` — 비교만 못 열 뿐이다.
+#[allow(clippy::too_many_arguments)]
+async fn record_batch(
+    state: &AppState,
+    user_id: &str,
+    body: &RecommendationRequest,
+    mood: Option<StyleGenre>,
+    weather: &crate::models::weather::CurrentWeather,
+    debug_override: bool,
+    modes: &[ModeRecommendation],
+    clothes: &[Clothing],
+) -> Option<String> {
+    use crate::services::outfit_comparison as cmp;
+
+    let candidates = cmp::snapshot_modes(modes, clothes);
+    let llm = state.llm.config().task(LlmTask::OutfitCandidates);
+    // 알 수 있는 것만 적고, 출처를 같이 남긴다. 프롬프트·엔진에는 버전 표시가 없어 'unknown'.
+    let provenance = serde_json::json!({
+        "source": "server:/api/recommendation/multi response",
+        "candidate_model": {
+            "provider": llm.provider.as_str(),
+            "model": llm.model,
+            "how": "server LLM routing config at request time (provider response not echoed)",
+        },
+        "prompt_version": "unknown",
+        "engine_version": "unknown",
+        "app_version": {
+            "value": env!("CARGO_PKG_VERSION"),
+            "how": "Cargo package version (not a build or commit id)",
+        },
+    });
+    let weather_json = serde_json::json!({
+        "temperature": weather.temperature,
+        "apparent_temperature": weather.apparent_temperature,
+        "weather_code": weather.weather_code,
+        "weather_description": weather.weather_description,
+        "debug_temperature_override": debug_override,
+    });
+    let ctx = cmp::BatchContext {
+        gender: body.gender.as_deref(),
+        mood_key: mood.map(|m| m.as_str()),
+        occasion: body.occasion.as_deref(),
+        weather: weather_json,
+        provenance,
+    };
+    match cmp::record_batch(&state.db, user_id, &ctx, &candidates).await {
+        Ok(id) => id,
+        Err(e) => {
+            warn!("recommendation_batch 기록 실패: {e}");
+            None
+        }
+    }
 }
 
 /// 개발용 기온 덮어쓰기를 받을지. 서버가 `ALLOW_DEBUG_WEATHER=1` 로 떠 있을 때만이다 —

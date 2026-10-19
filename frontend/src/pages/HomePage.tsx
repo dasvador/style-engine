@@ -34,6 +34,35 @@ function outfitSig(outfit: { name: string }[]): string {
     .join('|');
 }
 
+/** 마지막 추천 묶음. 새로고침해도 같은 탭에서는 비교를 열 수 있게 sessionStorage 에 둔다. */
+interface CompareBatch {
+  batchId: string | null;
+  /** 아이템 구성이 서로 다른 코디의 수. 둘이 안 되면 비교 버튼을 끈다(서버도 같은 기준). */
+  distinct: number;
+}
+
+const COMPARE_KEY = 'wardrobe.compareBatch';
+
+function readCompareBatch(): CompareBatch | null {
+  try {
+    const raw = sessionStorage.getItem(COMPARE_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as Partial<CompareBatch>;
+    return typeof v.distinct === 'number'
+      ? { batchId: typeof v.batchId === 'string' ? v.batchId : null, distinct: v.distinct }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function distinctOutfits(modes: ModeRecommendation[]): number {
+  const keys = modes
+    .map((m) => [...new Set(m.outfit.map((o) => o.id ?? ''))].filter(Boolean).sort().join('|'))
+    .filter(Boolean);
+  return new Set(keys).size;
+}
+
 interface Props {
   clothes: Clothing[];
   weather: WeatherResponse | null;
@@ -141,6 +170,7 @@ export function HomePage({
       }
     })();
   }, [openLookId]);
+  const [compareBatch, setCompareBatch] = useState<CompareBatch | null>(readCompareBatch);
   const [recLoading, setRecLoading] = useState(false);
   const [recError, setRecError] = useState<string | null>(null);
   const [recNotice, setRecNotice] = useState<string | null>(null);
@@ -195,6 +225,16 @@ export function HomePage({
         style_mood: selectedMood,
         avoid_outfits,
       });
+      // 두 코디 비교는 이번 추천 묶음에서만 연다. 화면이 코디를 보내지 않고 묶음 id 만 넘긴다.
+      if (r.modes.length > 0) {
+        const next: CompareBatch = { batchId: r.batch_id ?? null, distinct: distinctOutfits(r.modes) };
+        setCompareBatch(next);
+        try {
+          sessionStorage.setItem(COMPARE_KEY, JSON.stringify(next));
+        } catch {
+          // 저장소를 못 써도 이번 화면에서는 열 수 있다.
+        }
+      }
       const stamp = new Date();
       const time = `${stamp.getHours()}시 ${String(stamp.getMinutes()).padStart(2, '0')}분`;
       // 이번 추천 한 번을 묶는 값. 같은 묶음 안에서 좋아요·입어봄·삭제·"제일" 을 받은
@@ -505,8 +545,54 @@ export function HomePage({
             onBest={(l) => void pickBest(l)}
           />
         )}
+
+        {looks.length > 0 && compareBatch && (
+          <CompareEntry
+            batch={compareBatch}
+            onOpen={(batchId) => navigate('/compare', { state: { batchId } })}
+          />
+        )}
       </section>
 
     </>
+  );
+}
+
+/**
+ * 방금 나온 추천에서 두 코디를 나란히 두고 고르게 하는 입구. 고르지 않아도 된다 —
+ * 버튼만 두고 띄우거나 막지 않는다.
+ */
+function CompareEntry({
+  batch,
+  onOpen,
+}: {
+  batch: CompareBatch;
+  onOpen: (batchId: string) => void;
+}) {
+  const reason =
+    batch.distinct < 2
+      ? '이번 추천에는 서로 다른 코디가 두 벌 이상 없어 비교할 수 없어요. 코디를 더 만들면 다시 열려요.'
+      : !batch.batchId
+        ? '이번 추천 기록을 남기지 못해 비교를 열 수 없어요. 코디를 한 번 더 만들어 주세요.'
+        : null;
+  return (
+    <div className="compare-entry">
+      <p className="compare-entry-text">
+        방금 나온 코디 두 벌을 나란히 보고, 더 끌리는 쪽을 골라 보세요.
+      </p>
+      <button
+        className="btn btn-outline btn-sm"
+        disabled={reason !== null}
+        aria-describedby={reason ? 'compare-entry-note' : undefined}
+        onClick={() => batch.batchId && onOpen(batch.batchId)}
+      >
+        둘 중 고르기
+      </button>
+      {reason && (
+        <p className="compare-entry-note" id="compare-entry-note">
+          {reason}
+        </p>
+      )}
+    </div>
   );
 }

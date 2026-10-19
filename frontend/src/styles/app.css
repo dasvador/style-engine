@@ -1168,3 +1168,113 @@ button, input, select, textarea { font-family: inherit; }
 }
 .saved-make:hover { border-color: var(--accent); color: var(--accent); }
 .saved-thumb-empty { gap: 7px; flex-direction: column; }
+
+/* ─────────────────────────────────────────────
+   둘 중 고르기 — 홈 추천의 두 코디 비교
+   두 카드는 자리 말고는 완전히 같은 모양이다. 생성 사진 없이 옷 이름·카테고리·색으로 보여 준다.
+   ───────────────────────────────────────────── */
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* 홈의 진입점 — 상자 대신 선 하나로 룩북 아래에 붙인다. */
+.compare-entry {
+  border-top: 1px solid var(--line);
+  margin-top: 18px; padding-top: 14px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px;
+}
+.compare-entry-text { font-size: 0.83rem; line-height: 1.6; color: var(--ink-soft); max-width: 26em; }
+.compare-entry-note { flex-basis: 100%; font-size: 0.78rem; line-height: 1.6; color: var(--caution); }
+
+.compare-context { font-size: 0.8rem; color: var(--ink-faint); margin-bottom: 4px; }
+.compare-note { font-size: 0.8rem; line-height: 1.6; color: var(--ink-soft); margin-bottom: 16px; max-width: var(--measure); }
+
+.compare-choice, .compare-reasons { border: 0; margin: 0 0 18px; padding: 0; min-width: 0; }
+.compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+@media (max-width: 340px) {
+  .compare-grid { grid-template-columns: 1fr; }
+}
+
+.compare-option {
+  display: flex; flex-direction: column; cursor: pointer;
+  border: 1px solid var(--line); border-radius: var(--r-card);
+  background: var(--surface);
+  transition: border-color 0.15s, background 0.15s;
+}
+.compare-option:hover { border-color: var(--ink-faint); }
+.compare-option.selected { border-color: var(--accent); background: var(--accent-soft); }
+.compare-option:has(input:focus-visible),
+.compare-neither:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.compare-option-cta {
+  margin-top: auto; padding: 10px 12px; min-height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  border-top: 1px solid var(--line-soft);
+  font-size: 0.82rem; font-weight: 600; color: var(--ink);
+}
+.compare-option.selected .compare-option-cta { color: var(--accent); }
+
+.compare-card { padding: 12px 12px 8px; }
+.compare-grid-static .compare-card {
+  border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface);
+}
+.compare-grid-static .compare-card.chosen { border-color: var(--accent); background: var(--accent-soft); }
+.compare-card-head {
+  font-family: var(--serif); font-size: 1.15rem; font-weight: 400; color: var(--ink);
+  margin-bottom: 6px;
+}
+.compare-items { list-style: none; }
+.compare-item {
+  display: flex; gap: 8px; align-items: flex-start;
+  padding: 7px 0; border-bottom: 1px solid var(--line-soft);
+}
+.compare-item:last-child { border-bottom: 0; }
+.compare-thumb {
+  width: 34px; height: 34px; flex-shrink: 0; border-radius: var(--r-media);
+  object-fit: cover; background: var(--surface-muted);
+}
+.compare-thumb-empty {
+  display: flex; align-items: center; justify-content: center; gap: 3px;
+  font-size: 0.62rem; color: var(--ink-faint);
+}
+.compare-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 1px solid rgba(36, 34, 31, 0.18);
+}
+.compare-item-text { display: flex; flex-direction: column; min-width: 0; }
+.compare-item-slot { font-size: 0.68rem; letter-spacing: 0.04em; color: var(--ink-faint); }
+.compare-item-name { font-size: 0.84rem; line-height: 1.45; color: var(--ink); word-break: keep-all; overflow-wrap: anywhere; }
+.compare-item-color { font-size: 0.74rem; color: var(--ink-soft); }
+
+.compare-neither {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 44px; padding: 10px 14px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: var(--r-btn);
+  font-size: 0.86rem; font-weight: 500; color: var(--ink);
+}
+.compare-neither.selected { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.compare-neither input { accent-color: var(--accent); }
+
+.compare-legend { display: block; font-size: 0.82rem; font-weight: 600; color: var(--ink); margin-bottom: 8px; }
+.compare-reason-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.compare-reason {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 40px; padding: 8px 12px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: var(--r-pill);
+  font-size: 0.8rem; color: var(--ink-soft);
+}
+.compare-reason.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.compare-reason input { accent-color: var(--accent); }
+.compare-reason:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.compare-comment { margin-bottom: 18px; }
+.compare-comment textarea { width: 100%; resize: vertical; }
+.compare-count { display: block; text-align: right; font-size: 0.72rem; color: var(--ink-faint); margin-top: 4px; }
+
+.compare-actions { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.compare-skip-note { font-size: 0.74rem; color: var(--ink-faint); }
+
+.compare-status { margin: 10px 0 16px; }
+.compare-status-actions { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.compare-result .compare-grid { margin: 16px 0 18px; }
+.compare-result-comment { font-size: 0.84rem; color: var(--ink-soft); margin-top: 6px; }

@@ -1,5 +1,6 @@
 pub mod chat;
 pub mod clothes;
+pub mod comparison;
 pub mod feedback;
 pub mod health;
 pub mod lookbook;
@@ -30,6 +31,7 @@ pub fn api_router() -> Router<AppState> {
         .nest("/user", user::router())
         .nest("/style-moods", style_mood::router())
         .nest("/lookbook", lookbook::router())
+        .nest("/comparisons", comparison::router())
         // 정의되지 않은 /api 경로는 여기서 끝난다. 이 fallback 이 없으면 바깥 라우터의
         // SPA fallback 으로 내려가 index.html 이 200 으로 나가고, 클라이언트는 오타 난
         // 엔드포인트를 성공으로 오해한다.

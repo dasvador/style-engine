@@ -31,6 +31,9 @@ import type {
   WeatherResponse,
   ChatHistoryRow,
   DeleteReason,
+  Comparison,
+  ComparisonVote,
+  ComparisonVoteBody,
 } from '../types/api';
 
 export const api = {
@@ -87,6 +90,17 @@ export const api = {
     unbest: (id: string, request_id: string) =>
       apiDelete<{ id: string }>(
         `/lookbook/${id}/best?request_id=${encodeURIComponent(request_id)}`,
+      ),
+  },
+
+  /** 두 코디 비교. 사용자는 서버가 요청에서 정한다 — 본문에 싣지 않는다. */
+  comparisons: {
+    open: (batch_id: string) => apiPost<Comparison>('/comparisons', { batch_id }),
+    get: (id: string) => apiGet<Comparison>(`/comparisons/${encodeURIComponent(id)}`),
+    vote: (id: string, body: ComparisonVoteBody) =>
+      apiPost<{ vote: ComparisonVote; already_submitted: boolean }>(
+        `/comparisons/${encodeURIComponent(id)}/vote`,
+        body,
       ),
   },
 };
