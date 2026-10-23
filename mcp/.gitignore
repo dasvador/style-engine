@@ -1,0 +1,7 @@
+node_modules/
+# 빌드 결과(npm run build 가 만든다)
+dist/
+# 데모 선택 기록(로컬 JSON). 실제 서비스 데이터가 아니다.
+.data/
+# 테스트 스크린샷
+.artifacts/
