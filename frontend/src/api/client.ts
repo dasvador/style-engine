@@ -47,10 +47,35 @@ function parseErrorMessage(status: number, raw: string, statusText: string): str
   return statusText || `HTTP ${status}`;
 }
 
+/**
+ * 계정 토큰(있으면). 백엔드는 토큰이 없거나 틀리면 401 이다(`default` 로 바꾸지 않는다).
+ *
+ * 아직 로그인 화면이 없다. 로컬 개발은 백엔드를 `WARDROBE_AUTH_MODE=dev-default-loopback` 으로 켜서
+ * 토큰 없이 기존(default) 옷장을 쓴다. 다른 계정으로 시험하려면 `POST /api/user/register` 로 받은 토큰을
+ * 브라우저 저장소의 `wardrobe.apiToken` 에 넣는다. 이 경우 `/static` 사진은 보이지 않는다(보호 경로
+ * `/api/images/{file}` 은 헤더가 필요해 `<img>` 로는 못 읽는다 — 로그인 범위에서 다룬다).
+ */
+const TOKEN_KEY = 'wardrobe.apiToken';
+
+function authHeaders(): Record<string, string> {
+  try {
+    const token = globalThis.localStorage?.getItem(TOKEN_KEY)?.trim();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
+
+const UNAUTHORIZED_HINT =
+  '로그인이 필요해요. 로컬 개발이면 백엔드를 WARDROBE_AUTH_MODE=dev-default-loopback 으로 켜거나, 계정 토큰을 설정하세요.';
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, init);
+    res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers: { ...authHeaders(), ...(init?.headers as Record<string, string> | undefined) },
+    });
   } catch (cause) {
     // 네트워크 단절은 상태코드가 없다. 호출부가 같은 타입으로 다룰 수 있게 감싼다.
     throw new ApiError(0, '서버에 연결할 수 없습니다.', String(cause));
@@ -58,7 +83,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const raw = await res.text().catch(() => '');
-    throw new ApiError(res.status, parseErrorMessage(res.status, raw, res.statusText), raw);
+    const message = res.status === 401 ? UNAUTHORIZED_HINT : parseErrorMessage(res.status, raw, res.statusText);
+    throw new ApiError(res.status, message, raw);
   }
 
   if (res.status === 204) {

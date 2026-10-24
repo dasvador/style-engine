@@ -5,3 +5,6 @@ dist/
 .data/
 # 테스트 스크린샷
 .artifacts/
+
+# 로컬 이미지 asset(이미 생성해 둔 룩북 사진 사본·manifest·출처 대응표). 저장소에 넣지 않는다.
+.assets/

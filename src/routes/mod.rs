@@ -3,6 +3,7 @@ pub mod clothes;
 pub mod comparison;
 pub mod feedback;
 pub mod health;
+pub mod images;
 pub mod lookbook;
 pub mod outfit;
 pub mod recommendation;
@@ -32,6 +33,7 @@ pub fn api_router() -> Router<AppState> {
         .nest("/style-moods", style_mood::router())
         .nest("/lookbook", lookbook::router())
         .nest("/comparisons", comparison::router())
+        .nest("/images", images::router())
         // 정의되지 않은 /api 경로는 여기서 끝난다. 이 fallback 이 없으면 바깥 라우터의
         // SPA fallback 으로 내려가 index.html 이 200 으로 나가고, 클라이언트는 오타 난
         // 엔드포인트를 성공으로 오해한다.
@@ -76,3 +78,6 @@ async fn api_not_found(uri: axum::http::Uri) -> impl axum::response::IntoRespons
 pub fn spa_router() -> Router<AppState> {
     spa::router().with_state(())
 }
+
+#[cfg(test)]
+mod auth_isolation_tests;

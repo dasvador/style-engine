@@ -7,7 +7,7 @@ import { after, before, describe, test } from 'node:test';
 
 import { RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 
-import { ERROR_META_KEY, TOOL_NAMES, UI_URI } from '../src/mcp-server.js';
+import { ERROR_META_KEY, LEGACY_UI_URIS, TOOL_NAMES, UI_URI } from '../src/mcp-server.js';
 import { connectClient, rawHttp, rawPost, startServer, tempDir } from './helpers.js';
 
 const INIT = {
@@ -35,13 +35,29 @@ describe('MCP over Streamable HTTP', () => {
 
   test('initialize: 서버 이름과 데모 안내', () => {
     assert.equal(client.getServerVersion().name, 'wardrobe-edit-demo');
-    assert.match(client.getInstructions() ?? '', /데모 전용/);
+    const text = client.getInstructions() ?? '';
+    assert.match(text, /데모 전용/);
+    assert.match(text, /데모·샘플이라는 점을 밝힌다/);
+    assert.match(text, /대신 고르지 않는다/);
+    // 데모 모드에는 실제 계정 도구가 없다 — 지시문도 그것을 말하지 않는다.
+    assert.doesNotMatch(text, /get_my_profile|list_my_wardrobe|연결된|실제 프로필/);
   });
 
-  test('tools/list: 도구 넷, annotation·UI 연결·입력 스키마', async () => {
+  test('tools/list: 도구 다섯(사진 asset 없음), annotation·UI 연결·입력 스키마', async () => {
     const { tools } = await client.listTools();
     const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
-    assert.deepEqual(Object.keys(byName).sort(), Object.values(TOOL_NAMES).sort());
+    // 이 서버에는 사진 asset 이 없다 — 사진 비교 도구는 나오지 않는다(test/images.test.js 에서 따로 본다).
+    assert.deepEqual(
+      Object.keys(byName).sort(),
+      Object.values(TOOL_NAMES)
+        .filter((n) => ![TOOL_NAMES.photo, TOOL_NAMES.myProfile, TOOL_NAMES.myWardrobe].includes(n))
+        .sort(),
+    );
+    // demo 모드: 계정 연결 없음 — 모든 도구가 noauth 를 알린다(OpenAI: 도구 정의 최상위 securitySchemes).
+    // SDK 클라이언트는 모르는 최상위 필드를 버리므로 _meta 사본으로 보고, 최상위는 원시 응답으로 본다.
+    for (const t of tools) assert.deepEqual(t._meta.securitySchemes, [{ type: 'noauth' }], t.name);
+    const raw = await rawPost(srv.url, { jsonrpc: '2.0', id: 9, method: 'tools/list', params: {} });
+    for (const t of raw.json.result.tools) assert.deepEqual(t.securitySchemes, [{ type: 'noauth' }], t.name);
 
     assert.deepEqual(byName[TOOL_NAMES.browse].annotations, {
       readOnlyHint: true,
@@ -54,24 +70,35 @@ describe('MCP over Streamable HTTP', () => {
     assert.equal(byName[TOOL_NAMES.get].annotations.readOnlyHint, true);
     assert.equal(byName[TOOL_NAMES.vote].annotations.destructiveHint, false);
     assert.equal(byName[TOOL_NAMES.vote].annotations.idempotentHint, true);
+    assert.deepEqual(byName[TOOL_NAMES.update].annotations, {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    });
+    assert.deepEqual(byName[TOOL_NAMES.update].inputSchema.required.sort(), ['choice', 'comparison_id', 'expected_revision']);
     for (const t of tools) {
       assert.equal(t.annotations.openWorldHint, false, t.name);
       assert.match(t.description, /데모/, t.name);
       assert.equal(t.inputSchema.additionalProperties, false, `${t.name} 는 모르는 인자를 받지 않는다`);
     }
-    for (const name of [TOOL_NAMES.create, TOOL_NAMES.get, TOOL_NAMES.vote]) {
+    assert.equal(UI_URI, 'ui://wardrobe-edit/compare-v3.html');
+    for (const name of [TOOL_NAMES.create, TOOL_NAMES.get, TOOL_NAMES.vote, TOOL_NAMES.update]) {
       assert.equal(byName[name]._meta.ui.resourceUri, UI_URI, name);
     }
     assert.equal(byName[TOOL_NAMES.browse]._meta?.ui, undefined);
     assert.deepEqual(byName[TOOL_NAMES.vote].inputSchema.properties.choice.enum, ['a', 'b', 'neither']);
   });
 
-  test('resources/list·read: UI 는 MCP App HTML 하나, 외부 도메인 없음', async () => {
+  test('resources/list·read: UI 는 v3 + v1·v2 별칭(같은 HTML), 사진 없으면 외부 도메인 없음', async () => {
     const { resources } = await client.listResources();
     assert.deepEqual(
       resources.map((r) => r.uri),
-      [UI_URI],
+      [UI_URI, ...LEGACY_UI_URIS],
     );
+    const legacy = await client.readResource({ uri: LEGACY_UI_URIS[0] });
+    assert.equal(legacy.contents[0].uri, LEGACY_UI_URIS[0]);
+    assert.equal(legacy.contents[0].text, srv.uiHtml, '옛 카드도 새 화면을 받는다');
     const { contents } = await client.readResource({ uri: UI_URI });
     assert.equal(contents.length, 1);
     assert.equal(contents[0].mimeType, RESOURCE_MIME_TYPE);
@@ -130,12 +157,13 @@ describe('MCP over Streamable HTTP', () => {
     });
     assert.equal(again.structuredContent.already_submitted, true);
 
+    // 다른 선택으로 다시 submit: 오류가 아니라 정상 결과(ok=false, outcome=conflict), 덮어쓰지 않음.
     const conflict = await client.callTool({ name: TOOL_NAMES.vote, arguments: { comparison_id: c.id, choice: 'a' } });
-    assert.equal(conflict.isError, true);
-    assert.equal(conflict.structuredContent, undefined, '오류에는 출력 스키마 모양을 넣지 않는다');
-    assert.equal(conflict._meta[ERROR_META_KEY].code, 'conflict');
-    assert.equal(conflict._meta[ERROR_META_KEY].comparison.vote.choice, 'b', '저장된 쪽을 같이 돌려준다');
-    assert.match(conflict.content[0].text, /^\[conflict\]/);
+    assert.equal(conflict.isError, undefined, '호스트가 오류로 감싸지 않게 정상 결과로 돌려준다');
+    assert.equal(conflict.structuredContent.ok, false);
+    assert.equal(conflict.structuredContent.outcome, 'conflict');
+    assert.equal(conflict.structuredContent.comparison.vote.choice, 'b', '저장된 쪽을 같이 돌려준다');
+    assert.match(conflict.content[0].text, /^\[conflict\] 저장하지 않았어요/);
     const still = await client.callTool({ name: TOOL_NAMES.get, arguments: { comparison_id: c.id } });
     assert.equal(still.structuredContent.vote.choice, 'b');
   });
@@ -186,6 +214,60 @@ describe('MCP over Streamable HTTP', () => {
     assert.equal((await client.callTool({ name: TOOL_NAMES.get, arguments: { comparison_id: c.id } })).structuredContent.vote, null);
   });
 
+  test('update_demo_preference: 저장 후 명시 수정, 재시도 멱등, 오래된 revision stale, 저장 전 no_vote', async () => {
+    const c = (await client.callTool({ name: TOOL_NAMES.create, arguments: { situation: 'weekend', mood: 'minimal' } }))
+      .structuredContent;
+    const update = (args) => client.callTool({ name: TOOL_NAMES.update, arguments: { comparison_id: c.id, ...args } });
+
+    const early = await update({ expected_revision: 1, choice: 'a' });
+    assert.equal(early.isError, undefined);
+    assert.equal(early.structuredContent.ok, false);
+    assert.equal(early.structuredContent.outcome, 'no_vote');
+    assert.match(early.content[0].text, /^\[no_vote\]/);
+
+    await client.callTool({ name: TOOL_NAMES.vote, arguments: { comparison_id: c.id, choice: 'b', reasons: ['silhouette'] } });
+    const changed = await update({ expected_revision: 1, choice: 'neither', reasons: ['weather_fit'], comment: '둘 다 추워 보여요' });
+    assert.equal(changed.structuredContent.ok, true);
+    assert.equal(changed.structuredContent.outcome, 'updated');
+    assert.equal(changed.structuredContent.comparison.vote.revision, 2);
+    assert.equal(changed.structuredContent.comparison.vote.choice, 'neither');
+
+    const retry = await update({ expected_revision: 1, choice: 'neither', reasons: ['weather_fit'], comment: '둘 다 추워 보여요' });
+    assert.equal(retry.structuredContent.outcome, 'already_submitted');
+    assert.equal(retry.structuredContent.ok, true);
+    assert.equal(retry.structuredContent.comparison.vote.revision, 2);
+
+    const stale = await update({ expected_revision: 1, choice: 'a' });
+    assert.equal(stale.isError, undefined);
+    assert.equal(stale.structuredContent.ok, false);
+    assert.equal(stale.structuredContent.outcome, 'stale');
+    assert.equal(stale.structuredContent.comparison.vote.choice, 'neither');
+
+    // 이유만 바꾸기
+    const reasonsOnly = await update({ expected_revision: 2, choice: 'neither', reasons: ['color_combo'], comment: '둘 다 추워 보여요' });
+    assert.equal(reasonsOnly.structuredContent.outcome, 'updated');
+    const read = await client.callTool({ name: TOOL_NAMES.get, arguments: { comparison_id: c.id } });
+    assert.deepEqual(read.structuredContent.vote.reasons, ['color_combo']);
+    assert.equal(read.structuredContent.vote.revision, 3);
+
+    // 잘못된 입력은 SDK 입력 검증 오류
+    for (const bad of [
+      { choice: 'a' },
+      { expected_revision: 0, choice: 'a' },
+      { expected_revision: '3', choice: 'a' },
+      { expected_revision: 3, choice: 'skip' },
+      { expected_revision: 3, choice: 'a', force: true },
+    ]) {
+      const r = await update(bad);
+      assert.equal(r.isError, true, JSON.stringify(bad));
+    }
+    const missing = await client.callTool({
+      name: TOOL_NAMES.update,
+      arguments: { comparison_id: 'demo_cmp_' + '0'.repeat(32), expected_revision: 1, choice: 'a' },
+    });
+    assert.equal(missing._meta[ERROR_META_KEY].code, 'not_found');
+  });
+
   test('없는 도구는 오류', async () => {
     const res = await client.callTool({ name: 'read_file', arguments: { path: '/etc/passwd' } }).catch((e) => ({ thrown: e }));
     assert.ok(res.thrown || res.isError, JSON.stringify(res));
@@ -201,13 +283,13 @@ describe('MCP over Streamable HTTP', () => {
           cl.callTool({ name: TOOL_NAMES.vote, arguments: { comparison_id: c.id, choice: ['a', 'b', 'neither'][i % 3] } }),
         ),
       );
-      const saved = results.filter((r) => !r.isError && r.structuredContent.already_submitted === false);
+      const saved = results.filter((r) => r.structuredContent.outcome === 'saved');
       assert.equal(saved.length, 1, JSON.stringify(results.map((r) => r.structuredContent)));
       const winner = saved[0].structuredContent.comparison.vote.choice;
       for (const r of results) {
-        const choice = r.isError ? null : r.structuredContent.comparison.vote.choice;
-        if (r.isError) assert.equal(r._meta[ERROR_META_KEY].code, 'conflict');
-        else assert.equal(choice, winner);
+        assert.equal(r.isError, undefined);
+        assert.equal(r.structuredContent.comparison.vote.choice, winner, '모두 같은 최종 선택을 본다');
+        assert.ok(['saved', 'already_submitted', 'conflict'].includes(r.structuredContent.outcome));
       }
     } finally {
       await Promise.all(clients.map((cl) => cl.close()));
@@ -309,6 +391,14 @@ describe('MCP over Streamable HTTP', () => {
       const r = await rawPost(srv.url, INIT, { origin: 'https://evil.example.com' });
       assert.equal(r.status, 403);
       assert.equal(r.headers.get('access-control-allow-origin'), null);
+    });
+
+    test('demo 서버는 Authorization 이 붙은 요청을 익명으로 처리하지 않는다(400)', async () => {
+      for (const auth of ['Bearer whatever', 'Bearer ', 'Basic dXNlcjpwYXNz']) {
+        const r = await rawPost(srv.url, INIT, { authorization: auth });
+        assert.equal(r.status, 400, auth);
+        assert.match(r.json.error.message, /does not accept Authorization/);
+      }
     });
 
     test('정상 initialize 원시 요청은 200', async () => {

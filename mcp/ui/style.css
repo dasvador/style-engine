@@ -64,6 +64,15 @@ fieldset { border: 0; min-width: 0; margin: 0 0 16px; }
 
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
 @media (max-width: 420px) { .grid { grid-template-columns: 1fr; } }
+/* 사진 비교는 좁은 화면에서도 나란히 — 한 장이 화면을 다 차지하지 않고 두 사진을 한눈에 비교한다. */
+@media (max-width: 420px) {
+  .grid.grid-photo { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .grid-photo .option, .grid-photo .card { padding: 8px 8px 8px; }
+  .grid-photo .item { gap: 6px; }
+  .grid-photo .thumb { width: 22px; height: 22px; }
+  .grid-photo .dot { width: 12px; height: 12px; }
+  .grid-photo .item-name { font-size: 0.76rem; }
+}
 
 .option, .card {
   display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line);
@@ -79,6 +88,15 @@ fieldset { border: 0; min-width: 0; margin: 0 0 16px; }
 .option.selected .option-cta { color: var(--accent); font-weight: 600; }
 
 .card-head { font-size: 0.9rem; font-weight: 700; letter-spacing: 0.04em; margin-bottom: 6px; }
+/* 생성 룩북 사진 칸 — A·B 같은 크기(2:3), 전신이 잘리지 않게 contain. */
+.photo { margin: 0 0 8px; }
+.photo-frame {
+  position: relative; width: 100%; aspect-ratio: 2 / 3; border-radius: 6px; overflow: hidden;
+  background: var(--surface-muted); display: flex; align-items: center; justify-content: center;
+}
+.photo-frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.photo-missing { padding: 12px; font-size: 0.78rem; line-height: 1.5; color: var(--ink-soft); text-align: center; }
+.photo-caption { font-size: 0.68rem; color: var(--ink-faint); margin-top: 4px; }
 .items { list-style: none; }
 .item { display: flex; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line-soft); }
 .item:last-child { border-bottom: 0; }
@@ -138,6 +156,7 @@ textarea:disabled { opacity: 0.55; }
 :root[data-theme="dark"] .msg-ok { color: #c5cdb5; }
 .result-summary { font-size: 0.95rem; font-weight: 600; margin-bottom: 10px; }
 .grid-static { margin-bottom: 12px; }
+.result-actions { margin-top: 14px; }
 .result-line { font-size: 0.84rem; color: var(--ink-soft); margin-top: 4px; }
 .fine { font-size: 0.7rem; color: var(--ink-faint); margin-top: 12px; word-break: break-all; }
 

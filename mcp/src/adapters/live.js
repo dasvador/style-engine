@@ -1,25 +1,90 @@
-// 실서비스 연결 경계 — 비활성. 어떤 도구에도 연결돼 있지 않고, config 가 demo 외 모드를 거절한다.
+// 실서비스 읽기 어댑터 — 연결된 사용자의 프로필과 **본인** 옷장만 읽는다(live 모드 전용).
 //
-// 나중에 실제 Wardrobe Edit 비교(Rust /api/comparisons)에 붙이려면 아래 인터페이스를 채운다.
-// 지금 막혀 있는 이유(README "실서비스 연결 경계" 참고):
-//   1. Rust 의 AuthUser 는 잘못된 토큰도 `default` 사용자로 받아 준다 → 원격 호출을 사용자별로 가를 수 없다.
-//   2. 전체 옷장 API 에 소유권 격리가 없다 → 옷장 조회 도구를 열면 남의 옷장이 보인다.
-//   3. 비교는 추천 묶음(batch_id)에서만 만들 수 있고, 묶음은 유료 모델을 부르는 추천 요청이 만든다.
-// 이 셋이 풀리기 전에는 3003 이나 운영 DB 를 이 MCP 서버 뒤에 두지 않는다.
-//
-// 연결 시 기대하는 모양(데모 저장소 DemoStore 와 같은 메서드):
-//   listWardrobe(userId, category?)          → { items: ItemSnapshot[] }
-//   createComparison(userId, { batchId })    → ComparisonView   (POST /api/comparisons)
-//   getComparison(userId, id)                → ComparisonView | null (GET /api/comparisons/{id})
-//   submitVote(userId, id, vote)             → { outcome, comparison } (POST /api/comparisons/{id}/vote)
-// userId 는 MCP OAuth 로 확인한 사용자여야 하고, 요청 본문·도구 인자로 받지 않는다.
+// 규칙:
+//   - 사용자 id 는 언제나 인증 주체(OAuth 토큰에 묶인 id)에서 온다. 도구 인자로 받지 않는다.
+//   - 모든 옷장 질의는 `clothing.user_id = ?` 로 거른다(Rust 마이그레이션 20261024000001 이 만든 컬럼).
+//     컬럼이 없으면(마이그레이션 전) 시작을 거부한다 — 전역 옷장을 읽는 일이 없게.
+//   - 읽기만 한다(SELECT). 등록·수정·삭제·유료 추천·이미지 생성 경로는 없다.
+//   - 옷 사진(image_url, 대개 data URI)은 내보내지 않는다. 있는지만 알린다.
+// 접속 문자열(LIVE_DATABASE_URL)은 로그에 남기지 않는다.
 
-export class LiveAdapterDisabled extends Error {
-  constructor() {
-    super('실서비스 어댑터는 비활성이에요. 이 MCP 서버는 데모 모드만 지원해요.');
+import mysql from 'mysql2/promise';
+
+const CATEGORIES = ['아우터', '상의', '하의', '신발', '가방'];
+const MAX_ITEMS = 200;
+
+export class LiveAdapter {
+  #pool;
+
+  /** @param {import('mysql2/promise').Pool} pool */
+  constructor(pool) {
+    this.#pool = pool;
   }
-}
 
-export function createLiveAdapter() {
-  throw new LiveAdapterDisabled();
+  static async connect(databaseUrl) {
+    const pool = mysql.createPool({ uri: databaseUrl, connectionLimit: 4, dateStrings: true });
+    const adapter = new LiveAdapter(pool);
+    await adapter.checkSchema();
+    return adapter;
+  }
+
+  async checkSchema() {
+    const [rows] = await this.#pool.query(
+      "SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'clothing' AND COLUMN_NAME = 'user_id'",
+    );
+    if (Number(rows[0].n) !== 1) {
+      throw new Error('clothing.user_id 가 없어요. Rust 마이그레이션(20261024000001)을 먼저 적용해야 live 모드를 켤 수 있어요.');
+    }
+  }
+
+  async exists(userId) {
+    if (typeof userId !== 'string' || userId.length === 0 || userId.length > 50) return false;
+    const [rows] = await this.#pool.execute('SELECT 1 FROM app_user WHERE id = ? LIMIT 1', [userId]);
+    return rows.length === 1;
+  }
+
+  /** 내 프로필. 토큰·내부 값은 싣지 않는다. */
+  async getProfile(userId) {
+    const [users] = await this.#pool.execute('SELECT username, display_name FROM app_user WHERE id = ?', [userId]);
+    if (users.length === 0) return null;
+    const [counts] = await this.#pool.execute(
+      'SELECT category, COUNT(*) AS n FROM clothing WHERE user_id = ? GROUP BY category',
+      [userId],
+    );
+    return {
+      username: users[0].username,
+      display_name: users[0].display_name ?? null,
+      wardrobe_count: counts.reduce((sum, r) => sum + Number(r.n), 0),
+      wardrobe_by_category: Object.fromEntries(counts.map((r) => [r.category, Number(r.n)])),
+    };
+  }
+
+  /** 내 옷장. category 는 표준 다섯 개 중 하나만. */
+  async listWardrobe(userId, { category = null, limit = 50 } = {}) {
+    if (category !== null && !CATEGORIES.includes(category)) throw new Error('알 수 없는 카테고리');
+    const n = Math.min(Math.max(1, Number(limit) || 50), MAX_ITEMS);
+    const params = [userId];
+    let sql =
+      'SELECT id, name, category, color, sub_category, material_primary, (image_url IS NOT NULL AND image_url <> \'\') AS has_image ' +
+      'FROM clothing WHERE user_id = ?';
+    if (category) {
+      sql += ' AND category = ?';
+      params.push(category);
+    }
+    sql += ` ORDER BY created_at DESC, id LIMIT ${n}`;
+    const [rows] = await this.#pool.execute(sql, params);
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      category: r.category,
+      color: r.color ?? null,
+      sub_category: r.sub_category ?? null,
+      material: r.material_primary ?? null,
+      has_image: Boolean(Number(r.has_image)),
+    }));
+  }
+
+  async close() {
+    await this.#pool.end();
+  }
 }

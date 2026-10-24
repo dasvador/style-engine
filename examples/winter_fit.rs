@@ -36,7 +36,8 @@ async fn main() -> anyhow::Result<()> {
         .max_connections(2)
         .connect(&std::env::var("DATABASE_URL")?)
         .await?;
-    let clothes = clothing_repo::list_clothing_filtered(&pool, Some("female"), None).await?;
+    let clothes =
+        clothing_repo::list_clothing_filtered(&pool, "default", Some("female"), None).await?;
     let mut rows = Vec::new();
     for c in &cands {
         let mut slots = Vec::new();

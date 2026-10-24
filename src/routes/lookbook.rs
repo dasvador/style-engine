@@ -116,10 +116,22 @@ async fn list_looks(
         if row.image_path.is_some() {
             continue;
         }
-        row.image_path =
-            cached_image_path(&state.db, &row.image_prompt, row.mood_key.as_deref()).await;
+        row.image_path = cached_image_path(
+            &state.db,
+            &auth.user_id,
+            &row.image_prompt,
+            row.mood_key.as_deref(),
+        )
+        .await;
         if let Some(path) = &row.image_path {
-            pin_image(&state.db, &row.image_prompt, row.mood_key.as_deref(), path).await;
+            pin_image(
+                &state.db,
+                &auth.user_id,
+                &row.image_prompt,
+                row.mood_key.as_deref(),
+                path,
+            )
+            .await;
         }
     }
 
@@ -175,11 +187,17 @@ async fn save_look(
 
     // 담는 순간 보이던 사진을 룩에 붙여 둔다. 아직 사진이 없으면 처음 만들어질 때
     // `chat::generate_image` 가 붙인다.
-    if let Some(path) =
-        cached_image_path(&state.db, &body.image_prompt, body.mood_key.as_deref()).await
+    if let Some(path) = cached_image_path(
+        &state.db,
+        &auth.user_id,
+        &body.image_prompt,
+        body.mood_key.as_deref(),
+    )
+    .await
     {
         pin_image(
             &state.db,
+            &auth.user_id,
             &body.image_prompt,
             body.mood_key.as_deref(),
             &path,
@@ -214,9 +232,13 @@ async fn save_look(
     Ok(Json(SaveResponse { id }))
 }
 
-/// 지금 프롬프트로 만든 사진이 캐시에 있으면 그 경로.
+// 사진 캐시·룩북 사진은 계정별이다. 아래 세 함수는 모두 `owner` 의 행만 읽고 쓴다 — 다른 계정이 같은
+// 이미지 프롬프트(착장 문구)를 보내도 그 계정의 사진을 받거나, 그 계정의 룩에 사진을 붙이지 못한다.
+
+/// 지금 프롬프트로 내가 만든 사진이 캐시에 있으면 그 경로.
 async fn cached_image_path(
     db: &sqlx::MySqlPool,
+    owner: &str,
     image_prompt: &str,
     mood_key: Option<&str>,
 ) -> Option<String> {
@@ -224,8 +246,10 @@ async fn cached_image_path(
     let (outfit_hash, prompt_hash, _, _) =
         crate::routes::chat::image_cache_keys(image_prompt, genre);
     sqlx::query_as::<_, (Option<String>,)>(
-        "SELECT image_path FROM outfit_image WHERE outfit_hash = ? AND prompt_hash = ? LIMIT 1",
+        "SELECT image_path FROM outfit_image \
+         WHERE user_id = ? AND outfit_hash = ? AND prompt_hash = ? LIMIT 1",
     )
+    .bind(owner)
     .bind(&outfit_hash)
     .bind(&prompt_hash)
     .fetch_optional(db)
@@ -240,13 +264,15 @@ async fn cached_image_path(
 /// 끊긴다(마이그레이션 `20261016000001`).
 pub async fn pinned_image(
     db: &sqlx::MySqlPool,
+    owner: &str,
     image_prompt: &str,
     mood_key: Option<&str>,
 ) -> Option<String> {
     sqlx::query_as::<_, (String,)>(
         "SELECT image_path FROM lookbook_look \
-         WHERE image_prompt = ? AND mood_key <=> ? AND image_path IS NOT NULL LIMIT 1",
+         WHERE user_id = ? AND image_prompt = ? AND mood_key <=> ? AND image_path IS NOT NULL LIMIT 1",
     )
+    .bind(owner)
     .bind(image_prompt)
     .bind(mood_key)
     .fetch_optional(db)
@@ -256,18 +282,20 @@ pub async fn pinned_image(
     .map(|r| r.0)
 }
 
-/// 사진이 아직 없는 룩에만 붙인다. 한 번 붙은 사진은 바꾸지 않는다.
+/// 내 룩 중 사진이 아직 없는 것에만 붙인다. 한 번 붙은 사진은 바꾸지 않는다.
 pub async fn pin_image(
     db: &sqlx::MySqlPool,
+    owner: &str,
     image_prompt: &str,
     mood_key: Option<&str>,
     path: &str,
 ) {
     let _ = sqlx::query(
         "UPDATE lookbook_look SET image_path = ? \
-         WHERE image_prompt = ? AND mood_key <=> ? AND image_path IS NULL",
+         WHERE user_id = ? AND image_prompt = ? AND mood_key <=> ? AND image_path IS NULL",
     )
     .bind(path)
+    .bind(owner)
     .bind(image_prompt)
     .bind(mood_key)
     .execute(db)

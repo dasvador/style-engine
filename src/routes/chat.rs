@@ -281,14 +281,15 @@ async fn chat(
     let user_id = &auth.user_id;
     let mood = crate::routes::parse_genre(body.style_mood.as_deref())?;
     let clothes = if body.gender.is_some() || body.style_mood.is_some() {
-        clothing_repo::list_clothing_filtered(&state.db, body.gender.as_deref(), mood).await?
+        clothing_repo::list_clothing_filtered(&state.db, user_id, body.gender.as_deref(), mood)
+            .await?
     } else {
-        clothing_repo::list_clothing(&state.db).await?
+        clothing_repo::list_clothing(&state.db, user_id).await?
     };
 
     // 날씨
     let mut temperature: Option<f64> = None;
-    let weather_hint = match crate::db::region_repo::get_region(&state.db).await {
+    let weather_hint = match crate::db::region_repo::get_region(&state.db, user_id).await {
         Ok(Some(region)) => {
             match weather_service::fetch_weather(
                 &state.http_client,
@@ -369,7 +370,8 @@ async fn chat(
     // 부분 수정은 유저가 콕 집어 말한 것을 찾는 일이라, 무드 안에 없으면 같은 성별의
     // 옷장 전체에서 찾는다 ("카멜 신발" 이 미니멀 무드에 없다고 흰 스니커를 주면 안 된다).
     let wide_clothes = if has_previous && body.style_mood.is_some() {
-        clothing_repo::list_clothing_filtered(&state.db, body.gender.as_deref(), None).await?
+        clothing_repo::list_clothing_filtered(&state.db, user_id, body.gender.as_deref(), None)
+            .await?
     } else {
         Vec::new()
     };
@@ -1006,6 +1008,8 @@ pub fn image_cache_keys(items: &str, genre: StyleGenre) -> (String, String, u64,
 
 async fn generate_image(
     State(state): State<AppState>,
+    // 유료 생성 호출이라 익명으로 부를 수 없다. 새로 만든 사진의 소유자로도 남긴다.
+    auth: AuthUser,
     Json(body): Json<ImageRequest>,
 ) -> Result<Json<ImageResponse>, AppError> {
     // 캐시 체크: outfit_hash + prompt_hash
@@ -1016,8 +1020,13 @@ async fn generate_image(
 
     // 룩북에 담아 둔 코디면 그때의 사진을 그대로 쓴다. 프롬프트를 고쳐 캐시 키가
     // 바뀌어도 담아 둔 사진이 새 그림으로 바뀌거나 비면 안 된다.
-    if let Some(path) =
-        crate::routes::lookbook::pinned_image(&state.db, &body.items, body.mood.as_deref()).await
+    if let Some(path) = crate::routes::lookbook::pinned_image(
+        &state.db,
+        &auth.user_id,
+        &body.items,
+        body.mood.as_deref(),
+    )
+    .await
     {
         return Ok(Json(ImageResponse::ready(path)));
     }
@@ -1027,10 +1036,14 @@ async fn generate_image(
     // 캐시에는 두 종류의 결과가 들어 있다. 통과한 이미지(image_path 있음)와,
     // 통과하지 못했다는 사실(image_path 없음)이다. 후자를 남기지 않으면 검증을
     // 통과하지 못하는 착장이 요청마다 이미지를 새로 생성한다.
+    //
+    // 캐시는 계정별이다(마이그레이션 20261024000002). 다른 계정이 같은 착장 문구로 만든 사진을
+    // 받거나 그 행을 갱신하지 않는다 — 같은 착장이어도 내 사진은 내가 만든다.
     let cached: Option<(Option<String>, i32, String)> = sqlx::query_as(
         "SELECT image_path, generation_attempts, CAST(verification_status AS CHAR) FROM outfit_image \
-         WHERE outfit_hash = ? AND prompt_hash = ? LIMIT 1",
+         WHERE user_id = ? AND outfit_hash = ? AND prompt_hash = ? LIMIT 1",
     )
+    .bind(&auth.user_id)
     .bind(&outfit_hash)
     .bind(&prompt_hash)
     .fetch_optional(&state.db)
@@ -1046,8 +1059,9 @@ async fn generate_image(
             // 실패해도 응답을 막을 이유가 없다.
             let _ = sqlx::query(
                 "UPDATE outfit_image SET hit_count = hit_count + 1 \
-                 WHERE outfit_hash = ? AND prompt_hash = ?",
+                 WHERE user_id = ? AND outfit_hash = ? AND prompt_hash = ?",
             )
+            .bind(&auth.user_id)
             .bind(&outfit_hash)
             .bind(&prompt_hash)
             .execute(&state.db)
@@ -1062,7 +1076,9 @@ async fn generate_image(
                 outfit_hash = %outfit_hash,
                 "안전 검사에 막혔던 착장 — 착용 사진은 다시 만들지 않고 의류 배치로 대신한다"
             );
-            return Ok(Json(flat_lay_fallback(&state, &body.items, genre).await));
+            return Ok(Json(
+                flat_lay_fallback(&state, &auth.user_id, &body.items, genre).await,
+            ));
         }
         // 통과하지 못한 이력이 있다. 몇 번이나 시도했는지 보고 더 태울지 정한다.
         prior_attempts = attempts.max(0) as u32;
@@ -1117,7 +1133,15 @@ async fn generate_image(
 
     // 앞 사진에서 1~2개만 바뀌었으면 편집부터 해 본다. 실패하면 아래에서 새로 만든다.
     if let Some(base_items) = body.base_items.as_deref()
-        && let Some(url) = edit_from_base(&state, genre, base_items, &body.items, &mut m).await
+        && let Some(url) = edit_from_base(
+            &state,
+            &auth.user_id,
+            genre,
+            base_items,
+            &body.items,
+            &mut m,
+        )
+        .await
     {
         outcome = Some((Some(url), VerificationStatus::Passed));
     }
@@ -1227,14 +1251,15 @@ async fn generate_image(
     if status != VerificationStatus::CheckError {
         let _ = sqlx::query(
             "INSERT INTO outfit_image \
-             (id, outfit_hash, prompt_hash, image_path, prompt_text, mood, verification_status, generation_attempts) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?) AS new \
+             (id, user_id, outfit_hash, prompt_hash, image_path, prompt_text, mood, verification_status, generation_attempts) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) AS new \
              ON DUPLICATE KEY UPDATE \
                image_path = new.image_path, \
                verification_status = new.verification_status, \
                generation_attempts = outfit_image.generation_attempts + new.generation_attempts",
         )
         .bind(uuid::Uuid::new_v4().to_string())
+        .bind(&auth.user_id)
         .bind(&outfit_hash)
         .bind(&prompt_hash)
         .bind(&url)
@@ -1257,13 +1282,21 @@ async fn generate_image(
 
     // 착용 사진이 막혔으면 인물 없는 의류 배치로 대신한다(별도 프롬프트·캐시·상태).
     if status == VerificationStatus::ModerationBlocked {
-        return Ok(Json(flat_lay_fallback(&state, &body.items, genre).await));
+        return Ok(Json(
+            flat_lay_fallback(&state, &auth.user_id, &body.items, genre).await,
+        ));
     }
 
     // 사진 없이 담아 둔 룩이면 이 사진을 붙인다.
     if let Some(path) = &url {
-        crate::routes::lookbook::pin_image(&state.db, &body.items, body.mood.as_deref(), path)
-            .await;
+        crate::routes::lookbook::pin_image(
+            &state.db,
+            &auth.user_id,
+            &body.items,
+            body.mood.as_deref(),
+            path,
+        )
+        .await;
     }
 
     Ok(Json(match url {
@@ -1388,15 +1421,21 @@ fn flat_lay_lock(key: &str) -> std::sync::Arc<tokio::sync::Mutex<()>> {
 }
 
 /// 착용 사진이 막힌 착장의 의류 배치 사진. 막히거나 상한에 닿으면 이미지 없이 일반 안내만 준다.
-async fn flat_lay_fallback(state: &AppState, items: &str, genre: StyleGenre) -> ImageResponse {
+async fn flat_lay_fallback(
+    state: &AppState,
+    owner: &str,
+    items: &str,
+    genre: StyleGenre,
+) -> ImageResponse {
     let (outfit_hash, prompt_hash, prompt) = flat_lay_cache_keys(items);
-    let lock = flat_lay_lock(&format!("{outfit_hash}:{prompt_hash}"));
+    let lock = flat_lay_lock(&format!("{owner}:{outfit_hash}:{prompt_hash}"));
     let _guard = lock.lock().await;
 
     let cached: Option<(Option<String>, String, i32)> = sqlx::query_as(
         "SELECT image_path, CAST(verification_status AS CHAR), generation_attempts \
-         FROM outfit_image WHERE outfit_hash = ? AND prompt_hash = ? LIMIT 1",
+         FROM outfit_image WHERE user_id = ? AND outfit_hash = ? AND prompt_hash = ? LIMIT 1",
     )
+    .bind(owner)
     .bind(&outfit_hash)
     .bind(&prompt_hash)
     .fetch_optional(&state.db)
@@ -1489,14 +1528,15 @@ async fn flat_lay_fallback(state: &AppState, items: &str, genre: StyleGenre) -> 
 
     let _ = sqlx::query(
         "INSERT INTO outfit_image \
-         (id, outfit_hash, prompt_hash, image_path, prompt_text, mood, verification_status, generation_attempts, presentation) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'flat_lay') AS new \
+         (id, user_id, outfit_hash, prompt_hash, image_path, prompt_text, mood, verification_status, generation_attempts, presentation) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'flat_lay') AS new \
          ON DUPLICATE KEY UPDATE \
            image_path = new.image_path, \
            verification_status = new.verification_status, \
            generation_attempts = outfit_image.generation_attempts + new.generation_attempts",
     )
     .bind(uuid::Uuid::new_v4().to_string())
+    .bind(owner)
     .bind(&outfit_hash)
     .bind(&prompt_hash)
     .bind(&path)
@@ -1649,6 +1689,7 @@ fn build_edit_prompt(changes: &[ItemChange]) -> String {
 /// 못한 그림은 내보내지 않는다" 는 보장이 편집 경로에서만 깨진다.
 async fn edit_from_base(
     state: &AppState,
+    owner: &str,
     genre: StyleGenre,
     base_items: &str,
     items: &str,
@@ -1660,10 +1701,12 @@ async fn edit_from_base(
     }
 
     let (base_outfit_hash, base_prompt_hash, _, _) = image_cache_keys(base_items, genre);
+    // 앞 사진은 내 사진만 쓴다 — 다른 계정의 사진을 편집해 내 사진으로 만들지 않는다.
     let base_path: Option<(Option<String>,)> = sqlx::query_as(
         "SELECT image_path FROM outfit_image \
-         WHERE outfit_hash = ? AND prompt_hash = ? AND image_path IS NOT NULL LIMIT 1",
+         WHERE user_id = ? AND outfit_hash = ? AND prompt_hash = ? AND image_path IS NOT NULL LIMIT 1",
     )
+    .bind(owner)
     .bind(&base_outfit_hash)
     .bind(&base_prompt_hash)
     .fetch_optional(&state.db)
@@ -1679,10 +1722,11 @@ async fn edit_from_base(
     } else {
         sqlx::query_as(
             "SELECT image_path FROM outfit_image \
-             WHERE outfit_hash = ? AND mood = ? AND presentation = 'model' \
+             WHERE user_id = ? AND outfit_hash = ? AND mood = ? AND presentation = 'model' \
                AND verification_status = 'passed' AND image_path IS NOT NULL \
              ORDER BY created_at DESC LIMIT 1",
         )
+        .bind(owner)
         .bind(&base_outfit_hash)
         .bind(genre.as_str())
         .fetch_optional(&state.db)

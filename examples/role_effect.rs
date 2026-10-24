@@ -54,7 +54,8 @@ async fn main() -> anyhow::Result<()> {
         .max_connections(2)
         .connect(&std::env::var("DATABASE_URL")?)
         .await?;
-    let clothes = clothing_repo::list_clothing_filtered(&pool, Some(gender), None).await?;
+    let clothes =
+        clothing_repo::list_clothing_filtered(&pool, "default", Some(gender), None).await?;
     let mut items = Vec::new();
     for c in &clothes {
         let seasons = clothing_repo::get_seasons(&pool, &c.id)

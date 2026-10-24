@@ -10,10 +10,15 @@ pub fn router() -> Router<AppState> {
     Router::new().route("/", get(get_weather))
 }
 
-async fn get_weather(State(state): State<AppState>) -> Result<Json<WeatherResponse>, AppError> {
-    let region = region_repo::get_region(&state.db).await?.ok_or_else(|| {
-        AppError::NotFound("No region configured. Set a region first.".to_string())
-    })?;
+async fn get_weather(
+    auth: crate::middleware::auth::AuthUser,
+    State(state): State<AppState>,
+) -> Result<Json<WeatherResponse>, AppError> {
+    let region = region_repo::get_region(&state.db, &auth.user_id)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound("No region configured. Set a region first.".to_string())
+        })?;
 
     let current = weather_service::fetch_weather(
         &state.http_client,

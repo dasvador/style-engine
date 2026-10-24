@@ -42,6 +42,7 @@ async fn uploaded_leather_garment_reads_as_edgy_without_stored_material() {
     for (name, category, thickness) in uploads {
         let c = clothing_repo::insert_clothing(
             &pool,
+            "default",
             name,
             category,
             Some("블랙"),
@@ -67,10 +68,14 @@ async fn uploaded_leather_garment_reads_as_edgy_without_stored_material() {
             .expect("장르");
         ids.push(c.id);
     }
-    let listed =
-        clothing_repo::list_clothing_filtered(&pool, Some("female"), Some(StyleGenre::Edgy))
-            .await
-            .expect("조회");
+    let listed = clothing_repo::list_clothing_filtered(
+        &pool,
+        "default",
+        Some("female"),
+        Some(StyleGenre::Edgy),
+    )
+    .await
+    .expect("조회");
     let saved: Vec<Clothing> = listed.into_iter().filter(|c| ids.contains(&c.id)).collect();
     // 판정 전에 지운다 — 단언이 실패해도 개발 DB 에 남지 않는다.
     for id in &ids {
@@ -79,7 +84,7 @@ async fn uploaded_leather_garment_reads_as_edgy_without_stored_material() {
             .execute(&pool)
             .await
             .expect("태그 정리");
-        clothing_repo::delete_clothing(&pool, id)
+        clothing_repo::delete_clothing(&pool, "default", id)
             .await
             .expect("정리");
     }

@@ -113,9 +113,13 @@ async fn main() -> anyhow::Result<()> {
         .max_connections(2)
         .connect(&std::env::var("DATABASE_URL")?)
         .await?;
-    let clothes =
-        clothing_repo::list_clothing_filtered(&pool, Some("female"), Some(StyleGenre::Glam))
-            .await?;
+    let clothes = clothing_repo::list_clothing_filtered(
+        &pool,
+        "default",
+        Some("female"),
+        Some(StyleGenre::Glam),
+    )
+    .await?;
     let mut seasons = HashMap::new();
     let mut worlds = HashMap::new();
     for c in &clothes {

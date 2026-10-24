@@ -16,6 +16,7 @@ pub fn router() -> Router<AppState> {
 
 async fn evaluate_outfit(
     axum::extract::State(state): axum::extract::State<AppState>,
+    auth: crate::middleware::auth::AuthUser,
     Json(body): Json<OutfitEvaluateRequest>,
 ) -> Result<Json<OutfitEvaluateResponse>, AppError> {
     let slot_defs: Vec<(SlotKind, &str)> = [
@@ -37,7 +38,7 @@ async fn evaluate_outfit(
 
     let mut slots = Vec::new();
     for (kind, id) in &slot_defs {
-        let clothing = clothing_repo::get_clothing_by_id(&state.db, id)
+        let clothing = clothing_repo::get_clothing_by_id(&state.db, &auth.user_id, id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("아이템 {} 을(를) 찾을 수 없습니다", id)))?;
         let seasons = clothing_repo::get_seasons(&state.db, id).await?;

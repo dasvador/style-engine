@@ -189,6 +189,8 @@ mod tests {
             llm,
             kma_api_key: String::new(),
             embedding,
+            auth_mode: crate::middleware::auth::AuthMode::Strict,
+            admin_users: std::sync::Arc::new(Vec::new()),
         };
         let app = Router::new()
             .nest("/api", crate::routes::api_router())
@@ -364,10 +366,13 @@ mod tests {
         assert_eq!(st, StatusCode::OK);
         assert_eq!(shown["options"], view["options"]);
 
-        // ── 다른 사용자·토큰 없음(default)은 남의 비교를 못 본다 ──
-        for user in [Some(1), None] {
+        // ── 다른 사용자는 남의 비교를 못 본다(404), 토큰이 없으면 인증부터 막힌다(401) ──
+        for (user, expected) in [
+            (Some(1), StatusCode::NOT_FOUND),
+            (None, StatusCode::UNAUTHORIZED),
+        ] {
             let (st, _) = call(&ctx, "GET", &format!("/api/comparisons/{id}"), user, None).await;
-            assert_eq!(st, StatusCode::NOT_FOUND);
+            assert_eq!(st, expected);
             let (st, _) = call(
                 &ctx,
                 "POST",
@@ -376,7 +381,7 @@ mod tests {
                 Some(serde_json::json!({"choice": "a"})),
             )
             .await;
-            assert_eq!(st, StatusCode::NOT_FOUND);
+            assert_eq!(st, expected);
         }
         let (st, _) = open(&ctx, 1, &b).await;
         assert_eq!(
@@ -618,7 +623,7 @@ mod tests {
             .await
             .unwrap();
         }
-        let clothes = crate::db::clothing_repo::list_clothing(&ctx.db)
+        let clothes = crate::db::clothing_repo::list_clothing(&ctx.db, "default")
             .await
             .unwrap();
         let mode = |key: &str, ids: [&str; 2]| crate::models::recommendation::ModeRecommendation {

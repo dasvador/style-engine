@@ -16,7 +16,7 @@ async fn main() -> anyhow::Result<()> {
         .max_connections(2)
         .connect(&std::env::var("DATABASE_URL")?)
         .await?;
-    let all = clothing_repo::list_clothing_filtered(&pool, None, None).await?;
+    let all = clothing_repo::list_clothing_filtered(&pool, "default", None, None).await?;
     for line in std::io::stdin().lock().lines() {
         let line = line?;
         let Some((t, keys)) = line.split_once('\t') else {

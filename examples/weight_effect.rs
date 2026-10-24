@@ -47,7 +47,8 @@ async fn main() -> anyhow::Result<()> {
         .max_connections(2)
         .connect(&std::env::var("DATABASE_URL")?)
         .await?;
-    let clothes = clothing_repo::list_clothing_filtered(&pool, Some("female"), None).await?;
+    let clothes =
+        clothing_repo::list_clothing_filtered(&pool, "default", Some("female"), None).await?;
     let with_weight = clothes.iter().filter(|c| c.weight.is_some()).count();
     println!(
         "여성 옷 {}벌, 무게 값 있음 {}벌",

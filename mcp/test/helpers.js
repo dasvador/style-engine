@@ -1,6 +1,8 @@
 import { request as httpRequest } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { crc32, deflateSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +12,10 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 
 import { DemoStore } from '../src/demo-store.js';
 import { createHttpServer, defaultAllowedHosts } from '../src/http.js';
+import { imageOrigin, imageResolver, loadImageAssets } from '../src/image-assets.js';
+import { PHOTO_ASSET_KEYS } from '../src/photo-sets.js';
+import { createLiveAuth } from '../src/auth/setup.js';
+import { DEFAULT_REDIRECT_URIS } from '../src/auth/oauth.js';
 
 export const UI_FILE = fileURLToPath(new URL('../dist/ui.html', import.meta.url));
 
@@ -27,10 +33,16 @@ async function freePort() {
 }
 
 /** 빈 포트에 데모 서버를 띄운다. 실제 서버 main.js 와 같은 createHttpServer 를 쓴다. */
-export async function startServer({ file = null, http = {}, store: givenStore, publicHost = null } = {}) {
+/**
+ * live: { adapter, authStoreFile?, linkCodesFile, redirectAllowlist?, now? } — 계정 연결 모드로 띄운다.
+ * 발급자는 로컬 http://127.0.0.1:포트(SDK 가 루프백만 http 를 허용한다).
+ */
+export async function startServer({ file = null, http = {}, store: givenStore, publicHost = null, assetsDir = null, live = null, port: fixedPort = null, log } = {}) {
   const uiHtml = await readFile(UI_FILE, 'utf8');
-  const store = givenStore ?? (await new DemoStore({ file }).load());
-  const port = await freePort();
+  const port = fixedPort ?? (await freePort());
+  const assets = await loadImageAssets(assetsDir);
+  const origin = imageOrigin({ publicHost, port });
+  const store = givenStore ?? (await new DemoStore({ file, images: imageResolver(assets.byKey, origin) }).load());
   const config = {
     allowedHosts: defaultAllowedHosts(port, publicHost),
     allowedOrigins: [],
@@ -39,13 +51,26 @@ export async function startServer({ file = null, http = {}, store: givenStore, p
     rateLimitPerMinute: 10_000,
     ...http,
   };
-  const server = createHttpServer({ store, uiHtml, config });
+  const auth = live
+    ? await createLiveAuth({
+        origin: `http://127.0.0.1:${port}`,
+        authStoreFile: live.authStoreFile ?? null,
+        linkCodesFile: live.linkCodesFile,
+        redirectAllowlist: live.redirectAllowlist ?? DEFAULT_REDIRECT_URIS,
+        adapter: live.adapter,
+        now: live.now,
+      })
+    : null;
+  const server = createHttpServer({ store, uiHtml, config, assets: assets.byName, imageOrigin: origin, auth, log });
   await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve));
   return {
     port,
     url: `http://127.0.0.1:${port}/mcp`,
     store,
     uiHtml,
+    assets,
+    origin,
+    auth,
     close: () =>
       new Promise((resolve) => {
         server.closeAllConnections();
@@ -54,9 +79,10 @@ export async function startServer({ file = null, http = {}, store: givenStore, p
   };
 }
 
-export async function connectClient(url) {
+export async function connectClient(url, { token = null } = {}) {
   const client = new Client({ name: 'wardrobe-mcp-test', version: '0.0.0' });
-  await client.connect(new StreamableHTTPClientTransport(new URL(url)));
+  const requestInit = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+  await client.connect(new StreamableHTTPClientTransport(new URL(url), { requestInit }));
   return client;
 }
 
@@ -102,4 +128,50 @@ export function rawHttp(url, body, headers = {}) {
     req.on('error', reject);
     req.end(payload);
   });
+}
+
+/** 단색 PNG(가로 w, 세로 h). 테스트용 사진 asset — 실제 생성 사진을 테스트에 넣지 않는다. */
+export function makePng(w, h, [r, g, b]) {
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([len, body, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // RGB
+  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: w }, () => [r, g, b]).flat())]);
+  const raw = Buffer.concat(Array.from({ length: h }, () => row));
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+/**
+ * 테스트용 asset 디렉터리(manifest + images/). keys 마다 서로 다른 색의 PNG 를 만든다.
+ * @returns {Promise<{ dir: string, files: Record<string, string>, cleanup: () => Promise<void> }>}
+ */
+export async function makeTestAssets(keys = PHOTO_ASSET_KEYS) {
+  const { dir, cleanup } = await tempDir();
+  await mkdir(join(dir, 'images'));
+  const assets = {};
+  const files = {};
+  for (const [i, key] of keys.entries()) {
+    const png = makePng(20, 30, [40 + i * 50, 90, 200 - i * 40]);
+    const sha256 = createHash('sha256').update(png).digest('hex');
+    const name = `${sha256.slice(0, 32)}.png`;
+    await writeFile(join(dir, 'images', name), png);
+    assets[key] = { file: name, sha256, bytes: png.length, width: 20, height: 30, mime: 'image/png', source: { test: true } };
+    files[key] = name;
+  }
+  await writeFile(join(dir, 'manifest.json'), JSON.stringify({ version: 1, assets }));
+  return { dir, files, cleanup };
 }

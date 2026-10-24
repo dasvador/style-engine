@@ -61,9 +61,10 @@ async fn every_exposed_genre_can_build_an_outfit() {
     let mut thin = Vec::new();
 
     for (gender, genre) in exposed_genres(&pool).await {
-        let items = clothing_repo::list_clothing_filtered(&pool, Some(&gender), Some(genre))
-            .await
-            .expect("후보 조회");
+        let items =
+            clothing_repo::list_clothing_filtered(&pool, "default", Some(&gender), Some(genre))
+                .await
+                .expect("후보 조회");
 
         for required in REQUIRED_CATEGORIES {
             let n = items.iter().filter(|c| c.category == required).count();
@@ -101,7 +102,7 @@ async fn no_genre_means_the_whole_wardrobe() {
         .expect("DB 연결");
 
     for gender in ["male", "female"] {
-        let all = clothing_repo::list_clothing_filtered(&pool, Some(gender), None)
+        let all = clothing_repo::list_clothing_filtered(&pool, "default", Some(gender), None)
             .await
             .expect("후보 조회");
         assert!(!all.is_empty(), "{gender} 옷장이 비어 있다");
@@ -111,9 +112,10 @@ async fn no_genre_means_the_whole_wardrobe() {
             if g != gender {
                 continue;
             }
-            let filtered = clothing_repo::list_clothing_filtered(&pool, Some(gender), Some(genre))
-                .await
-                .expect("후보 조회");
+            let filtered =
+                clothing_repo::list_clothing_filtered(&pool, "default", Some(gender), Some(genre))
+                    .await
+                    .expect("후보 조회");
             assert!(
                 filtered.len() <= all.len(),
                 "{gender}/{genre} 후보({})가 옷장 전체({})보다 많다",
@@ -196,9 +198,10 @@ async fn no_genre_is_stranded_in_a_season() {
     let mut stranded = Vec::new();
 
     for (gender, genre) in exposed_genres(&pool).await {
-        let items = clothing_repo::list_clothing_filtered(&pool, Some(&gender), Some(genre))
-            .await
-            .expect("후보 조회");
+        let items =
+            clothing_repo::list_clothing_filtered(&pool, "default", Some(&gender), Some(genre))
+                .await
+                .expect("후보 조회");
 
         // 후보의 계절을 한 번만 읽어 재사용한다.
         let mut with_seasons = Vec::with_capacity(items.len());

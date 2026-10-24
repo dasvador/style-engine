@@ -6,11 +6,16 @@ use uuid::Uuid;
 use crate::models::clothing::Clothing;
 use crate::models::style_vocab::{Role, Saturation, Style, StyleGenre, Thickness, Tone, Weight};
 
+// 옷장 아이템은 소유자(`clothing.user_id`)에 묶인다. 아이템 행을 읽고 쓰는 함수는 모두 `owner` 를 받아
+// `user_id = owner` 로 거른다 — 다른 사용자의 id 를 알아도 없는 아이템과 같다. 계절·질감·장르처럼
+// clothing_id 로만 걸리는 보조 표 함수는 호출하기 전에 `get_clothing_by_id(owner, id)` 로 소유를 확인한다.
+
 const SELECT_COLS: &str = "id, name, category, gender, style_mood, color, thickness, image_url, tone, saturation, style, weight, role, color_temperature, versatility, statement_level, formality_level, visual_weight, texture_depth, visual_weight_v2, texture_depth_v2, grounding_score, shadow_tone, silhouette_volume, material_primary, sub_category, floating_score, strong_style_score, texture_keywords, created_at, updated_at";
 
 #[allow(clippy::too_many_arguments)] // 테이블 컬럼을 그대로 받는 저장 함수
 pub async fn insert_clothing(
     pool: &MySqlPool,
+    owner: &str,
     name: &str,
     category: &str,
     color: Option<&str>,
@@ -29,9 +34,10 @@ pub async fn insert_clothing(
     let id = Uuid::new_v4().to_string();
 
     sqlx::query(
-        "INSERT INTO clothing (id, name, category, color, thickness, image_url, tone, saturation, style, weight, role, color_temperature, versatility, statement_level, formality_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO clothing (id, user_id, name, category, color, thickness, image_url, tone, saturation, style, weight, role, color_temperature, versatility, statement_level, formality_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&id)
+    .bind(owner)
     .bind(name)
     .bind(category)
     .bind(color)
@@ -185,16 +191,19 @@ pub async fn get_style_genres(
     Ok(rows.into_iter().map(|r| r.0).collect())
 }
 
-/// 옷장 전체의 장르를 한 번에 읽는다.
+/// 내 옷장 전체의 장르를 한 번에 읽는다.
 ///
 /// 목록 화면은 아이템이 수백 개라, 아이템마다 질의하면 계절·질감에 장르까지
 /// 세 번씩 왕복한다. 조인 표는 아이템당 몇 줄뿐이므로 통째로 읽어 묶는 쪽이 싸다.
 pub async fn get_all_style_genres(
     pool: &MySqlPool,
+    owner: &str,
 ) -> Result<HashMap<String, Vec<String>>, sqlx::Error> {
     let rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT clothing_id, style_genre FROM clothing_style_genre ORDER BY style_genre",
+        "SELECT g.clothing_id, g.style_genre FROM clothing_style_genre g \
+         JOIN clothing c ON c.id = g.clothing_id WHERE c.user_id = ? ORDER BY g.style_genre",
     )
+    .bind(owner)
     .fetch_all(pool)
     .await?;
 
@@ -222,11 +231,12 @@ pub async fn set_gender(
     Ok(())
 }
 
-pub async fn list_clothing(pool: &MySqlPool) -> Result<Vec<Clothing>, sqlx::Error> {
+pub async fn list_clothing(pool: &MySqlPool, owner: &str) -> Result<Vec<Clothing>, sqlx::Error> {
     sqlx::query_as::<_, Clothing>(&format!(
-        "SELECT {} FROM clothing ORDER BY created_at DESC",
+        "SELECT {} FROM clothing WHERE user_id = ? ORDER BY created_at DESC",
         SELECT_COLS
     ))
+    .bind(owner)
     .fetch_all(pool)
     .await
 }
@@ -313,10 +323,11 @@ fn genre_predicate(genre: StyleGenre) -> Option<&'static str> {
 
 pub async fn list_clothing_filtered(
     pool: &MySqlPool,
+    owner: &str,
     gender: Option<&str>,
     style_mood: Option<StyleGenre>,
 ) -> Result<Vec<Clothing>, sqlx::Error> {
-    let mut sql = format!("SELECT {} FROM clothing WHERE 1=1", SELECT_COLS);
+    let mut sql = format!("SELECT {} FROM clothing WHERE user_id = ?", SELECT_COLS);
     if gender.is_some() {
         sql.push_str(" AND gender = ?");
     }
@@ -342,7 +353,7 @@ pub async fn list_clothing_filtered(
     }
     sql.push_str(" ORDER BY created_at DESC");
 
-    let mut q = sqlx::query_as::<_, Clothing>(&sql);
+    let mut q = sqlx::query_as::<_, Clothing>(&sql).bind(owner);
     if let Some(g) = gender {
         q = q.bind(g);
     }
@@ -352,15 +363,18 @@ pub async fn list_clothing_filtered(
     q.fetch_all(pool).await
 }
 
+/// 내 아이템 하나. 다른 사용자의 아이템이면 없는 것과 같다(`None`).
 pub async fn get_clothing_by_id(
     pool: &MySqlPool,
+    owner: &str,
     id: &str,
 ) -> Result<Option<Clothing>, sqlx::Error> {
     sqlx::query_as::<_, Clothing>(&format!(
-        "SELECT {} FROM clothing WHERE id = ?",
+        "SELECT {} FROM clothing WHERE id = ? AND user_id = ?",
         SELECT_COLS
     ))
     .bind(id)
+    .bind(owner)
     .fetch_optional(pool)
     .await
 }
@@ -368,6 +382,7 @@ pub async fn get_clothing_by_id(
 #[allow(clippy::too_many_arguments)] // 테이블 컬럼을 그대로 받는 저장 함수
 pub async fn update_clothing(
     pool: &MySqlPool,
+    owner: &str,
     id: &str,
     name: Option<&str>,
     category: Option<&str>,
@@ -402,7 +417,7 @@ pub async fn update_clothing(
             statement_level   = COALESCE(?, statement_level),
             formality_level   = COALESCE(?, formality_level),
             updated_at        = NOW()
-        WHERE id = ?
+        WHERE id = ? AND user_id = ?
         "#,
     )
     .bind(name)
@@ -420,6 +435,7 @@ pub async fn update_clothing(
     .bind(statement_level)
     .bind(formality_level)
     .bind(id)
+    .bind(owner)
     .execute(pool)
     .await?;
 
@@ -427,13 +443,7 @@ pub async fn update_clothing(
         return Ok(None);
     }
 
-    sqlx::query_as::<_, Clothing>(&format!(
-        "SELECT {} FROM clothing WHERE id = ?",
-        SELECT_COLS
-    ))
-    .bind(id)
-    .fetch_optional(pool)
-    .await
+    get_clothing_by_id(pool, owner, id).await
 }
 
 pub async fn delete_seasons(pool: &MySqlPool, clothing_id: &str) -> Result<(), sqlx::Error> {
@@ -444,9 +454,10 @@ pub async fn delete_seasons(pool: &MySqlPool, clothing_id: &str) -> Result<(), s
     Ok(())
 }
 
-pub async fn delete_clothing(pool: &MySqlPool, id: &str) -> Result<bool, sqlx::Error> {
-    let result = sqlx::query("DELETE FROM clothing WHERE id = ?")
+pub async fn delete_clothing(pool: &MySqlPool, owner: &str, id: &str) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query("DELETE FROM clothing WHERE id = ? AND user_id = ?")
         .bind(id)
+        .bind(owner)
         .execute(pool)
         .await?;
     Ok(result.rows_affected() > 0)

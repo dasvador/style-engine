@@ -21,9 +21,11 @@ pub fn router() -> Router<AppState> {
 }
 
 async fn create_reference(
+    auth: crate::middleware::auth::AuthUser,
     State(state): State<AppState>,
     Json(body): Json<CreateReferenceRequest>,
 ) -> Result<Json<ReferenceResponse>, AppError> {
+    crate::middleware::auth::require_admin(&state, &auth)?;
     // Embed the description
     let embedding = state
         .embedding
@@ -72,10 +74,12 @@ async fn get_reference(
 }
 
 async fn update_reference(
+    auth: crate::middleware::auth::AuthUser,
     State(state): State<AppState>,
     Path(id): Path<String>,
     Json(body): Json<CreateReferenceRequest>,
 ) -> Result<Json<ReferenceResponse>, AppError> {
+    crate::middleware::auth::require_admin(&state, &auth)?;
     let embedding = state
         .embedding
         .embed_text(&body.description)
@@ -107,9 +111,11 @@ async fn update_reference(
 }
 
 async fn delete_reference(
+    auth: crate::middleware::auth::AuthUser,
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    crate::middleware::auth::require_admin(&state, &auth)?;
     let deleted = reference_repo::delete_reference(&state.db, &id).await?;
     if !deleted {
         return Err(AppError::NotFound(format!("Reference {} not found", id)));

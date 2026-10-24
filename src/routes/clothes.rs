@@ -8,6 +8,7 @@ use validator::Validate;
 use crate::AppState;
 use crate::db::clothing_repo;
 use crate::errors::AppError;
+use crate::middleware::auth::AuthUser;
 use crate::models::clothing::{
     ClothingResponse, CreateClothingRequest, ImageUploadRequest, UpdateClothingRequest,
 };
@@ -44,10 +45,11 @@ struct SetGenresRequest {
 /// 것을 다음 제안이 덮어쓰지 않게 막을 수도 있다.
 async fn set_genres(
     State(state): State<AppState>,
+    auth: AuthUser,
     Path(id): Path<String>,
     Json(body): Json<SetGenresRequest>,
 ) -> Result<Json<Vec<String>>, AppError> {
-    if clothing_repo::get_clothing_by_id(&state.db, &id)
+    if clothing_repo::get_clothing_by_id(&state.db, &auth.user_id, &id)
         .await?
         .is_none()
     {
@@ -63,6 +65,7 @@ async fn set_genres(
 
 async fn create_clothing(
     State(state): State<AppState>,
+    auth: AuthUser,
     Json(body): Json<CreateClothingRequest>,
 ) -> Result<Json<ClothingResponse>, AppError> {
     body.validate()
@@ -72,6 +75,7 @@ async fn create_clothing(
 
     let clothing = clothing_repo::insert_clothing(
         &state.db,
+        &auth.user_id,
         &body.name,
         &body.category,
         body.color.as_deref(),
@@ -107,10 +111,11 @@ async fn create_clothing(
 
 async fn list_clothing(
     State(state): State<AppState>,
+    auth: AuthUser,
 ) -> Result<Json<Vec<ClothingResponse>>, AppError> {
-    let items = clothing_repo::list_clothing(&state.db).await?;
+    let items = clothing_repo::list_clothing(&state.db, &auth.user_id).await?;
     // 장르는 조인 표에 있어 응답이 늘 비어 있었다. 목록 전체를 한 번에 읽어 채운다.
-    let mut genres = clothing_repo::get_all_style_genres(&state.db).await?;
+    let mut genres = clothing_repo::get_all_style_genres(&state.db, &auth.user_id).await?;
     let mut result = Vec::with_capacity(items.len());
     for item in items {
         let seasons = clothing_repo::get_seasons(&state.db, &item.id).await?;
@@ -125,9 +130,10 @@ async fn list_clothing(
 
 async fn get_clothing(
     State(state): State<AppState>,
+    auth: AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<ClothingResponse>, AppError> {
-    let clothing = clothing_repo::get_clothing_by_id(&state.db, &id)
+    let clothing = clothing_repo::get_clothing_by_id(&state.db, &auth.user_id, &id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Clothing {} not found", id)))?;
 
@@ -142,11 +148,13 @@ async fn get_clothing(
 
 async fn update_clothing(
     State(state): State<AppState>,
+    auth: AuthUser,
     Path(id): Path<String>,
     Json(body): Json<UpdateClothingRequest>,
 ) -> Result<Json<ClothingResponse>, AppError> {
     let clothing = clothing_repo::update_clothing(
         &state.db,
+        &auth.user_id,
         &id,
         body.name.as_deref(),
         body.category.as_deref(),
@@ -191,9 +199,10 @@ async fn update_clothing(
 
 async fn delete_clothing(
     State(state): State<AppState>,
+    auth: AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let deleted = clothing_repo::delete_clothing(&state.db, &id).await?;
+    let deleted = clothing_repo::delete_clothing(&state.db, &auth.user_id, &id).await?;
     if !deleted {
         return Err(AppError::NotFound(format!("Clothing {} not found", id)));
     }
@@ -202,6 +211,7 @@ async fn delete_clothing(
 
 async fn upload_clothing_image(
     State(state): State<AppState>,
+    auth: AuthUser,
     Json(body): Json<ImageUploadRequest>,
 ) -> Result<Json<ClothingResponse>, AppError> {
     state
@@ -240,6 +250,7 @@ async fn upload_clothing_image(
 
     let clothing = clothing_repo::insert_clothing(
         &state.db,
+        &auth.user_id,
         &name,
         &category,
         color.as_deref(),
@@ -280,7 +291,7 @@ async fn upload_clothing_image(
     let all_tw = clothing_repo::get_texture_worlds(&state.db, &clothing.id).await?;
 
     // 다시 읽어 저장된 성별까지 담아 돌려준다 — 화면이 바로 확인·수정할 수 있게.
-    let saved = clothing_repo::get_clothing_by_id(&state.db, &clothing.id)
+    let saved = clothing_repo::get_clothing_by_id(&state.db, &auth.user_id, &clothing.id)
         .await?
         .unwrap_or(clothing);
 

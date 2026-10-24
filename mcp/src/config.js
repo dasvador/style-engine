@@ -3,6 +3,7 @@
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
+import { DEFAULT_REDIRECT_URIS } from './auth/oauth.js';
 import { defaultAllowedHosts } from './http.js';
 
 const PACKAGE_DIR = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -23,9 +24,9 @@ function list(value) {
 
 export function loadConfig(env = process.env) {
   const mode = env.WARDROBE_MCP_MODE ?? 'demo';
-  if (mode !== 'demo') {
-    // 실서비스 연결은 이번 범위가 아니다(src/adapters/live.js 참고). 조용히 데모로 바꾸지 않고 멈춘다.
-    throw new Error(`WARDROBE_MCP_MODE=${mode} 는 지원하지 않아요. 이 서버는 demo 모드만 있어요.`);
+  if (mode !== 'demo' && mode !== 'live') {
+    // 모르는 값을 조용히 데모로 바꾸지 않고 멈춘다.
+    throw new Error(`WARDROBE_MCP_MODE=${mode} 는 지원하지 않아요(demo 또는 live).`);
   }
   const port = int('MCP_PORT', env.MCP_PORT, 8787, 1, 65535);
   if (port === 3003) throw new Error('3003 은 Rust 본 서버 포트예요. 데모 MCP 는 다른 포트를 쓰세요.');
@@ -34,8 +35,27 @@ export function loadConfig(env = process.env) {
   const publicHost = env.PUBLIC_HOST?.trim() || null;
   if (publicHost && !/^[a-z0-9.-]+(:\d+)?$/i.test(publicHost)) throw new Error(`PUBLIC_HOST 형식이 이상해요: ${publicHost}`);
 
+  // live: 계정 연결(OAuth) + 연결된 사용자의 실제 옷장 읽기. 공개 HTTPS 주소와 DB 가 있어야 켠다.
+  let live = null;
+  if (mode === 'live') {
+    const localIssuer = env.LIVE_LOCAL_ISSUER === '1';
+    if (!publicHost && !localIssuer) {
+      throw new Error('live 모드에는 PUBLIC_HOST(HTTPS 공개 호스트)가 필요해요. 로컬 시험만 하려면 LIVE_LOCAL_ISSUER=1.');
+    }
+    if (!env.LIVE_DATABASE_URL) throw new Error('live 모드에는 LIVE_DATABASE_URL(읽기 전용 DB 접속)이 필요해요.');
+    live = {
+      // 발급자·리소스 origin. 요청 헤더가 아니라 설정에서만 만든다.
+      origin: publicHost && !localIssuer ? `https://${publicHost.toLowerCase()}` : `http://127.0.0.1:${port}`,
+      databaseUrl: env.LIVE_DATABASE_URL,
+      redirectAllowlist: [...new Set([...DEFAULT_REDIRECT_URIS, ...list(env.OAUTH_REDIRECT_URIS)])],
+      authStoreFile: env.AUTH_STORE_FILE ? resolve(env.AUTH_STORE_FILE) : resolve(PACKAGE_DIR, '.data/auth-store.json'),
+      linkCodesFile: env.LINK_CODES_FILE ? resolve(env.LINK_CODES_FILE) : resolve(PACKAGE_DIR, '.data/link-codes.json'),
+    };
+  }
+
   return {
     mode,
+    live,
     host,
     port,
     publicHost,
@@ -48,7 +68,11 @@ export function loadConfig(env = process.env) {
       maxBodyBytes: int('MAX_BODY_BYTES', env.MAX_BODY_BYTES, 64 * 1024, 1024, 1024 * 1024),
       maxBatch: 10,
       rateLimitPerMinute: int('RATE_LIMIT_PER_MINUTE', env.RATE_LIMIT_PER_MINUTE, 300, 10, 100_000),
+      // 진단용 접근 로그(메타데이터만, 기본 꺼짐). MCP_ACCESS_LOG=1
+      accessLog: env.MCP_ACCESS_LOG === '1',
     },
     uiFile: resolve(PACKAGE_DIR, 'dist/ui.html'),
+    // 이미 생성해 둔 룩북 사진의 로컬 사본·manifest(gitignore). 없으면 사진 비교 도구가 나오지 않는다.
+    assetsDir: env.DEMO_ASSETS_DIR ? resolve(env.DEMO_ASSETS_DIR) : resolve(PACKAGE_DIR, '.assets'),
   };
 }

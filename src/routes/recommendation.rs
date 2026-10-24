@@ -40,7 +40,7 @@ async fn get_recommendation(
         .map_err(|e| AppError::BadRequest(e.to_string()))?;
 
     // 1. Get region
-    let region = crate::db::region_repo::get_region(&state.db)
+    let region = crate::db::region_repo::get_region(&state.db, user_id)
         .await?
         .ok_or_else(|| {
             AppError::NotFound("No region configured. Set a region first.".to_string())
@@ -60,12 +60,13 @@ async fn get_recommendation(
     let clothes = if body.gender.is_some() || body.style_mood.is_some() {
         clothing_repo::list_clothing_filtered(
             &state.db,
+            user_id,
             body.gender.as_deref(),
             crate::routes::parse_genre(body.style_mood.as_deref())?,
         )
         .await?
     } else {
-        clothing_repo::list_clothing(&state.db).await?
+        clothing_repo::list_clothing(&state.db, user_id).await?
     };
     let grouped = build_grouped_clothes(&clothes);
 
@@ -227,7 +228,7 @@ async fn get_multi_recommendation(
         .ensure_configured(LlmTask::OutfitCandidates)
         .map_err(|e| AppError::BadRequest(e.to_string()))?;
 
-    let region = crate::db::region_repo::get_region(&state.db)
+    let region = crate::db::region_repo::get_region(&state.db, user_id)
         .await?
         .ok_or_else(|| {
             AppError::NotFound("No region configured. Set a region first.".to_string())
@@ -256,18 +257,20 @@ async fn get_multi_recommendation(
 
     let mood = crate::routes::parse_genre(body.style_mood.as_deref())?;
     let mut clothes = if body.gender.is_some() || body.style_mood.is_some() {
-        clothing_repo::list_clothing_filtered(&state.db, body.gender.as_deref(), mood).await?
+        clothing_repo::list_clothing_filtered(&state.db, user_id, body.gender.as_deref(), mood)
+            .await?
     } else {
-        clothing_repo::list_clothing(&state.db).await?
+        clothing_repo::list_clothing(&state.db, user_id).await?
     };
 
     // 무드 옷장에 이 상황(출근·데이트)에 맞는 옷이 모자란 슬롯은 같은 성별 전체 옷장에서
     // 빌려 온다. 무드가 없으면 이미 전체 옷장이라 빌릴 것이 없다.
     if mood.is_some() {
         let wardrobe =
-            clothing_repo::list_clothing_filtered(&state.db, body.gender.as_deref(), None).await?;
+            clothing_repo::list_clothing_filtered(&state.db, user_id, body.gender.as_deref(), None)
+                .await?;
         let no_recent = std::collections::HashSet::new();
-        let genres = clothing_repo::get_all_style_genres(&state.db).await?;
+        let genres = clothing_repo::get_all_style_genres(&state.db, user_id).await?;
         let borrowed = crate::services::shortlist::borrow_for_situation(
             &clothes,
             &wardrobe,

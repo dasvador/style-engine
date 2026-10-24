@@ -29,7 +29,8 @@ async fn main() -> anyhow::Result<()> {
         .max_connections(2)
         .connect(&std::env::var("DATABASE_URL")?)
         .await?;
-    let clothes = clothing_repo::list_clothing_filtered(&pool, Some(&gender), Some(mood)).await?;
+    let clothes =
+        clothing_repo::list_clothing_filtered(&pool, "default", Some(&gender), Some(mood)).await?;
     let mut recent = HashSet::new();
     if let Some(user) = args.get(4) {
         // 홈의 후보 목록과 같은 7개(`recent_ids`).

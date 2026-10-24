@@ -17,6 +17,10 @@ pub enum AppError {
     #[error("Conflict: {0}")]
     Conflict(String),
 
+    /// 로그인은 됐지만 이 일을 할 권한이 없다(예: 공용 카탈로그 수정).
+    #[error("Forbidden: {0}")]
+    Forbidden(String),
+
     #[error("Internal server error")]
     Internal(#[from] anyhow::Error),
 
@@ -31,6 +35,7 @@ impl IntoResponse for AppError {
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             AppError::Validation(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg.clone()),
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
+            AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg.clone()),
             AppError::Internal(err) => {
                 tracing::error!("Internal error: {:?}", err);
                 (

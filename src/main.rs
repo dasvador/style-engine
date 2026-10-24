@@ -25,6 +25,10 @@ pub struct AppState {
     pub llm: Arc<LlmClient>,
     pub kma_api_key: String,
     pub embedding: Arc<EmbeddingService>,
+    /// 토큰 없는 요청을 어떻게 볼지(`middleware::auth`). 기본은 거절.
+    pub auth_mode: middleware::auth::AuthMode,
+    /// 공용 카탈로그 관리자(`WARDROBE_ADMIN_USERS`).
+    pub admin_users: Arc<Vec<String>>,
 }
 
 #[tokio::main]
@@ -89,14 +93,37 @@ async fn main() {
         llm,
         kma_api_key,
         embedding: embedding_service,
+        auth_mode: middleware::auth::AuthMode::from_env(),
+        admin_users: middleware::auth::admin_users_from_env(),
     };
+    match state.auth_mode {
+        middleware::auth::AuthMode::Strict => {
+            tracing::info!(
+                "인증: 토큰 필요(기본). 로컬 화면 개발은 WARDROBE_AUTH_MODE=dev-default-loopback"
+            )
+        }
+        middleware::auth::AuthMode::DevDefaultLoopback => tracing::warn!(
+            "인증: 개발 모드 — 이 컴퓨터에서 직접 온 토큰 없는 요청은 default 사용자. 터널로 이 포트를 노출하지 마세요."
+        ),
+    }
 
     // Build router
     // 라우팅 순서가 중요하다. /api 와 /static 이 먼저 매칭되고, 나머지 모든 경로는
     // SPA 라우터의 fallback 으로 내려가 index.html 을 받는다.
     let app = Router::new()
         .nest("/api", routes::api_router())
-        .nest_service("/static", tower_http::services::ServeDir::new("static"))
+        // 생성 코디 사진(static/images)은 사용자별 데이터라 공개 경로로 내보내지 않는다. 개발 모드의
+        // 로컬 요청만 그대로 읽고, 토큰 사용자는 소유 확인을 거치는 /api/images/{file} 로 받는다.
+        .nest_service(
+            "/static",
+            axum::Router::new()
+                .fallback_service(tower_http::services::ServeDir::new("static"))
+                .layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    middleware::static_guard::local_dev_only,
+                ))
+                .with_state(()),
+        )
         .merge(routes::spa_router())
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
@@ -106,5 +133,11 @@ async fn main() {
     tracing::info!("Server listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    // 연결 상대 주소를 요청에 붙인다 — 개발 모드의 로컬 판정(`is_local_request`)에 쓴다.
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .unwrap();
 }

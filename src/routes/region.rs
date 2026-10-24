@@ -10,21 +10,31 @@ pub fn router() -> Router<AppState> {
     Router::new().route("/", get(get_region).put(upsert_region))
 }
 
-async fn get_region(State(state): State<AppState>) -> Result<Json<RegionSetting>, AppError> {
-    let region = region_repo::get_region(&state.db)
+async fn get_region(
+    auth: crate::middleware::auth::AuthUser,
+    State(state): State<AppState>,
+) -> Result<Json<RegionSetting>, AppError> {
+    let region = region_repo::get_region(&state.db, &auth.user_id)
         .await?
         .ok_or_else(|| AppError::NotFound("No region configured".to_string()))?;
     Ok(Json(region))
 }
 
 async fn upsert_region(
+    auth: crate::middleware::auth::AuthUser,
     State(state): State<AppState>,
     Json(body): Json<UpsertRegionRequest>,
 ) -> Result<Json<RegionSetting>, AppError> {
     body.validate()
         .map_err(|e| AppError::Validation(e.to_string()))?;
 
-    let region =
-        region_repo::upsert_region(&state.db, &body.name, body.latitude, body.longitude).await?;
+    let region = region_repo::upsert_region(
+        &state.db,
+        &auth.user_id,
+        &body.name,
+        body.latitude,
+        body.longitude,
+    )
+    .await?;
     Ok(Json(region))
 }
