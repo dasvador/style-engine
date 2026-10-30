@@ -22,6 +22,25 @@ function list(value) {
     .filter(Boolean);
 }
 
+/**
+ * 실제 추천(Rust 추천 엔진) 연결. 위임 키(WARDROBE_DELEGATION_KEY, Rust 와 같은 값)가 있을 때만 켠다.
+ * 주소는 언제나 http://127.0.0.1:<LIVE_RECOMMEND_PORT> — 호스트는 바꿀 수 없다.
+ */
+function recommendConfig(env) {
+  const raw = env.WARDROBE_DELEGATION_KEY?.trim();
+  if (!raw) return null;
+  if (!/^[0-9a-f]{64,}$/i.test(raw) || raw.length % 2 !== 0) {
+    // 값은 출력하지 않는다.
+    throw new Error('WARDROBE_DELEGATION_KEY 는 32바이트 이상 hex 여야 해요.');
+  }
+  return {
+    key: Buffer.from(raw, 'hex'),
+    port: int('LIVE_RECOMMEND_PORT', env.LIVE_RECOMMEND_PORT, 3003, 1, 65535),
+    timeoutMs: int('RECOMMEND_TIMEOUT_SECONDS', env.RECOMMEND_TIMEOUT_SECONDS, 90, 5, 300) * 1000,
+    maxConcurrent: int('RECOMMEND_MAX_CONCURRENT', env.RECOMMEND_MAX_CONCURRENT, 2, 1, 8),
+  };
+}
+
 export function loadConfig(env = process.env) {
   const mode = env.WARDROBE_MCP_MODE ?? 'demo';
   if (mode !== 'demo' && mode !== 'live') {
@@ -50,6 +69,7 @@ export function loadConfig(env = process.env) {
       redirectAllowlist: [...new Set([...DEFAULT_REDIRECT_URIS, ...list(env.OAUTH_REDIRECT_URIS)])],
       authStoreFile: env.AUTH_STORE_FILE ? resolve(env.AUTH_STORE_FILE) : resolve(PACKAGE_DIR, '.data/auth-store.json'),
       linkCodesFile: env.LINK_CODES_FILE ? resolve(env.LINK_CODES_FILE) : resolve(PACKAGE_DIR, '.data/link-codes.json'),
+      recommend: recommendConfig(env),
     };
   }
 

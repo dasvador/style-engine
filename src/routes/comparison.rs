@@ -191,6 +191,7 @@ mod tests {
             embedding,
             auth_mode: crate::middleware::auth::AuthMode::Strict,
             admin_users: std::sync::Arc::new(Vec::new()),
+            delegation_key: None,
         };
         let app = Router::new()
             .nest("/api", crate::routes::api_router())

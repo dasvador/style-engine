@@ -58,6 +58,7 @@ export async function startServer({ file = null, http = {}, store: givenStore, p
         linkCodesFile: live.linkCodesFile,
         redirectAllowlist: live.redirectAllowlist ?? DEFAULT_REDIRECT_URIS,
         adapter: live.adapter,
+        recommender: live.recommender ?? null,
         now: live.now,
       })
     : null;

@@ -850,7 +850,7 @@ async fn get_multi_recommendation(
         let ai_result = &ai_candidates.candidates[ai_idx];
         // 응답 아이템은 채점한 구성(후보의 id) 그대로다. 서버가 채운 신발·가방도 들어가고,
         // 옷장에서 찾지 못한 이름은 빠진다 — 이력·이미지가 같은 구성을 쓴다.
-        let outfit = outfit_items_for(winner, ai_result, &clothes, weather.temperature);
+        let outfit = outfit_items_for(winner, ai_result, &offered, &clothes, weather.temperature);
         let tips = tips_for(ai_result, &outfit);
         let verdict = Verdict::from_score(scoring.final_score);
         let revival_items = recommendation_diversity::find_dormant_items_in_candidate(
@@ -1042,19 +1042,30 @@ const SERVER_FILLED_REASON: &str = "코디를 완성하려고 옷장에서 골�
 /// 채운 신발·가방(`select_best_shoe` · `select_best_bag`)이 응답·이미지에서 빠지고,
 /// 이력에는 남는 어긋남이 있었다. 이유 문장은 모델이 같은 옷에 쓴 것을 쓰고, 없으면
 /// 서버가 채웠다고 적는다.
+///
+/// 모델은 옷을 요청 범위 참조(`T1`·`B2`…)로 적는다. 이유를 붙일 때도 후보를 만들 때와 같은
+/// 제공 목록(`offered`)으로 참조를 옷 id 로 풀어 비교한다 — 예전에는 참조를 옷 id 와 바로 비교해
+/// 모든 아이템이 "서버가 골라 넣었다" 는 문장으로 나왔다(2026-10-30 MCP 실측).
 fn outfit_items_for(
     c: &OutfitCandidate,
     ai_result: &crate::models::recommendation::AiRecommendation,
+    offered: &crate::services::item_resolution::OfferedItems<'_>,
     clothes: &[Clothing],
     temperature: f64,
 ) -> Vec<OutfitItem> {
+    use crate::services::item_resolution::{Resolution, resolve_item};
     candidate_items(c, clothes)
         .into_iter()
         .map(|item| {
             let mut reason = ai_result
                 .outfit
                 .iter()
-                .find(|a| a.id.as_deref() == Some(item.id.as_str()))
+                .find(|a| {
+                    matches!(
+                        resolve_item(&a.category, a.id.as_deref(), &a.name, offered),
+                        Resolution::Resolved { clothing, .. } if clothing.id == item.id
+                    )
+                })
                 .map(|a| a.reason.clone())
                 .unwrap_or_else(|| SERVER_FILLED_REASON.to_string());
             // 판정에 쓴 착용 상태를 설명과 이미지에 같이 넘긴다.
@@ -2015,6 +2026,7 @@ fn build_flat_descriptions(clothes: &[Clothing]) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use crate::services::item_resolution::OfferedItems;
 
     fn wardrobe_item(id: &str, name: &str, category: &str) -> Clothing {
         let now = chrono::NaiveDateTime::default();
@@ -2099,7 +2111,13 @@ mod tests {
             Some("g".into()),
             0,
         );
-        let items = outfit_items_for(&c, &ai, &clothes, 20.0);
+        let items = outfit_items_for(
+            &c,
+            &ai,
+            &OfferedItems::from_clothes(&clothes),
+            &clothes,
+            20.0,
+        );
         let names: Vec<&str> = items.iter().map(|i| i.name.as_str()).collect();
         assert_eq!(
             names,
@@ -2142,7 +2160,13 @@ mod tests {
             None,
             0,
         );
-        let cold = outfit_items_for(&c, &ai, &clothes, 2.0);
+        let cold = outfit_items_for(
+            &c,
+            &ai,
+            &OfferedItems::from_clothes(&clothes),
+            &clothes,
+            2.0,
+        );
         let coat = cold.iter().find(|i| i.category == "아우터").unwrap();
         assert!(coat.wear.as_deref().unwrap().contains("buttoned closed"));
         assert_eq!(
@@ -2150,7 +2174,13 @@ mod tests {
             "선. 추운 날이라 여며 입는 것을 기준으로 골랐어요."
         );
         assert!(cold.iter().filter(|i| i.wear.is_some()).count() == 1);
-        let warm = outfit_items_for(&c, &ai, &clothes, 15.0);
+        let warm = outfit_items_for(
+            &c,
+            &ai,
+            &OfferedItems::from_clothes(&clothes),
+            &clothes,
+            15.0,
+        );
         assert!(warm.iter().all(|i| i.wear.is_none()));
         assert_eq!(
             warm.iter().find(|i| i.category == "아우터").unwrap().reason,
@@ -2295,7 +2325,13 @@ mod tests {
             None,
             0,
         );
-        let items = outfit_items_for(&c, &ai, &clothes, 20.0);
+        let items = outfit_items_for(
+            &c,
+            &ai,
+            &OfferedItems::from_clothes(&clothes),
+            &clothes,
+            20.0,
+        );
         let pairs: Vec<(&str, &str)> = items
             .iter()
             .map(|i| (i.id.as_str(), i.name.as_str()))
@@ -2313,6 +2349,54 @@ mod tests {
         assert_eq!(find_slot_id(&items, "상의").as_deref(), Some("t2"));
         assert_eq!(find_slot_id(&items, "하의").as_deref(), Some("b1"));
         assert_eq!(find_slot_id(&items, "아우터"), None);
+    }
+
+    /// 실제 요청처럼 모델이 요청 범위 참조(T1·B1·S1)로 적어도, 이유 문장은 그 참조가 가리키는 옷에
+    /// 붙는다. 모델이 적지 않은(서버가 채운) 자리만 서버 문장이다.
+    #[test]
+    fn model_reasons_follow_slot_refs() {
+        let clothes = vec![
+            wardrobe_item("t1", "그레이 코튼 티", "상의"),
+            wardrobe_item("b1", "인디고 데님", "하의"),
+            wardrobe_item("s1", "스웨이드 스니커즈", "신발"),
+            wardrobe_item("g1", "나일론 크로스백", "가방"),
+        ];
+        let by = |id: &str| clothes.iter().find(|c| c.id == id).unwrap();
+        let offered =
+            OfferedItems::from_slot_lists(&[by("t1")], &[by("b1")], &[], &[by("s1")], &[]);
+        let ai = crate::models::recommendation::AiRecommendation {
+            recommendation: String::new(),
+            outfit: vec![
+                ai_item("상의", "T1", "그레이 코튼 티", "편한 기본 상의"),
+                ai_item("하의", "B1", "인디고 데님", "곧은 하의"),
+                ai_item("신발", "S1", "스웨이드 스니커즈", "가벼운 마무리"),
+            ],
+            weather_summary: String::new(),
+            tips: vec![],
+            focus: None,
+        };
+        let c = OutfitCandidate::new(
+            Some("t1".into()),
+            Some("b1".into()),
+            None,
+            Some("s1".into()),
+            Some("g1".into()),
+            0,
+        );
+        let items = outfit_items_for(&c, &ai, &offered, &clothes, 20.0);
+        let reasons: Vec<(&str, &str)> = items
+            .iter()
+            .map(|i| (i.id.as_str(), i.reason.as_str()))
+            .collect();
+        assert_eq!(
+            reasons,
+            [
+                ("t1", "편한 기본 상의"),
+                ("b1", "곧은 하의"),
+                ("s1", "가벼운 마무리"),
+                ("g1", SERVER_FILLED_REASON),
+            ]
+        );
     }
 
     /// 모델에게 보여 준 목록 밖의 옷(무드 옷장에는 있어도), 다른 슬롯의 id, 틀린 id + 맞는 이름은

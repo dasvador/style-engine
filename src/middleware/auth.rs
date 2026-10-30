@@ -10,6 +10,9 @@
 //! 직접 온 것일 때만(`is_local_request`) 토큰 없이 `default` 사용자로 본다. 로컬 화면(토큰을 보내지
 //! 않는다) 개발용이다. 터널·프록시를 거친 요청이나 다른 웹사이트가 브라우저로 보낸 요청은 여기
 //! 해당하지 않는다.
+//!
+//! 따로 MCP 서버의 위임 헤더(`middleware::delegation`)가 있다. 서명이 맞고 로컬 직접 요청이며 허용
+//! 경로(추천)일 때만 그 사용자다. 틀리면 401 — 개발 모드여도 `default` 로 넘어가지 않는다.
 
 use std::net::SocketAddr;
 
@@ -158,6 +161,10 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let app_state = AppState::from_ref(state);
 
+        if let Some(raw) = parts.headers.get(super::delegation::HEADER) {
+            return delegated_user(parts, &app_state, raw).await;
+        }
+
         let Some(raw) = parts.headers.get(header::AUTHORIZATION) else {
             if app_state.auth_mode == AuthMode::DevDefaultLoopback && is_local_request(parts) {
                 return Ok(AuthUser {
@@ -192,6 +199,58 @@ where
                 )
                     .into_response())
             }
+        }
+    }
+}
+
+/// 위임 헤더 처리. 어떤 실패도 `default` 로 바꾸지 않고 401(DB 오류면 503)이다.
+// 오류 형식은 추출기의 Rejection(`Response`)과 같게 둔다.
+#[allow(clippy::result_large_err)]
+async fn delegated_user(
+    parts: &Parts,
+    app_state: &AppState,
+    raw: &HeaderValue,
+) -> Result<AuthUser, Response> {
+    let Some(key) = app_state.delegation_key.as_deref() else {
+        return Err(unauthorized("delegation disabled"));
+    };
+    if parts.headers.contains_key(header::AUTHORIZATION) {
+        return Err(unauthorized("ambiguous credentials"));
+    }
+    if !is_local_request(parts) {
+        return Err(unauthorized("delegation only from this machine"));
+    }
+    // nest 안에서는 parts.uri 가 접두어를 뗀 경로라 원래 경로를 쓴다.
+    let path = parts
+        .extensions
+        .get::<axum::extract::OriginalUri>()
+        .map_or_else(|| parts.uri.path().to_string(), |u| u.0.path().to_string());
+    let now = chrono::Utc::now().timestamp();
+    let user_id = match raw
+        .to_str()
+        .map_err(|_| "malformed delegation")
+        .and_then(|h| super::delegation::verify(key, h, parts.method.as_str(), &path, now))
+    {
+        Ok(u) => u,
+        Err(reason) => {
+            tracing::warn!(reason, "위임 헤더 거절");
+            return Err(unauthorized(reason));
+        }
+    };
+    match sqlx::query_scalar::<_, String>("SELECT id FROM app_user WHERE id = ?")
+        .bind(&user_id)
+        .fetch_optional(&app_state.db)
+        .await
+    {
+        Ok(Some(user_id)) => Ok(AuthUser { user_id }),
+        Ok(None) => Err(unauthorized("unknown user")),
+        Err(e) => {
+            tracing::error!("인증 조회 실패: {e}");
+            Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({ "error": "잠시 후 다시 시도해 주세요." })),
+            )
+                .into_response())
         }
     }
 }

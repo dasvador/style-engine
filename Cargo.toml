@@ -42,5 +42,9 @@ dotenvy = "0.15"
 thiserror = "2"
 anyhow = "1"
 base64 = "0.22"
+# MCP 서버의 위임 헤더 서명 검증(`middleware::delegation`)
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
 
 [dev-dependencies]

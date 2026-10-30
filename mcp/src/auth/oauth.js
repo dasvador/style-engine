@@ -34,10 +34,16 @@ import { findLinkCode } from './link-codes.js';
 export const SCOPE_READ = 'wardrobe.read';
 /** 데모 비교 만들기와 내 선택 저장·수정(데모 기록에만 쓴다). */
 export const SCOPE_COMPARISONS_WRITE = 'comparisons.write';
-export const SUPPORTED_SCOPES = [SCOPE_READ, SCOPE_COMPARISONS_WRITE];
+/**
+ * 실제 코디 추천(Rust 추천 엔진). 부를 때마다 AI 모델 비용이 들고 추천 이력(착용 기록 아님)이 남아 따로 둔다.
+ * 이 scope 가 생기기 전에 연결한 토큰에는 없다 — 리프레시로 넓어지지 않고, 도구가 insufficient_scope 로 재동의를 요청한다.
+ */
+export const SCOPE_RECOMMEND = 'recommendations.write';
+export const SUPPORTED_SCOPES = [SCOPE_READ, SCOPE_COMPARISONS_WRITE, SCOPE_RECOMMEND];
 export const SCOPE_LABELS = {
   [SCOPE_READ]: '내 프로필(이름)과 내 옷장 목록 읽기',
   [SCOPE_COMPARISONS_WRITE]: '코디 비교 만들기와 내 선택(A·B·둘 다 아쉬움) 저장·수정',
+  [SCOPE_RECOMMEND]: '내 옷장·지역 날씨로 오늘 코디 추천 받기(AI 모델 사용, 추천 이력이 내 계정에 남음)',
 };
 /** ChatGPT 의 고정 콜백(공식 문서). 콜백별 주소는 관리 화면의 정확한 값을 OAUTH_REDIRECT_URIS 로 더한다. */
 export const DEFAULT_REDIRECT_URIS = ['https://chatgpt.com/connector_platform_oauth_redirect'];
@@ -368,7 +374,7 @@ function sendConsentPage(res, { pendingId, client, scopes, redirectUri, error = 
   const body = `<h1>Wardrobe Edit 계정 연결</h1>
 <p><strong>${name}</strong>(${escapeHtml(host)})이 내 Wardrobe Edit 계정에서 다음을 하려고 해요.</p>
 <ul>${scopes.map((s) => `<li>${escapeHtml(SCOPE_LABELS[s] ?? s)}</li>`).join('')}</ul>
-<p>옷장의 옷 등록·수정·삭제, 사진 생성, 유료 추천은 하지 않아요.</p>
+<p>${scopes.includes(SCOPE_RECOMMEND) ? '옷장의 옷 등록·수정·삭제와 사진 생성은 하지 않아요.' : '옷장의 옷 등록·수정·삭제, 사진 생성, AI 추천은 하지 않아요.'}</p>
 ${error ? `<p class="err" role="alert">${escapeHtml(error)}</p>` : ''}
 <form method="post" action="/oauth/consent" autocomplete="off">
 <input type="hidden" name="request" value="${escapeHtml(pendingId)}">

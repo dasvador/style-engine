@@ -9,6 +9,7 @@ import { createHttpServer } from './http.js';
 import { imageOrigin, imageResolver, loadImageAssets } from './image-assets.js';
 import { LiveAdapter } from './adapters/live.js';
 import { createLiveAuth } from './auth/setup.js';
+import { RecommendClient } from './recommend.js';
 
 const log = (msg) => console.error(`[wardrobe-edit-demo] ${msg}`);
 
@@ -35,6 +36,7 @@ if (config.live) {
     linkCodesFile: config.live.linkCodesFile,
     redirectAllowlist: config.live.redirectAllowlist,
     adapter,
+    recommender: config.live.recommend ? new RecommendClient(config.live.recommend) : null,
   });
 }
 
@@ -52,6 +54,11 @@ server.listen(config.port, config.host, () => {
   if (auth) {
     log(`OAuth 발급자 ${auth.issuer.href} · 리소스 ${auth.resource.href}`);
     log(`허용 redirect_uri: ${config.live.redirectAllowlist.join(', ')}`);
+    log(
+      config.live.recommend
+        ? `실제 추천: 켜짐 → http://127.0.0.1:${config.live.recommend.port} (제한 ${config.live.recommend.timeoutMs / 1000}초, 동시 ${config.live.recommend.maxConcurrent})`
+        : '실제 추천: 꺼짐(WARDROBE_DELEGATION_KEY 없음)',
+    );
   }
   log(`허용 Host: ${config.http.allowedHosts.join(', ')}`);
   log(`데모 기록 파일: ${config.dataFile} (보존 ${config.ttlHours}시간)`);

@@ -111,9 +111,11 @@ pub enum Verdict {
 }
 
 impl Verdict {
+    /// 점수는 확률이나 100점 만점이 아니다. 추천 경로의 최종 점수는 스타일 점수에 피드백·다양성
+    /// 가산이 붙어 100을 넘는다 — 88 이상은 모두 상위 판정이다(예전에는 101 이상이 "아쉬워요"로 떨어졌다).
     pub fn from_score(score: i32) -> Self {
         match score {
-            88..=100 => Verdict::Great,
+            88.. => Verdict::Great,
             73..=87 => Verdict::Good,
             55..=72 => Verdict::Okay,
             _ => Verdict::Awkward,
@@ -163,4 +165,25 @@ pub struct OutfitEvaluateResponse {
     pub strengths: Vec<OutfitStrength>,
     pub suggestions: Vec<StructuredSuggestion>,
     pub explanation: String,
+}
+
+#[cfg(test)]
+mod verdict_tests {
+    use super::Verdict;
+
+    #[test]
+    fn verdict_bands_include_scores_above_100() {
+        let label = |s| Verdict::from_score(s).label();
+        assert_eq!(label(87), "좋아요");
+        assert_eq!(label(88), "훌륭해요");
+        assert_eq!(label(100), "훌륭해요");
+        assert_eq!(label(101), "훌륭해요");
+        assert_eq!(label(116), "훌륭해요");
+        assert_eq!(label(73), "좋아요");
+        assert_eq!(label(72), "괜찮아요");
+        assert_eq!(label(55), "괜찮아요");
+        assert_eq!(label(54), "아쉬워요");
+        assert_eq!(label(0), "아쉬워요");
+        assert_eq!(label(-5), "아쉬워요");
+    }
 }

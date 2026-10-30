@@ -14,6 +14,9 @@ use tower::ServiceExt;
 use crate::AppState;
 use crate::middleware::auth::AuthMode;
 
+/// 테스트 서버의 위임 키(`middleware::delegation`).
+const DELEGATION_KEY: [u8; 32] = *b"test-delegation-key-0123456789ab";
+
 struct Ctx {
     db: sqlx::MySqlPool,
     url: String,
@@ -91,6 +94,7 @@ fn app_with_admins(ctx: &Ctx, mode: AuthMode, admins: Vec<String>) -> Router {
         embedding,
         auth_mode: mode,
         admin_users: std::sync::Arc::new(admins),
+        delegation_key: Some(std::sync::Arc::from(&DELEGATION_KEY[..])),
     };
     // main.rs 와 같은 /static 보호를 건다.
     Router::new()
@@ -1177,4 +1181,136 @@ async fn reference_catalog_writes_need_admin() {
         StatusCode::FORBIDDEN,
         "개발 모드여도 다른 계정은 관리자가 아니다"
     );
+}
+
+/// MCP 위임 헤더: 서명·로컬 직접 요청·허용 경로가 모두 맞을 때만 그 사용자다. 실패는 401 이고
+/// 개발 모드여도 `default` 로 넘어가지 않는다. 추천 핸들러는 인증 뒤 LLM 설정·지역 확인에서 멈춘다
+/// (테스트 사용자에게 지역이 없다) — 모델은 부르지 않는다.
+#[tokio::test]
+async fn mcp_delegation_is_signed_local_and_route_bound() {
+    use crate::middleware::delegation::{HEADER, sign};
+    let Some(ctx) = setup().await else {
+        eprintln!("TEST_DATABASE_URL 이 없어 건너뜁니다");
+        return;
+    };
+    const P: &str = "/api/recommendation/multi";
+    let exp = chrono::Utc::now().timestamp() + 60;
+    let user = ctx.users[0].0.as_str();
+    let good = sign(&DELEGATION_KEY, "POST", P, user, exp);
+    let local = "127.0.0.1:50000";
+    let body = || Some(serde_json::json!({ "occasion": "일상" }));
+
+    for mode in [AuthMode::Strict, AuthMode::DevDefaultLoopback] {
+        let app = app(&ctx, mode);
+        let req = |h: &'static str,
+                   v: String,
+                   peer: &'static str,
+                   extra: Vec<(&'static str, &'static str)>| {
+            let app = app.clone();
+            async move {
+                let v: &'static str = Box::leak(v.into_boxed_str());
+                let mut headers = vec![(h, v), ("host", "127.0.0.1:3003")];
+                headers.extend(extra);
+                call(
+                    &app,
+                    "POST",
+                    P,
+                    Opts {
+                        body: body(),
+                        peer: Some(peer),
+                        headers,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .0
+            }
+        };
+        // 맞는 위임 → 인증 통과(지역 없음 404 또는 LLM 미설정 400. 401 이 아니다)
+        let st = req(HEADER, good.clone(), local, vec![]).await;
+        assert_ne!(st, StatusCode::UNAUTHORIZED, "{mode:?} 맞는 위임");
+        assert!(
+            st == StatusCode::NOT_FOUND || st == StatusCode::BAD_REQUEST,
+            "{mode:?} {st}"
+        );
+
+        // 원격 연결·전달 헤더·다른 Origin
+        assert_eq!(
+            req(HEADER, good.clone(), "203.0.113.5:4000", vec![]).await,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            req(
+                HEADER,
+                good.clone(),
+                local,
+                vec![("x-forwarded-for", "203.0.113.5")]
+            )
+            .await,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            req(
+                HEADER,
+                good.clone(),
+                local,
+                vec![("origin", "https://evil.example")]
+            )
+            .await,
+            StatusCode::UNAUTHORIZED
+        );
+        // 토큰과 같이 오면 거절
+        assert_eq!(
+            req(
+                HEADER,
+                good.clone(),
+                local,
+                vec![("authorization", "Bearer x")]
+            )
+            .await,
+            StatusCode::UNAUTHORIZED
+        );
+        // 다른 키·만료·없는 사용자·형식 오류
+        let wrong = sign(b"another-key-another-key-another-k", "POST", P, user, exp);
+        assert_eq!(
+            req(HEADER, wrong, local, vec![]).await,
+            StatusCode::UNAUTHORIZED
+        );
+        let old = sign(&DELEGATION_KEY, "POST", P, user, exp - 3600);
+        assert_eq!(
+            req(HEADER, old, local, vec![]).await,
+            StatusCode::UNAUTHORIZED
+        );
+        let ghost = sign(&DELEGATION_KEY, "POST", P, "no-such-user-xyz", exp);
+        assert_eq!(
+            req(HEADER, ghost, local, vec![]).await,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            req(HEADER, "garbage".to_string(), local, vec![]).await,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+
+    // 다른 경로에는 쓸 수 없다(그 경로로 서명해도)
+    let app = app(&ctx, AuthMode::DevDefaultLoopback);
+    let other = sign(&DELEGATION_KEY, "GET", "/api/clothes", user, exp);
+    let (st, _, _) = call(
+        &app,
+        "GET",
+        "/api/clothes",
+        Opts {
+            peer: Some(local),
+            headers: vec![(HEADER, &other), ("host", "127.0.0.1:3003")],
+            ..Default::default()
+        },
+    )
+    .await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED, "추천 밖 경로");
+
+    sqlx::query("DELETE FROM app_user WHERE id LIKE ?")
+        .bind(format!("auth-test-{}-%", ctx.run))
+        .execute(&ctx.db)
+        .await
+        .unwrap();
 }

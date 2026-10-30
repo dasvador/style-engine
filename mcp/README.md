@@ -4,7 +4,8 @@ ChatGPT·Claude 대화 안에서 Wardrobe Edit의 "둘 중 고르기"를 불러 
 
 - **`demo`(기본)**: 인증 없음, 샘플 데이터만. 흐름: 샘플 옷장 보기 → 상황·무드별 샘플 코디 두 개 비교 화면(MCP Apps) → A / B / 둘 다 아쉬움 선택과 이유 저장.
 - **`live`**: 운영자가 발급한 일회용 코드로 OAuth 계정 연결을 하는 **시험 운영(pilot)**. 위 데모 도구에 더해, 연결된 계정 본인의
-  프로필·옷장을 **읽기 전용**으로 보여 준다. 실제 추천 엔진·옷 사진 등록은 아직 없다. 아래 "계정 연결(live 모드)".
+  프로필·옷장을 **읽기 전용**으로 보여 주고, 설정하면 Rust 추천 엔진으로 **내 옷장 기준 오늘 코디 추천**(`recommend_my_outfit`)을 한다.
+  옷 사진 등록·코디 사진 생성은 아직 없다. 아래 "계정 연결(live 모드)".
 
 > **demo 모드는 데모 데이터만 쓴다.** 옷장은 `src/fixtures.js`에 고정한 17벌의 샘플이고, 코디는 상황×무드마다 손으로 짜 둔
 > 두 벌이다. AI가 만든 추천이 아니며 실제 서비스 옷장·DB·추천 엔진·OpenAI API·`.env`를 읽지 않는다.
@@ -42,6 +43,10 @@ npm start         # UI 빌드(dist/ui.html) 후 http://127.0.0.1:8787/mcp
 | `DEMO_MAX_COMPARISONS` | `500` | 보존 개수 상한(넘으면 오래된 것부터 지움) |
 | `MAX_BODY_BYTES` | `65536` | 요청 본문 상한 |
 | `RATE_LIMIT_PER_MINUTE` | `300` | 프로세스 전체 1분 요청 수 상한(넘으면 429) |
+| `WARDROBE_DELEGATION_KEY` | 없음 | live 전용. 실제 추천을 켠다. Rust 서버와 **같은** 32바이트 이상 hex 키. 없으면 `recommend_my_outfit`가 나오지 않는다. 출력·커밋하지 않는다 |
+| `LIVE_RECOMMEND_PORT` | `3003` | live 전용. Rust 서버 포트. 호스트는 언제나 `127.0.0.1`(바꿀 수 없다) |
+| `RECOMMEND_TIMEOUT_SECONDS` | `90` | live 전용. 추천 응답을 기다리는 최대 시간(5..300). 넘으면 끊고 다시 부르지 않는다 |
+| `RECOMMEND_MAX_CONCURRENT` | `2` | live 전용. 동시에 보내는 추천 수(1..8). 한 계정은 언제나 하나 |
 | `MCP_ACCESS_LOG` | 없음 | `1`이면 요청마다 진단용 한 줄(`access 메서드 경로 상태 ms rpc=메서드(도구) auth=yes/no origin=호스트 accept proto ua`)을 stderr에 남긴다. 토큰·쿼리·본문·도구 인자·결과 값은 남기지 않는다 |
 | `WARDROBE_MCP_MODE` | `demo` | `demo`(샘플 데이터, 인증 없음) 또는 `live`(계정 연결 OAuth + 본인 옷장 읽기). 그 밖의 값이면 시작하지 않는다 |
 | `LIVE_DATABASE_URL` | 없음 | live 전용. 옷장 DB 접속 문자열(읽기만 한다). 로그에 남기지 않는다 |
@@ -148,7 +153,8 @@ npm test    # 빌드 후 test/*.test.js (node:test)
 - `test/store.test.js` — 선택 검증(Rust `validate_vote`와 같은 규칙), 첫 저장의 충돌·재제출, 명시 수정(revision·stale·no_vote·이유만/메모만·동시 10건 중 1건), 0.1.0 파일 호환, 비교 id 혼용, 동시 20건, 파일 재시작, 만료·상한, 저장 실패 시 되돌리기.
 - `test/mcp-http.test.js` — 공식 SDK `Client` + Streamable HTTP로 initialize·tools/list·resources/read·tools/call 전체, 동시 12 클라이언트, 재시작, 그리고 원시 HTTP 경계(깨진 JSON 400, Content-Type 415, 64KB 초과 413, 배치 제한, GET/DELETE/OPTIONS 405·CORS 없음, Host 403, Origin 403, `PUBLIC_HOST`, 429).
 - `test/images.test.js` — asset 검사(손상·서명 불일치·심볼릭 링크·이름·없는 파일), 이미지 GET/HEAD·MIME·ETag·304·405, 경로 조작·원본 static·manifest·`.env` 404, 다른 Host 403, 사진 도구(준비된 세트만)·CSP 자기 origin·https 절대 URL·쪽별 사진=아이템 대응, 사진 비교의 저장·수정, 글자 비교는 `image: null`, 사진 없음·일부·나중에 빠짐, 로컬 http fallback. 테스트가 만든 작은 PNG로 돈다.
-- `test/live-auth.test.js` — live 모드: discovery·S256·같은 issuer, 401+`WWW-Authenticate`, DCR redirect 허용 목록, A·B 계정 격리(옷장·프로필·데모 비교/선택), 동의 화면(5회·Origin·거절), 연결 코드(일회·만료·없는 계정), 인가 거절(redirect·resource·S256·scope), 토큰 거절(PKCE·redirect·resource·코드 재사용 시 폐기), 리프레시 회전·재사용 폐기·revoke·만료, 해시 저장·재시작 지속. `TEST_DATABASE_URL`이 있으면 실제 DB 어댑터로 A·B 옷장 격리도 잰다(없으면 skip 으로 표시).
+- `test/live-auth.test.js` — live 모드: discovery·S256·같은 issuer, 401+`WWW-Authenticate`, DCR redirect 허용 목록, A·B 계정 격리(옷장·프로필·데모 비교/선택), 동의 화면(5회·Origin·거절), 연결 코드(일회·만료·없는 계정), 인가 거절(redirect·resource·S256·scope), 토큰 거절(PKCE·redirect·resource·코드 재사용 시 폐기), 리프레시 회전·재사용 폐기·revoke·만료, 해시 저장·재시작 지속. `TEST_DATABASE_URL`이 있으면 실제 DB 어댑터로 A·B 옷장 격리와 추천 사전 확인·옷 소유 확인·추천 날씨 조회의 계정 분리도 잰다(없으면 skip 으로 표시).
+- `test/recommend.test.js` — 실제 추천: 가짜 Rust 서버(같은 위임 서명 검증)로 두 계정 격리, 예전 scope 재동의 요청·리프레시 확대 거절, 인자 검증, 빈 옷장·지역 없음, 후보 부족·404·401·HTML 500·리다이렉트·남의 옷 id, 시간 초과(재시도 없음)·서버 꺼짐, 동시 요청, 응답에서 사진·키·내부 값 제외.
 - `test/import.test.js` — 가져오기 스크립트: 원본 PNG 바이트 그대로 복사(C2PA `caBX` 보존)·해시 이름·provenance 기록, 옛 파일 정리, UUID.png·일반 파일·PNG만, 모르는 키 거절.
 - `test/ui.test.js` — 설치된 Chromium(Playwright 캐시 또는 `CHROME_PATH`)에서 **공식 `AppBridge`로 만든 호스트 흉내**가 iframe(샌드박스)에 화면을 띄우고, 화면의 `tools/call`을 진짜 데모 서버로 넘긴다. 로딩·렌더·클릭·저장·건너뛰기·저장 실패 후 다시 시도·충돌·다크 테마·데스크톱/모바일, 그리고 옛 create 카드 재열기→저장된 화면, 상태 조회 실패→다시 시도, 선택 수정(B→둘 다 아쉬움·이유만·메모만·A)·취소, 두 화면 stale 수정 방지, 같은 iframe의 새 비교, 저장 후 시간 초과(한 번만 반영), ChatGPT형 `-32000` 래핑 conflict(원문 숨김), 네트워크 실패 시 입력 유지, 사진 비교(테스트 PNG + `mcp/.assets`가 있으면 실제 생성 사진: `naturalWidth`·같은 칸 크기·contain·alt·저장/수정·사진 실패 대체·글자 비교 전환). 스크린샷은 `.artifacts/screenshots/`. 브라우저를 찾지 못하면 이 묶음만 건너뛴다(내려받지 않는다).
 
@@ -214,22 +220,23 @@ npx mcp-inspector --cli http://127.0.0.1:8787/mcp --transport http --method tool
   - 로컬 테스트: OAuth·계정 격리·scope·동의 화면(실제 Chromium) 테스트(`npm test`).
   - 실제 ChatGPT: 커스텀 MCP 서버로 OAuth 연결(동의 화면 → 토큰 발급)에 성공했다.
   - 연결된 커넥터에서 `get_my_profile`·`list_my_wardrobe` 직접 호출: 연결 계정의 옷장 수·목록이 정상으로 돌아왔다.
-- **해결 안 됨:** ChatGPT 웹 채팅에서 도구를 부른 뒤 "이 응답을 불러오지 못했습니다"가 뜨는 경우가 있다.
-  - 같은 시점에 서버 쪽 직접 요청(initialize·tools/list·tools/call)은 모두 정상이었다. 서버 쪽 재현 버그는 찾지 못했고 원인은 미확정이다.
-  - 진단할 때는 `MCP_ACCESS_LOG=1`로 켜서 ChatGPT 요청의 경로·상태·도구 이름(값 없음)을 본다.
-- 남은 일: 사용자 스스로 하는 로그인·연결(외부 IdP 또는 서비스 로그인), 고정 배포 주소(지금은 임시 터널), 실제 추천 엔진 연결, 옷 사진 등록.
+- 이전에 ChatGPT 웹 채팅에서 응답 표시 오류가 있었으나, 이후 사용자가 대화 테스트의 정상 동작을 확인했다. 이번 실제 추천 도구는 별도로 로컬에서만 검증했다.
+- 실제 추천(`recommend_my_outfit`, 2026-10-30): 로컬에서만 확인했다(루프백 3003 + 로컬 발급자 MCP, OAuth 연결 → 도구 호출, 실제 모델 호출 2회).
+  ChatGPT 커넥터에서는 아직 부르지 않았다 — 새 권한이라 **기존 연결은 재동의가 필요하다**(아래 "실제 추천").
+- 남은 일: 사용자 스스로 하는 로그인·연결(외부 IdP 또는 서비스 로그인), 고정 배포 주소(지금은 임시 터널), ChatGPT에서 추천 확인, 옷 사진 등록·코디 사진 생성, 실제 A/B 비교 연결.
 
 ### 구조
 - **OAuth 2.1 인가 코드 + PKCE(S256)**. 인가 서버와 리소스 서버가 이 MCP 서버 하나다(`issuer = https://PUBLIC_HOST/`, `resource = https://PUBLIC_HOST/mcp`).
   공식 SDK 부품을 쓴다: `mcpAuthRouter`(메타데이터·`/authorize`·`/token`·`/register`(DCR)·`/revoke`), `requireBearerAuth`(`/mcp`의 토큰·만료·scope·resource 검사, 401 `WWW-Authenticate: … resource_metadata="…"`).
 - 메타데이터: `/.well-known/oauth-authorization-server`, `/.well-known/oauth-protected-resource/mcp`(및 접미사 없는 경로).
-- scope 두 개:
+- scope 세 개:
   - `wardrobe.read`: 내 프로필·내 옷장 읽기. `/mcp`에 들어오려면 늘 필요하다.
   - `comparisons.write`: 데모 비교 만들기와 내 선택 저장·수정.
-- scope를 보내지 않으면 둘 다 요청한 것으로 보고, 동의 화면에 하나하나 보여 준다.
+  - `recommendations.write`: 실제 코디 추천(모델 비용, 추천 이력이 남음). 2026-10-30에 생겼다.
+- scope를 보내지 않으면 모두 요청한 것으로 보고, 동의 화면에 하나하나 보여 준다. 리프레시로는 처음 받은 scope보다 넓힐 수 없다.
 - 쓰기 도구(`create_demo_comparison`·`create_demo_photo_comparison`·`submit_demo_preference`·`update_demo_preference`)는 실행 때 `comparisons.write`를 확인한다.
   없으면 `isError` + `_meta["mcp/www_authenticate"]`(`error="insufficient_scope"`)로 거절하고 아무것도 저장하지 않는다.
-- 도구마다 `securitySchemes`를 알린다. live: 읽기 도구 `oauth2(wardrobe.read)`, 쓰기 도구 `oauth2(wardrobe.read comparisons.write)`. demo: `noauth`.
+- 도구마다 `securitySchemes`를 알린다. live: 읽기 도구 `oauth2(wardrobe.read)`, 쓰기 도구 `oauth2(wardrobe.read comparisons.write)`, 추천 `oauth2(wardrobe.read recommendations.write)`. demo: `noauth`.
 - demo 서버는 토큰을 검증할 수 없다. 그래서 `Authorization`이 붙은 요청은 익명으로 처리하지 않고 400으로 거절한다.
 - live 서버는 모든 `/mcp` 요청이 유효한 토큰이어야 하고, 모든 도구가 그 토큰의 주체를 쓴다(틀린 토큰이면 401).
 - 클라이언트 등록은 **DCR**만(CIMD 미구현). `redirect_uri`는 허용 목록과 **정확히 같은 문자열**만 등록된다.
@@ -260,9 +267,53 @@ LIVE_DATABASE_URL=... npm run link-code -- --user-id default --allow-default
 | `list_my_wardrobe` | 연결된 계정의 옷장(이름·카테고리·색·소재, 사진은 싣지 않음, `category`·`limit`) |
 
 - 데모 도구도 그대로 쓴다. 다만 비교·선택 기록은 **만든 계정에만** 보인다(다른 계정·익명 사이에서 서로 보이지 않음).
-- 옷 등록·수정·삭제, 사진, 유료 추천, 이미지 생성 도구는 없다.
+- 옷 등록·수정·삭제, 사진, 이미지 생성 도구는 없다.
+
+### 실제 추천(`recommend_my_outfit`, 위임 키가 있을 때만)
+웹 홈의 추천과 같은 엔진(`POST /api/recommendation/multi`)을 연결된 계정 대신 부른다. 이 서버에 추천 로직은 없다.
+
+| | 데모 비교(`create_demo_*`) | 실제 추천(`recommend_my_outfit`) |
+|---|---|---|
+| 옷 | 샘플 17벌 | 연결된 계정의 옷장 |
+| 코디 | 미리 짜 둔 두 벌 | Rust 엔진(모델 후보 → 점수·날씨·무드·이력) |
+| 날씨 | 없음 | 계정에 저장된 지역의 지금 날씨 |
+| 사진 | 이미 생성해 둔 룩북 사진(있으면) | 돌려주지 않는다(옷 사진·data URI·내부 URL 제외) |
+| 남는 것 | 이 서버의 데모 기록 | 서비스 DB: 추천 이력 1행 + 추천 기록 1행 |
+| 비용 | 없음 | 부를 때마다 모델 호출 1회 |
+
+- 인자(모두 선택): `situation` = `일상`(기본, 웹 홈과 같다)·`출근`·`데이트`, `gender` = `female`·`male`(웹 성별 탭), `mood` = 그 성별의 무드 키(`style_mood`).
+  무드만 주면(성별 없이) 거절하고, 스트리트 + 출근도 거절한다. 사용자 id 인자는 없다.
+- 결과: `structuredContent`에 카드(오늘의 추천·다른 조합·안 입은 옷 활용 중 나온 것)마다 옷 id·이름·카테고리·이유, 선정 이유, 판정·점수, 팁.
+  지역 이름과 Rust가 실제로 쓴 기온·날씨(그 추천 기록에서 읽음), 모델이 쓴 날씨 문장도 싣는다. 모든 옷 id가 그 계정 것인지 DB로 확인하고, 하나라도 아니면 결과를 내보내지 않는다.
+  `score`는 후보끼리 순위를 정하는 내부 점수다 — 확률이나 100점 만점이 아니고 100을 넘을 수 있다(88 이상이 "훌륭해요"). 코디 품질을 보장하는 값이 아니다.
+  카드가 객체가 아니거나 아이템이 비었거나 id·이름·카테고리가 없는 응답은 성공으로 보이지 않고 `upstream_error`로 돌려준다.
+- 이해할 수 있는 실패(`ok: false` + `outcome`, 오류가 아님): `empty_wardrobe`·`no_region`(모델 호출 전에 확인), `mood_needs_gender`·`mood_not_for_gender`·`street_not_for_work`,
+  `no_candidates`, `busy`, `timeout`, `unavailable`(3003 꺼짐), `upstream_error`, `delegation_rejected`, `foreign_item`. 어떤 실패도 데모 결과로 바꾸지 않는다.
+  실패 문장은 고정 안내뿐이다 — 추천 서버의 오류 본문(외부 API 오류에 접속·설정 정보가 섞일 수 있다)은 내보내지 않는다.
+- 남는 기록(직접 확인): 오늘의 추천 카드 1건이 `outfit_recommendation_history`에 남는다(다음 추천의 반복 감점·"안 입은 옷" 판정에 쓰인다).
+  응답 전체가 `recommendation_batch`에 1행 남는다. **둘 다 착용 기록이 아니다** — 이 서비스에는 착용 기록 표가 없다.
+- 반복 호출 억제: annotation `readOnlyHint=false`, `idempotentHint=false`, `openWorldHint=true`. 도구 설명·서버 지시문에 "한 번만, 실패 뒤 바로 다시 부르지 않기"를 적었다.
+  서버는 자동으로 다시 부르지 않고, 계정마다 한 번에 하나, 전체 동시 2개, 90초 제한이다.
+  Rust LLM 층은 기본으로 실패 시 최대 2회 재시도한다(`LLM_MAX_RETRIES`, 웹도 같다). 유료 재시도를 막으려면 3003을 `LLM_MAX_RETRIES=0`으로 띄운다.
+- **신원 전달(위임 헤더)**: ChatGPT OAuth 토큰과 Rust `api_token`은 별개다. 기존 `default` 계정은 토큰이 무효화돼 있어 `api_token`을 대신 보낼 수도 없다.
+  그래서 MCP가 OAuth로 검증된 주체를 공유 키로 서명해 `X-Wardrobe-Delegation: v1.<user_id>.<만료>.<HMAC-SHA256>` 헤더로 보낸다(서명 대상: 메서드·경로·사용자·만료, 수명 60초).
+  Rust(`src/middleware/delegation.rs`)는 키가 설정돼 있고, 이 컴퓨터에서 직접 온 요청이며(루프백 연결·로컬 Host·전달 헤더 없음), `Authorization`이 같이 오지 않았고,
+  `POST /api/recommendation/multi`이며, 서명·만료가 맞고, 그 사용자가 있을 때만 받는다. 어떤 실패도 401이고 `default`로 넘어가지 않는다.
+  추천 주소는 `http://127.0.0.1:<LIVE_RECOMMEND_PORT>` 고정이고 리다이렉트는 따라가지 않는다.
+- **켜는 법**: 같은 키를 두 서버에 준다(파일·환경 변수에만, 출력·커밋 금지).
+  ```sh
+  # Rust(3003): 이 컴퓨터에서만 받게
+  WARDROBE_BIND_HOST=127.0.0.1 WARDROBE_DELEGATION_KEY=<hex> LLM_MAX_RETRIES=0 cargo run
+  # MCP live
+  WARDROBE_MCP_MODE=live PUBLIC_HOST=<공개 호스트> LIVE_DATABASE_URL=... WARDROBE_DELEGATION_KEY=<같은 hex> npm start
+  ```
+  3003은 터널로 내보내지 않는다(터널은 MCP 포트만). 3003이 꺼져 있으면 추천만 `unavailable`이고 프로필·옷장 읽기는 그대로다.
+- **기존 ChatGPT 연결은 재연결(재동의)이 필요하다.** 예전 토큰에는 `recommendations.write`가 없다. 도구는 `insufficient_scope`(`scope="wardrobe.read recommendations.write"`)로 답하고,
+  ChatGPT가 다시 연결을 띄운다(운영자가 새 연결 코드를 발급해야 한다). 리프레시로 몰래 넓혀 주지 않는다.
+  재동의 때 ChatGPT가 이 두 scope만 요청하면 새 토큰에는 `comparisons.write`가 없다 — 그때 데모 선택 저장은 다시 권한을 요청한다.
 
 ### 필요한 것
+- (실제 추천을 쓸 때) 루프백에서 도는 Rust 서버와 같은 위임 키. 위 "실제 추천".
 - Rust 마이그레이션 세 개가 적용된 DB. Rust 서버(3003)를 한 번 켜면 sqlx가 자동 적용한다.
   - `20261024000001_clothing_owner.sql`(옷장 `user_id` 컬럼): 없으면 live 모드가 시작을 거부한다.
   - `20261024000002_outfit_image_owner_key.sql`, `20261024000003_region_owner.sql`: Rust 쪽 사진 캐시·지역의 계정 분리.
@@ -278,6 +329,9 @@ LIVE_DATABASE_URL=... npm run link-code -- --user-id default --allow-default
 - 생성 사진 캐시(`outfit_image`)의 유니크 키에 소유자를 넣었다(마이그레이션 20261024000002, 행 변경 없음).
   같은 착장 문구라도 계정마다 따로 캐시한다. 룩북 저장·핀·사진 요청·편집 기준 사진도 내 행만 읽고 쓴다.
   사진 접근권은 캐시 소유자만이다(룩북 경로는 근거가 아니다).
+- MCP 위임 헤더(`src/middleware/delegation.rs`, `WARDROBE_DELEGATION_KEY`)로 추천 경로 하나만 연결된 계정 대신 부를 수 있다. `WARDROBE_BIND_HOST`로 바인딩 주소를 정한다(기본 `0.0.0.0` 그대로).
+- 판정 라벨(`Verdict::from_score`)이 100을 넘는 점수(피드백·다양성 가산)를 "아쉬워요"로 떨어뜨리던 것을 고쳤다. 88 이상은 모두 "훌륭해요"(점수·가중치는 그대로).
+- 홈 추천 카드의 옷마다 붙는 이유가 늘 "옷장에서 골라 넣은 아이템"으로 나오던 문제를 고쳤다. 모델의 참조(`T1`…)를 옷 id로 풀어 이유를 붙인다(웹 홈 추천에도 적용).
 - 지역(`region_setting`)은 계정별이다(20261024000003, 기존 행은 default). 레퍼런스 카탈로그 수정은 관리자만 한다(`WARDROBE_ADMIN_USERS` 또는 개발 모드 로컬).
 
 ## TODO: 계정 연결 → 사진 등록
@@ -294,14 +348,15 @@ LIVE_DATABASE_URL=... npm run link-code -- --user-id default --allow-default
 src/main.js           실행 입구(설정·저장소·HTTP)
 src/config.js         환경 변수
 src/http.js           POST /mcp · GET /healthz · GET|HEAD /assets/img/<해시>, Host/Origin/크기/요청 수 검사
-src/mcp-server.js     도구 5~6개 + UI 리소스(공식 McpServer, ext-apps registerAppTool/registerAppResource)
+src/mcp-server.js     데모 도구 5~6개, live 도구 2~3개 + UI 리소스(공식 McpServer, ext-apps registerAppTool/registerAppResource)
 src/photo-sets.js     사진 비교 세트(아이템 목록 ↔ asset 키). 사진 파일·원본 대응표는 로컬 .assets 에만
 src/image-assets.js   로컬 asset manifest 검사·허용 목록·사진 URL
 scripts/import-image-assets.mjs  기존 생성 사진 → .assets(원본 PNG 바이트 그대로·C2PA 보존·해시 이름·manifest)
 src/demo-store.js     데모 비교·선택 저장(JSON 파일, 직렬화된 쓰기)
 src/vote.js           선택 계약(Rust와 같은 값·규칙)
 src/fixtures.js       샘플 옷장·샘플 코디
-src/adapters/live.js  live 모드: 연결된 계정의 프로필·본인 옷장 읽기(mysql2, SELECT 만)
+src/adapters/live.js  live 모드: 연결된 계정의 프로필·본인 옷장 읽기, 추천 사전 확인·옷 소유·추천 날씨(mysql2, SELECT 만)
+src/recommend.js      live 모드: Rust 추천 호출(루프백 고정·위임 서명·시간 제한·동시 제한)
 src/auth/oauth.js     OAuth provider(코드·토큰·동의 화면) + SDK 라우터·Bearer 검사
 src/auth/store.js     OAuth 상태 저장(해시만, JSON 파일)
 src/auth/link-codes.js 계정 연결 코드(발급·확인)

@@ -4,6 +4,8 @@
 // 선택 저장. 데모 fixture 와 이 서버의 로컬 데모 저장소만 쓴다.
 // live 모드(계정 연결 OAuth)에서는 연결된 계정 본인의 프로필·옷장을 읽는 도구 둘이 더해진다. 이 둘은 어댑터
 // (adapters/live.js)를 통해 서비스 DB 를 SELECT 로만 읽는다 — Rust 서버(3003)를 거치지 않는다.
+// 위임 키가 설정돼 있으면 실제 코디 추천 도구(recommend_my_outfit)도 나온다. 이것만 루프백의 Rust 추천 엔진을
+// 부른다(recommend.js) — 모델 비용이 들고 추천 이력이 남는다.
 // 파일·URL·셸·임의 HTTP 를 다루는 도구는 없다.
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -35,6 +37,8 @@ export const TOOL_NAMES = {
   // live 모드(계정 연결)에서만
   myProfile: 'get_my_profile',
   myWardrobe: 'list_my_wardrobe',
+  // live + 위임 키가 있을 때만
+  recommend: 'recommend_my_outfit',
 };
 
 /**
@@ -178,7 +182,12 @@ export function serverInstructions(live) {
     '그 밖의 A/B 비교 도구(create_demo_comparison·create_demo_photo_comparison·get_demo_comparison)는 샘플 옷장과 이미 생성해 둔 룩북 사진으로 하는 데모이며, ' +
     '사용자의 실제 옷장이나 추천 결과가 아니다 — 결과를 전할 때 실제 데이터와 데모를 구분해서 밝힌다. ' +
     'submit_demo_preference·update_demo_preference 로 저장한 선택은 연결된 계정에 귀속된 데모 기록이다(서비스 DB 가 아니라 이 서버의 데모 저장소). ' +
-    '실제 추천 엔진과 옷 사진 등록은 아직 연결되지 않았다 — 해 주는 척하지 않는다. ' +
+    (live.recommender
+      ? 'recommend_my_outfit 는 실제 추천 엔진으로 내 옷장·저장된 지역의 지금 날씨·추천 이력을 써서 오늘 코디를 고른다. ' +
+        '부를 때마다 AI 모델 비용이 들고 오늘의 추천이 내 추천 이력에 남으므로(착용 기록은 아니다) 사용자가 추천을 원할 때 한 번만 부르고, ' +
+        '같은 조건으로 되풀이해 부르거나 실패했다고 바로 다시 부르지 않는다. 추천 결과는 데모 비교·데모 사진과 섞지 않는다. ' +
+        '옷 사진 등록·코디 사진 생성은 아직 연결되지 않았다 — 해 주는 척하지 않는다. '
+      : '실제 추천 엔진과 옷 사진 등록은 아직 연결되지 않았다 — 해 주는 척하지 않는다. ') +
     CHOICE_RULES
   );
 }
@@ -452,24 +461,213 @@ function authChallenge(live, { error, description, scope }) {
 /**
  * live 모드에서 이 도구에 필요한 scope 가 토큰에 있는가. demo 모드(live 없음)는 통과.
  * 토큰 주체가 없으면(이론상 HTTP 층에서 이미 막힌다) 익명으로 진행하지 않고 거절한다.
- * @param {'read'|'write'} kind
+ * @param {'read'|'write'|'recommend'} kind
  */
 function checkScope(extra, live, kind) {
   if (!live) return null;
   if (!ownerOf(extra)) {
     return authChallenge(live, { error: 'invalid_token', description: 'Link your Wardrobe Edit account' });
   }
-  const needed = kind === 'write' ? [live.scopes.read, live.scopes.write] : [live.scopes.read];
+  const needed = { read: [live.scopes.read], write: [live.scopes.read, live.scopes.write], recommend: [live.scopes.read, live.scopes.recommend] }[kind];
   const granted = extra.authInfo.scopes ?? [];
   if (needed.every((s) => granted.includes(s))) return null;
   return authChallenge(live, {
     error: 'insufficient_scope',
-    description: kind === 'write' ? 'Saving choices needs the comparisons.write permission' : 'Reading needs the wardrobe.read permission',
+    description: {
+      read: 'Reading needs the wardrobe.read permission',
+      write: 'Saving choices needs the comparisons.write permission',
+      recommend: 'Outfit recommendations need the recommendations.write permission. Reconnect to grant it',
+    }[kind],
     scope: needed.join(' '),
   });
 }
 
+// 실제 추천 인자. 웹 홈 화면 흐름과 같다: 상황은 기본 '일상'(웹 홈은 늘 일상), 성별 탭(female·male), 무드는 그
+// 성별의 style_mood 목록(Rust StyleGenre 키) — 성별 없이 무드만은 받지 않는다.
+export const RECOMMEND_SITUATIONS = ['일상', '출근', '데이트'];
+export const RECOMMEND_GENDERS = ['female', 'male'];
+export const RECOMMEND_MOODS = [
+  'minimal', 'classic', 'street', 'sporty_casual',
+  'amekaji', 'preppy', 'workwear', 'outdoor_casual',
+  'romantic', 'modern_chic', 'bohemian', 'mannish', 'glam', 'edgy', 'pop',
+];
+
+/** 오늘의 추천·다른 조합·안 입은 옷 활용. */
+const recommendItemSchema = z.object({ id: z.string(), name: z.string(), category: z.string(), reason: z.string() });
+const recommendOutput = z.object({
+  ok: z.boolean(),
+  outcome: z.string(),
+  message: z.string(),
+  source: z.literal('live_recommendation_engine'),
+  request: z.object({ situation: z.string(), gender: z.string().nullable(), mood: z.string().nullable() }),
+  region: z.string().nullable().optional(),
+  weather: z
+    .object({ temperature: z.number().nullable(), apparent_temperature: z.number().nullable(), description: z.string().nullable() })
+    .nullable()
+    .optional(),
+  weather_summary: z.string().nullable().optional(),
+  notice: z.string().nullable().optional(),
+  modes: z
+    .array(
+      z.object({
+        mode: z.string(),
+        label: z.string(),
+        description: z.string(),
+        summary: z.string(),
+        reason: z.string(),
+        verdict: z.string(),
+        score: z.number().describe('내부 순위 점수. 확률이나 100점 만점이 아니며 100을 넘을 수 있다.'),
+        tips: z.array(z.string()),
+        items: z.array(recommendItemSchema),
+      }),
+    )
+    .optional(),
+  side_effects: z.string().optional(),
+});
+
+const RECOMMEND_MESSAGES = {
+  empty_wardrobe: '추천할 옷이 옷장에 없어요(고른 성별 기준). 웹에서 옷을 먼저 등록하거나 성별 조건을 바꿔 주세요.',
+  no_region: '날씨 기준 지역이 아직 없어요. 웹 화면에서 지역을 먼저 정해 주세요.',
+  mood_not_for_gender: '고른 성별에서 쓸 수 없는 무드예요. 성별에 맞는 무드를 골라 주세요.',
+  mood_needs_gender: '무드를 고르려면 성별(female 또는 male)도 같이 정해 주세요.',
+  street_not_for_work: '스트리트 무드는 출근 상황에 추천하지 않아요. 상황을 일상이나 데이트로 바꿔 주세요.',
+  no_candidates: '오늘 날씨에 맞는 코디 후보가 부족해요.',
+  busy: '이미 추천을 만드는 중이에요. 끝난 뒤에 다시 요청해 주세요.',
+  unavailable: '추천 서버에 연결할 수 없어요(서버가 꺼져 있을 수 있어요). 데모 결과로 바꾸지 않았어요.',
+  timeout: '추천이 제한 시간 안에 끝나지 않아 기다리기를 멈췄어요. 서버에서는 추천이 끝나 이력이 남았을 수 있어요. 바로 다시 부르지 마세요.',
+  delegation_rejected: '추천 서버가 이 연결의 위임을 받지 않았어요(서버 설정 문제). 운영자에게 알려 주세요.',
+  invalid_request: '추천 서버가 이 요청 조건을 받지 않았어요(서버 설정이나 조건 문제일 수 있어요). 같은 조건으로 바로 다시 부르지 말고 운영자에게 알려 주세요.',
+  upstream_error: '추천 서버가 오류를 돌려줬어요. 데모 결과로 바꾸지 않았어요.',
+  foreign_item: '추천 결과에 이 계정의 옷이 아닌 항목이 있어 결과를 보여 주지 않았어요.',
+};
+const SIDE_EFFECTS = '오늘의 추천 1건이 내 추천 이력에 남고(다음 추천의 반복 감점에 쓰인다, 착용 기록 아님), 응답 묶음이 추천 기록(recommendation_batch)에 남는다.';
+
+/** 실패 결과. 문장은 언제나 위의 고정 안내다 — 추천 서버의 오류 본문을 그대로 내보내지 않는다. */
+function recommendFailure(request, outcome) {
+  const message = RECOMMEND_MESSAGES[outcome] ?? RECOMMEND_MESSAGES.upstream_error;
+  return {
+    content: [{ type: 'text', text: `[${outcome}] ${message}` }],
+    structuredContent: { ok: false, outcome, message, source: 'live_recommendation_engine', request },
+  };
+}
+
+/**
+ * Rust 응답 → 내보낼 모양. 사진(image_url, data URI·내부 경로)·이미지 프롬프트용 착용 문장(wear)·점수 내부값·batch id 는 뺀다.
+ * 모든 옷 id 가 이 사용자의 것인지 확인한다 — 하나라도 아니면 결과 전체를 내보내지 않는다('foreign').
+ * 모양이 어긋난 응답(카드·아이템이 객체가 아님, 아이템 없는 카드, id·이름·카테고리 없음)은 'invalid' — 성공으로 내보내지 않는다.
+ */
+async function shapeRecommendation(live, userId, request, body, context) {
+  const str = (v, max = 600) => (typeof v === 'string' ? v.slice(0, max) : '');
+  const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const validItem = (i) =>
+    isObj(i) && [i.id, i.name, i.category].every((v) => typeof v === 'string' && v.length > 0) && i.id.length <= 64;
+  const validMode = (m) => isObj(m) && Array.isArray(m.outfit) && m.outfit.length > 0 && m.outfit.every(validItem);
+  if (!body.modes.every(validMode)) return 'invalid';
+  const modes = body.modes.map((m) => ({
+    mode: str(m.mode, 40),
+    label: str(m.mode_label, 40),
+    description: str(m.mode_description, 120),
+    summary: str(m.recommendation),
+    reason: str(m.reason),
+    verdict: str(m.verdict, 40),
+    score: typeof m.score === 'number' && Number.isFinite(m.score) ? m.score : 0,
+    tips: Array.isArray(m.tips) ? m.tips.slice(0, 6).map((t) => str(t, 300)) : [],
+    items: (Array.isArray(m.outfit) ? m.outfit : []).map((i) => ({
+      id: str(i.id, 64),
+      name: str(i.name, 200),
+      category: str(i.category, 20),
+      reason: str(i.reason, 400),
+    })),
+  }));
+  const ids = modes.flatMap((m) => m.items.map((i) => i.id));
+  const owned = await live.adapter.ownedClothingIds(userId, ids);
+  if (ids.some((id) => !owned.has(id))) return 'foreign';
+  const weather = body.batch_id ? await live.adapter.batchWeather(userId, body.batch_id).catch(() => null) : null;
+  return {
+    ok: modes.length > 0,
+    outcome: modes.length > 0 ? 'recommended' : 'no_candidates',
+    message: modes.length > 0 ? `실제 추천 엔진이 고른 코디 ${modes.length}개` : RECOMMEND_MESSAGES.no_candidates,
+    source: 'live_recommendation_engine',
+    request,
+    region: context.region,
+    weather,
+    weather_summary: str(body.weather_summary) || null,
+    notice: str(body.notice) || null,
+    modes,
+    side_effects: SIDE_EFFECTS,
+  };
+}
+
+function recommendText(r) {
+  const head = [
+    `실제 추천(내 옷장 기준) · 지역 ${r.region ?? '?'}` +
+      (r.weather?.temperature != null ? ` · ${r.weather.temperature}°C${r.weather.description ? ` ${r.weather.description}` : ''}` : ''),
+    r.weather_summary ? `날씨: ${r.weather_summary}` : null,
+    r.notice ? `안내: ${r.notice}` : null,
+  ].filter(Boolean);
+  const body = r.modes.map(
+    (m) =>
+      `■ ${m.label} (${m.verdict} ${m.score})\n${m.items.map((i) => `- [${i.category}] ${i.name} (id ${i.id}): ${i.reason}`).join('\n')}` +
+      (m.summary ? `\n${m.summary}` : '') +
+      (m.reason ? `\n선정 이유: ${m.reason}` : ''),
+  );
+  return [...head, ...body, '점수는 후보끼리 순위를 정하는 내부 점수예요(확률·100점 만점 아님).', `기록: ${r.side_effects}`].join('\n\n');
+}
+
+function registerRecommendTool(server, live) {
+  server.registerTool(
+    TOOL_NAMES.recommend,
+    {
+      title: '오늘 코디 추천(내 옷장)',
+      description:
+        '연결된 내 Wardrobe Edit 계정의 실제 옷장·저장된 지역의 지금 날씨·추천 이력으로 실제 추천 엔진이 오늘 코디를 고른다 ' +
+        '(오늘의 추천·다른 조합·안 입은 옷 활용 중 나오는 것). 데모가 아니다. 어느 계정인지는 연결(OAuth)이 정한다. ' +
+        '부작용: 부를 때마다 AI 모델 호출 비용이 들고, 오늘의 추천 1건이 추천 이력(착용 기록 아님)과 추천 기록에 남는다. ' +
+        '사용자가 추천을 원할 때 한 번만 부른다. 같은 조건으로 되풀이하거나, 실패·시간 초과 뒤 바로 다시 부르지 않는다. ' +
+        '사진은 돌려주지 않는다. situation 기본은 일상. mood 를 쓰려면 gender 도 정한다. ' +
+        'score 는 후보끼리 순위를 정하는 내부 점수다 — 확률이나 100점 만점이 아니고 100을 넘을 수 있으며, 코디 품질을 보장하는 값이 아니다.',
+      inputSchema: z.strictObject({
+        situation: z.enum(RECOMMEND_SITUATIONS).optional().describe('상황. 기본 일상(웹 홈과 같다). 출근·데이트는 격식을 더 본다.'),
+        gender: z.enum(RECOMMEND_GENDERS).optional().describe('옷장 성별 탭(female·male). 없으면 성별로 거르지 않는다.'),
+        mood: z.enum(RECOMMEND_MOODS).optional().describe('스타일 무드 키. 그 성별의 무드만 받는다. gender 가 필요하다.'),
+      }),
+      outputSchema: recommendOutput,
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    async ({ situation = '일상', gender, mood }, extra) => {
+      const denied = checkScope(extra, live, 'recommend');
+      if (denied) return denied;
+      const userId = ownerOf(extra);
+      const request = { situation, gender: gender ?? null, mood: mood ?? null };
+      if (mood && !gender) return recommendFailure(request, 'mood_needs_gender');
+      if (mood === 'street' && situation === '출근') return recommendFailure(request, 'street_not_for_work');
+      // 모델을 부르기 전에 막을 수 있는 것은 여기서 막는다.
+      const context = await live.adapter.recommendContext(userId, { gender: gender ?? null, mood: mood ?? null });
+      if (!context.moodOk) return recommendFailure(request, 'mood_not_for_gender');
+      if (context.wardrobe === 0) return recommendFailure(request, 'empty_wardrobe');
+      if (!context.region) return recommendFailure(request, 'no_region');
+
+      const body = { occasion: situation };
+      if (gender) body.gender = gender;
+      if (mood) body.style_mood = mood;
+      const upstream = await live.recommender.recommend(userId, body);
+      if (!upstream.ok) return recommendFailure(request, upstream.outcome);
+      const shaped = await shapeRecommendation(live, userId, request, upstream.body, context);
+      if (shaped === 'invalid') return recommendFailure(request, 'upstream_error');
+      if (shaped === 'foreign') return recommendFailure(request, 'foreign_item');
+      if (!shaped.ok) {
+        return {
+          content: [{ type: 'text', text: `[no_candidates] ${shaped.notice ?? shaped.message}` }],
+          structuredContent: shaped,
+        };
+      }
+      return { content: [{ type: 'text', text: recommendText(shaped) }], structuredContent: shaped };
+    },
+  );
+}
+
 function registerLiveTools(server, live) {
+  if (live.recommender) registerRecommendTool(server, live);
   const LIVE_NOTE =
     '연결된 내 Wardrobe Edit 계정의 실제 데이터를 읽는다(읽기 전용). 어느 계정인지는 연결(OAuth 토큰)이 정한다 — 사용자 id 를 인자로 받지 않는다.';
   server.registerTool(
@@ -550,6 +748,7 @@ const WRITE_TOOLS = new Set([TOOL_NAMES.create, TOOL_NAMES.photo, TOOL_NAMES.vot
 function declareSecuritySchemes(server, live) {
   const schemesFor = (name) => {
     if (!live) return [{ type: 'noauth' }];
+    if (name === TOOL_NAMES.recommend) return [{ type: 'oauth2', scopes: [live.scopes.read, live.scopes.recommend] }];
     const scopes = WRITE_TOOLS.has(name) ? [live.scopes.read, live.scopes.write] : [live.scopes.read];
     return [{ type: 'oauth2', scopes }];
   };

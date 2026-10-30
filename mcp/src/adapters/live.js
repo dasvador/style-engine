@@ -4,7 +4,7 @@
 //   - 사용자 id 는 언제나 인증 주체(OAuth 토큰에 묶인 id)에서 온다. 도구 인자로 받지 않는다.
 //   - 모든 옷장 질의는 `clothing.user_id = ?` 로 거른다(Rust 마이그레이션 20261024000001 이 만든 컬럼).
 //     컬럼이 없으면(마이그레이션 전) 시작을 거부한다 — 전역 옷장을 읽는 일이 없게.
-//   - 읽기만 한다(SELECT). 등록·수정·삭제·유료 추천·이미지 생성 경로는 없다.
+//   - 읽기만 한다(SELECT). 등록·수정·삭제·이미지 생성 경로는 없다. 실제 추천은 여기서 하지 않고 Rust 에 맡긴다(recommend.js).
 //   - 옷 사진(image_url, 대개 data URI)은 내보내지 않는다. 있는지만 알린다.
 // 접속 문자열(LIVE_DATABASE_URL)은 로그에 남기지 않는다.
 
@@ -82,6 +82,61 @@ export class LiveAdapter {
       material: r.material_primary ?? null,
       has_image: Boolean(Number(r.has_image)),
     }));
+  }
+
+  /**
+   * 추천 전에 확인할 것(모델을 부르기 전에 막을 수 있는 것): 옷장 수(성별을 고르면 그 성별), 지역 이름,
+   * 고른 무드가 그 성별에 있는지. 값은 사용자 본인 것만 읽는다.
+   * @returns {Promise<{ wardrobe: number, region: string|null, moodOk: boolean }>}
+   */
+  async recommendContext(userId, { gender = null, mood = null } = {}) {
+    // Rust list_clothing_filtered 와 같은 조건(gender = ?).
+    const genderSql = gender ? ' AND gender = ?' : '';
+    const [[w]] = await this.#pool.execute(
+      `SELECT COUNT(*) AS n FROM clothing WHERE user_id = ?${genderSql}`,
+      gender ? [userId, gender] : [userId],
+    );
+    const [regions] = await this.#pool.execute(
+      'SELECT name FROM region_setting WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1',
+      [userId],
+    );
+    let moodOk = true;
+    if (mood) {
+      const [m] = await this.#pool.execute(
+        "SELECT 1 FROM style_mood WHERE mood_key = ? AND (gender = ? OR gender = 'unisex') LIMIT 1",
+        [mood, gender],
+      );
+      moodOk = m.length === 1;
+    }
+    return { wardrobe: Number(w.n), region: regions[0]?.name ?? null, moodOk };
+  }
+
+  /** 이 id 들 가운데 이 사용자의 옷인 것. 추천 결과를 내보내기 전에 하나하나 확인한다. */
+  async ownedClothingIds(userId, ids) {
+    const unique = [...new Set(ids)].filter((id) => typeof id === 'string' && id.length > 0 && id.length <= 64);
+    if (unique.length === 0) return new Set();
+    const [rows] = await this.#pool.execute(
+      `SELECT id FROM clothing WHERE user_id = ? AND id IN (${unique.map(() => '?').join(',')})`,
+      [userId, ...unique],
+    );
+    return new Set(rows.map((r) => r.id));
+  }
+
+  /** 추천 한 번에 Rust 가 실제로 쓴 날씨(recommendation_batch.weather_json). 본인 batch 만. */
+  async batchWeather(userId, batchId) {
+    if (typeof batchId !== 'string' || batchId.length > 64) return null;
+    const [rows] = await this.#pool.execute(
+      'SELECT weather_json FROM recommendation_batch WHERE id = ? AND user_id = ? LIMIT 1',
+      [batchId, userId],
+    );
+    if (rows.length === 0 || rows[0].weather_json == null) return null;
+    const w = typeof rows[0].weather_json === 'string' ? JSON.parse(rows[0].weather_json) : rows[0].weather_json;
+    const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    return {
+      temperature: num(w.temperature),
+      apparent_temperature: num(w.apparent_temperature),
+      description: typeof w.weather_description === 'string' ? w.weather_description : null,
+    };
   }
 
   async close() {

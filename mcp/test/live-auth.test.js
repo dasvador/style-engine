@@ -6,156 +6,16 @@
 // 실제 ChatGPT·외부 IdP 를 부르지 않는다. 발급자는 로컬 http://127.0.0.1:포트다.
 
 import assert from 'node:assert/strict';
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 
 import { issueLinkCode } from '../src/auth/link-codes.js';
-import { DEFAULT_REDIRECT_URIS } from '../src/auth/oauth.js';
 import { TOOL_NAMES } from '../src/mcp-server.js';
 import { connectClient, startServer, tempDir } from './helpers.js';
+import { REDIRECT, b64url, fakeAdapter, linkAccount, oauth, pkce } from './oauth-helpers.js';
 
-const REDIRECT = DEFAULT_REDIRECT_URIS[0];
-
-/** 메모리 속 계정 두 개. 실제 어댑터와 같은 메서드. */
-function fakeAdapter() {
-  const users = {
-    'user-a': { username: 'alice', display_name: '앨리스', items: [item('a-1', 'A 네이비 니트', '상의'), item('a-2', 'A 데님', '하의')] },
-    'user-b': { username: 'bob', display_name: null, items: [item('b-1', 'B 블랙 코트', '아우터')] },
-  };
-  function item(id, name, category) {
-    return { id, name, category, color: null, sub_category: null, material: null, has_image: false };
-  }
-  return {
-    calls: [],
-    async exists(id) {
-      return Object.hasOwn(users, id);
-    },
-    async getProfile(id) {
-      this.calls.push(['profile', id]);
-      const u = users[id];
-      if (!u) return null;
-      const byCat = {};
-      for (const i of u.items) byCat[i.category] = (byCat[i.category] ?? 0) + 1;
-      return { username: u.username, display_name: u.display_name, wardrobe_count: u.items.length, wardrobe_by_category: byCat };
-    },
-    async listWardrobe(id, { category = null } = {}) {
-      this.calls.push(['wardrobe', id]);
-      return (users[id]?.items ?? []).filter((i) => !category || i.category === category);
-    },
-  };
-}
-
-const b64url = (buf) => Buffer.from(buf).toString('base64url');
-function pkce() {
-  const verifier = b64url(randomBytes(32));
-  const challenge = b64url(createHash('sha256').update(verifier).digest());
-  return { verifier, challenge };
-}
-
-/** OAuth 한 바퀴를 손으로 돈다(브라우저 대신 fetch). 단계별로 끊어 쓸 수 있게 함수로 나눈다. */
-function oauth(srv) {
-  const base = `http://127.0.0.1:${srv.port}`;
-  const resource = `${base}/mcp`;
-  return {
-    base,
-    resource,
-    async register(body = {}) {
-      const res = await fetch(`${base}/register`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          client_name: 'test-client',
-          redirect_uris: [REDIRECT],
-          token_endpoint_auth_method: 'none',
-          grant_types: ['authorization_code', 'refresh_token'],
-          response_types: ['code'],
-          ...body,
-        }),
-      });
-      return { status: res.status, json: await res.json() };
-    },
-    authorizeUrl(client, { challenge, state = 'st-1', redirect = REDIRECT, res = resource, method = 'S256', scope = 'wardrobe.read comparisons.write' } = {}) {
-      const u = new URL(`${base}/authorize`);
-      u.searchParams.set('response_type', 'code');
-      u.searchParams.set('client_id', client.client_id);
-      u.searchParams.set('redirect_uri', redirect);
-      u.searchParams.set('code_challenge', challenge);
-      u.searchParams.set('code_challenge_method', method);
-      u.searchParams.set('state', state);
-      if (scope) u.searchParams.set('scope', scope);
-      if (res !== null) u.searchParams.set('resource', res);
-      return u.href;
-    },
-    async openConsent(client, opts) {
-      const res = await fetch(this.authorizeUrl(client, opts), { redirect: 'manual' });
-      const html = await res.text();
-      const request = html.match(/name="request" value="([^"]+)"/)?.[1] ?? null;
-      return { status: res.status, html, request, location: res.headers.get('location'), headers: res.headers };
-    },
-    async consent(request, linkCode, { action = 'allow', origin = base } = {}) {
-      const headers = { 'content-type': 'application/x-www-form-urlencoded' };
-      if (origin) headers.origin = origin;
-      const res = await fetch(`${base}/oauth/consent`, {
-        method: 'POST',
-        redirect: 'manual',
-        headers,
-        body: new URLSearchParams({ request, link_code: linkCode, action }).toString(),
-      });
-      return { status: res.status, location: res.headers.get('location'), html: await res.text() };
-    },
-    async token(params) {
-      const res = await fetch(`${base}/token`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams(params).toString(),
-      });
-      return { status: res.status, json: await res.json() };
-    },
-    async revoke(clientId, token) {
-      const res = await fetch(`${base}/revoke`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ client_id: clientId, token }).toString(),
-      });
-      return res.status;
-    },
-    async mcpStatus(token) {
-      const res = await fetch(resource, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          accept: 'application/json, text/event-stream',
-          ...(token ? { authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
-      });
-      return { status: res.status, www: res.headers.get('www-authenticate'), body: await res.text() };
-    },
-  };
-}
-
-/** 등록 → 동의(연결 코드) → 코드 → 토큰까지. */
-async function linkAccount(o, client, linkCode, { scope } = {}) {
-  const { verifier, challenge } = pkce();
-  const page = await o.openConsent(client, scope === undefined ? { challenge } : { challenge, scope });
-  assert.equal(page.status, 200, page.html);
-  const done = await o.consent(page.request, linkCode);
-  assert.equal(done.status, 302, done.html);
-  const cb = new URL(done.location);
-  const code = cb.searchParams.get('code');
-  const tok = await o.token({
-    grant_type: 'authorization_code',
-    client_id: client.client_id,
-    code,
-    code_verifier: verifier,
-    redirect_uri: REDIRECT,
-    resource: o.resource,
-  });
-  assert.equal(tok.status, 200, JSON.stringify(tok.json));
-  return { ...tok.json, code, callback: cb };
-}
 
 describe('live 모드 — OAuth 와 계정 격리(가짜 어댑터)', () => {
   let tmp;
@@ -192,7 +52,7 @@ describe('live 모드 — OAuth 와 계정 격리(가짜 어댑터)', () => {
     assert.equal(as.issuer, prm.authorization_servers[0], 'issuer 가 정확히 같은 문자열');
     assert.ok(as.code_challenge_methods_supported.includes('S256'));
     assert.ok(as.registration_endpoint);
-    assert.deepEqual(as.scopes_supported, ['wardrobe.read', 'comparisons.write']);
+    assert.deepEqual(as.scopes_supported, ['wardrobe.read', 'comparisons.write', 'recommendations.write']);
   });
 
   test('토큰 없음·틀린 토큰 → 401 + WWW-Authenticate(resource_metadata)', async () => {
@@ -560,7 +420,25 @@ describe('live 모드 — 실제 DB 어댑터(임시 테스트 DB)', { skip: pro
           await mcp.close();
         }
       }
+
+      // 실제 추천 전 확인·결과 확인에 쓰는 조회도 본인 행만 본다.
+      await conn.execute("UPDATE clothing SET gender = 'female' WHERE id = ?", [`${ua}-1`]);
+      await conn.execute("INSERT INTO region_setting (id, user_id, name, latitude, longitude) VALUES (UUID(), ?, 'A 동네', 37.5, 127.0)", [ua]);
+      const batchA = `${run}-batch-a`.padEnd(36, '0').slice(0, 36);
+      await conn.execute(
+        "INSERT INTO recommendation_batch (id, user_id, weather_json, candidates_json, provenance_json) VALUES (?, ?, ?, '[]', '{}')",
+        [batchA, ua, JSON.stringify({ temperature: 9.5, apparent_temperature: 7, weather_description: '흐림', weather_code: 3 })],
+      );
+      assert.deepEqual(await adapter.recommendContext(ua, { gender: 'female', mood: 'romantic' }), { wardrobe: 1, region: 'A 동네', moodOk: true });
+      assert.deepEqual(await adapter.recommendContext(ua, { gender: 'male', mood: 'romantic' }), { wardrobe: 0, region: 'A 동네', moodOk: false });
+      assert.deepEqual(await adapter.recommendContext(ub), { wardrobe: 1, region: null, moodOk: true }, 'B 는 A 의 지역을 보지 않는다');
+      assert.deepEqual([...(await adapter.ownedClothingIds(ua, [`${ua}-1`, `${ub}-1`, 'nope']))], [`${ua}-1`]);
+      assert.deepEqual([...(await adapter.ownedClothingIds(ub, [`${ua}-1`]))], []);
+      assert.deepEqual(await adapter.batchWeather(ua, batchA), { temperature: 9.5, apparent_temperature: 7, description: '흐림' });
+      assert.equal(await adapter.batchWeather(ub, batchA), null, '남의 추천 기록 날씨는 읽지 않는다');
     } finally {
+      await conn.execute('DELETE FROM recommendation_batch WHERE user_id IN (?, ?)', [ua, ub]).catch(() => {});
+      await conn.execute('DELETE FROM region_setting WHERE user_id IN (?, ?)', [ua, ub]).catch(() => {});
       await srv?.close();
       await adapter?.close();
       await conn.execute('DELETE FROM clothing WHERE user_id IN (?, ?)', [ua, ub]);

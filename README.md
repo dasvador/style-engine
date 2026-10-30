@@ -345,7 +345,15 @@ WARDROBE_AUTH_MODE=dev-default-loopback cargo run
 계정 분리 마이그레이션 세 개(`20261024000001_clothing_owner`·`20261024000002_outfit_image_owner_key`·`20261024000003_region_owner`)는
 서버를 켤 때 자동 적용됩니다. 배포 DB에 먼저 적용해야 `mcp/` live 모드도 시작합니다.
 
-ChatGPT 계정 연결은 **시험 운영** 단계입니다. 운영자가 발급한 일회용 코드로만 연결되고, live MCP 서버는 3003 없이 DB를 직접 읽습니다(읽기 전용).
+ChatGPT 계정 연결은 **시험 운영** 단계입니다. 운영자가 발급한 일회용 코드로만 연결되고, live MCP 서버는 프로필·옷장을 3003 없이 DB에서 직접 읽습니다(읽기 전용).
+실제 코디 추천(`recommend_my_outfit`)만 3003의 `/api/recommendation/multi`를 부릅니다. 이때 3003은 이 컴퓨터에서만 받게 띄우고, 두 서버에 같은 위임 키를 줍니다.
+MCP는 OAuth로 확인한 계정을 이 키로 서명해 보내고, 3003은 로컬 직접 요청·추천 경로·서명이 모두 맞을 때만 받습니다.
+
+```bash
+WARDROBE_BIND_HOST=127.0.0.1 WARDROBE_DELEGATION_KEY=<32바이트 이상 hex> LLM_MAX_RETRIES=0 cargo run
+```
+
+`WARDROBE_BIND_HOST`가 없으면 예전처럼 모든 인터페이스에서 받습니다. `WARDROBE_DELEGATION_KEY`가 없으면 위임을 받지 않습니다.
 일반 웹 로그인 화면과 사진 인증 화면은 아직 없습니다. 자세한 상태와 남은 일은 `mcp/README.md`의 "계정 연결(live 모드)"에 있습니다.
 
 화면(프런트)의 현재 한계(로그인 화면은 다음 범위):

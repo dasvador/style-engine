@@ -29,6 +29,8 @@ pub struct AppState {
     pub auth_mode: middleware::auth::AuthMode,
     /// 공용 카탈로그 관리자(`WARDROBE_ADMIN_USERS`).
     pub admin_users: Arc<Vec<String>>,
+    /// MCP 서버 위임 헤더 키(`WARDROBE_DELEGATION_KEY`). 없으면 위임을 받지 않는다.
+    pub delegation_key: Option<Arc<[u8]>>,
 }
 
 #[tokio::main]
@@ -95,7 +97,11 @@ async fn main() {
         embedding: embedding_service,
         auth_mode: middleware::auth::AuthMode::from_env(),
         admin_users: middleware::auth::admin_users_from_env(),
+        delegation_key: middleware::delegation::key_from_env(),
     };
+    if state.delegation_key.is_some() {
+        tracing::info!("MCP 위임: 켜짐(로컬 직접 요청·추천 경로만)");
+    }
     match state.auth_mode {
         middleware::auth::AuthMode::Strict => {
             tracing::info!(
@@ -129,7 +135,12 @@ async fn main() {
         .layer(CorsLayer::permissive())
         .with_state(state);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3003));
+    // 기본은 예전처럼 모든 인터페이스. `WARDROBE_BIND_HOST=127.0.0.1` 이면 이 컴퓨터에서만 받는다.
+    let host: std::net::IpAddr = std::env::var("WARDROBE_BIND_HOST")
+        .ok()
+        .and_then(|h| h.trim().parse().ok())
+        .unwrap_or(std::net::IpAddr::from([0, 0, 0, 0]));
+    let addr = SocketAddr::new(host, 3003);
     tracing::info!("Server listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();

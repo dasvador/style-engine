@@ -50,7 +50,7 @@ describe('MCP over Streamable HTTP', () => {
     assert.deepEqual(
       Object.keys(byName).sort(),
       Object.values(TOOL_NAMES)
-        .filter((n) => ![TOOL_NAMES.photo, TOOL_NAMES.myProfile, TOOL_NAMES.myWardrobe].includes(n))
+        .filter((n) => ![TOOL_NAMES.photo, TOOL_NAMES.myProfile, TOOL_NAMES.myWardrobe, TOOL_NAMES.recommend].includes(n))
         .sort(),
     );
     // demo 모드: 계정 연결 없음 — 모든 도구가 noauth 를 알린다(OpenAI: 도구 정의 최상위 securitySchemes).
