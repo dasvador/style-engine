@@ -1,6 +1,6 @@
 # Wardrobe Edit MCP 서버 (데모 PoC + 계정 연결 시험 운영)
 
-ChatGPT·Claude 대화 안에서 Wardrobe Edit의 "둘 중 고르기"를 불러 볼 수 있는지 확인하는 MCP 서버다. 모드가 둘이다.
+ChatGPT에서 계정을 연결해 실제 옷장을 조회하고 코디를 추천받는 MCP 서버다. MCP Apps 기반의 샘플 코디 비교·선택 화면도 제공한다. 모드가 둘이다.
 
 - **`demo`(기본)**: 인증 없음, 샘플 데이터만. 흐름: 샘플 옷장 보기 → 상황·무드별 샘플 코디 두 개 비교 화면(MCP Apps) → A / B / 둘 다 아쉬움 선택과 이유 저장.
 - **`live`**: 운영자가 발급한 일회용 코드로 OAuth 계정 연결을 하는 **시험 운영(pilot)**. 위 데모 도구에 더해, 연결된 계정 본인의
@@ -14,7 +14,7 @@ ChatGPT·Claude 대화 안에서 Wardrobe Edit의 "둘 중 고르기"를 불러 
 > 로컬에 asset을 준비해 두면(아래 "생성 룩북 사진") **이 앱에서 이전에 이미 만들어 둔 룩북 사진 두 장**으로 하는
 > 사진 비교도 열 수 있다. 새로 추천·생성하지 않으며, 사진 세트 두 개(팝·엣지)만 있다. 다른 무드·상황에는 사진이 없다.
 
-Rust 본 서버(3003)와 코드·프로세스를 공유하지 않고, 3003이 꺼져 있어도 동작한다. demo 모드는 데이터도 공유하지 않는다
+Rust 본 서버(3003)와 별도 프로세스로 실행한다. 데모와 live 옷장 조회는 3003 없이 동작하지만, 실제 코디 추천은 3003이 필요하다. demo 모드는 데이터도 공유하지 않는다
 (live 모드만 서비스 DB를 직접 SELECT 한다). 데모 비교와 같은 것은 데이터 계약뿐이다:
 선택 값(`a`/`b`/`neither`), 이유 코드 5개, 메모 200자 규칙, "먼저 저장한 것이 남는다", 비교 응답 모양
 (`id`·`context`·`options[{slot, items}]`·`vote`)이 `src/services/outfit_comparison.rs`·`ComparePage.tsx`와 같다.
@@ -84,7 +84,7 @@ npm start         # UI 빌드(dist/ui.html) 후 http://127.0.0.1:8787/mcp
 선택은 비교당 늘 하나다(`vote.revision`·`updated_at`·처음 저장 시각 `submitted_at`). 수정하면 이전 값은 남기지 않는다.
 이유만, 메모만 바꿀 때도 `update`에 남길 값을 모두 보낸다(빠진 `reasons`·`comment`는 지운다는 뜻이다).
 
-모든 도구는 `openWorldHint: false`이고 모르는 인자를 거절한다(`additionalProperties: false`).
+위 데모 도구는 `openWorldHint: false`이고 모르는 인자를 거절한다(`additionalProperties: false`).
 "건너뛰기"는 화면에만 있는 동작이며 아무것도 저장하지 않는다. "둘 다 아쉬움"(`neither`)은 저장되는 선택이다.
 
 그 밖의 오류(없는 비교 등)는 `isError: true`, `content[0].text = "[code] 메시지"`, 세부는 `_meta["wardrobe-edit/error"]`
