@@ -33,6 +33,29 @@ pub struct AppState {
     pub delegation_key: Option<Arc<[u8]>>,
 }
 
+/// 이 접속 문자열의 DB 가 일회용 이름인가. 사용자·비밀번호·호스트가 아니라 실제로 접속할 DB 이름만 본다
+/// (접속에 쓰는 것과 같은 파서). `_`·`-` 로 나눈 낱말 중 하나가 `test` 여야 한다 — `latest` 는 아니다.
+/// 오류 문장에 접속 문자열을 싣지 않는다(비밀번호가 들어 있다).
+#[cfg(any(test, feature = "e2e-stub"))]
+fn require_disposable_database(url: &str) -> Result<(), String> {
+    let options: sqlx::mysql::MySqlConnectOptions = url
+        .parse()
+        .map_err(|_| "e2e-stub: DATABASE_URL 을 해석하지 못했다".to_string())?;
+    let name = options
+        .get_database()
+        .ok_or("e2e-stub: DATABASE_URL 에 DB 이름이 없다")?;
+    if name
+        .split(['_', '-'])
+        .any(|word| word.eq_ignore_ascii_case("test"))
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            "e2e-stub 빌드는 이름에 test 낱말이 든 일회용 DB 만 쓴다: {name}"
+        ))
+    }
+}
+
 #[tokio::main]
 async fn main() {
     // Load .env
@@ -49,6 +72,11 @@ async fn main() {
 
     // Database connection
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    // 고정 응답 빌드는 일회용 DB 에만 붙는다. 접속하기 전에 막는다.
+    #[cfg(feature = "e2e-stub")]
+    if let Err(reason) = require_disposable_database(&database_url) {
+        panic!("{reason}");
+    }
     let pool = MySqlPoolOptions::new()
         .max_connections(5)
         .connect(&database_url)
@@ -140,7 +168,15 @@ async fn main() {
         .ok()
         .and_then(|h| h.trim().parse().ok())
         .unwrap_or(std::net::IpAddr::from([0, 0, 0, 0]));
-    let addr = SocketAddr::new(host, 3003);
+    #[cfg(not(feature = "e2e-stub"))]
+    let port = 3003;
+    // E2E 는 실제 서버 포트와 겹치지 않게 따로 정한다.
+    #[cfg(feature = "e2e-stub")]
+    let port: u16 = std::env::var("WARDROBE_E2E_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(13003);
+    let addr = SocketAddr::new(host, port);
     tracing::info!("Server listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
@@ -151,4 +187,62 @@ async fn main() {
     )
     .await
     .unwrap();
+}
+
+#[cfg(test)]
+mod disposable_database_tests {
+    use super::require_disposable_database as check;
+
+    #[test]
+    fn test_in_credentials_or_host_does_not_count() {
+        for url in [
+            "mysql://test_user:test_pass@test-host:3306/rust_web_app",
+            "mysql://root:test@127.0.0.1:3306/production",
+            "mysql://u:p@test.internal/prod?charset=utf8mb4&timezone=test",
+        ] {
+            assert!(check(url).is_err(), "{url}");
+        }
+    }
+
+    #[test]
+    fn test_must_be_a_word_of_the_database_name() {
+        for url in [
+            "mysql://root@127.0.0.1:3306/latest",
+            "mysql://root@127.0.0.1:3306/contest_prod",
+            "mysql://root@127.0.0.1:3306/attestation",
+        ] {
+            assert!(check(url).is_err(), "{url}");
+        }
+    }
+
+    #[test]
+    fn disposable_names_pass() {
+        for name in [
+            "wear_test",
+            "test_wear",
+            "wear_ui_test_123",
+            "wear-test",
+            "TEST",
+        ] {
+            let url = format!("mysql://root@127.0.0.1:33307/{name}?charset=utf8mb4");
+            assert_eq!(check(&url), Ok(()), "{url}");
+        }
+    }
+
+    #[test]
+    fn missing_database_or_bad_url_is_refused() {
+        for url in [
+            "mysql://test:test@test-host:3306",
+            "mysql://test:test@test-host:3306/",
+            "not a url with test in it",
+        ] {
+            assert!(check(url).is_err(), "{url}");
+        }
+    }
+
+    #[test]
+    fn error_never_echoes_the_password() {
+        let err = check("mysql://root:s3cret@127.0.0.1/production").unwrap_err();
+        assert!(!err.contains("s3cret"), "{err}");
+    }
 }

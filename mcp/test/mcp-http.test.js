@@ -8,6 +8,7 @@ import { after, before, describe, test } from 'node:test';
 import { RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 
 import { ERROR_META_KEY, LEGACY_UI_URIS, TOOL_NAMES, UI_URI } from '../src/mcp-server.js';
+import { OUTFIT_TOOL_NAMES } from '../src/outfit-tools.js';
 import { connectClient, rawHttp, rawPost, startServer, tempDir } from './helpers.js';
 
 const INIT = {
@@ -50,7 +51,7 @@ describe('MCP over Streamable HTTP', () => {
     assert.deepEqual(
       Object.keys(byName).sort(),
       Object.values(TOOL_NAMES)
-        .filter((n) => ![TOOL_NAMES.photo, TOOL_NAMES.myProfile, TOOL_NAMES.myWardrobe, TOOL_NAMES.recommend].includes(n))
+        .filter((n) => ![TOOL_NAMES.photo, TOOL_NAMES.myProfile, TOOL_NAMES.myWardrobe, TOOL_NAMES.recommend, ...Object.values(OUTFIT_TOOL_NAMES)].includes(n))
         .sort(),
     );
     // demo 모드: 계정 연결 없음 — 모든 도구가 noauth 를 알린다(OpenAI: 도구 정의 최상위 securitySchemes).

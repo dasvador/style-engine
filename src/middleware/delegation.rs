@@ -8,7 +8,8 @@
 //!   - 서버에 키가 설정돼 있다(없으면 위임은 꺼져 있다).
 //!   - 요청이 이 컴퓨터에서 직접 왔다(`auth::is_local_request` — 루프백 연결·로컬 Host·전달 헤더 없음).
 //!   - `Authorization` 헤더가 같이 오지 않았다(둘 중 무엇을 믿을지 고르지 않는다).
-//!   - 허용된 경로 하나(`POST /api/recommendation/multi`)다. 서명에도 메서드·경로가 들어간다.
+//!   - 허용 목록([`ALLOWED`])의 경로와 정확히 같다(접두어·와일드카드 없음, 경로에 id 도 없다 — id 는
+//!     본문으로 받아 서버가 소유자를 확인한다). 서명에도 메서드·경로가 들어간다.
 //!   - 만료 전이고 만료가 지금부터 [`MAX_TTL_SECS`] 안이다.
 //!   - HMAC-SHA256 서명이 맞다(상수 시간 비교).
 //!   - 서명된 사용자가 `app_user` 에 있다(여기서는 형식만 보고, 존재 확인은 `auth` 가 한다).
@@ -24,7 +25,14 @@ pub const HEADER: &str = "x-wardrobe-delegation";
 /// 서명의 최대 수명. MCP 는 요청 직전에 서명한다.
 pub const MAX_TTL_SECS: i64 = 120;
 /// 위임으로 부를 수 있는 (메서드, 경로).
-pub const ALLOWED: &[(&str, &str)] = &[("POST", "/api/recommendation/multi")];
+pub const ALLOWED: &[(&str, &str)] = &[
+    ("POST", "/api/recommendation/multi"),
+    ("POST", "/api/outfits/replacement"),
+    ("POST", "/api/outfits/plan"),
+    ("POST", "/api/outfits/worn"),
+    ("POST", "/api/outfits/record"),
+    ("POST", "/api/outfits/history"),
+];
 /// 키 최소 길이(바이트).
 pub const MIN_KEY_LEN: usize = 32;
 
@@ -114,6 +122,16 @@ mod tests {
         // 허용 경로가 아니면 그 경로로 서명했어도 거절
         let other = sign(KEY, "GET", "/api/clothes", "user-a", now + 60);
         assert!(verify(KEY, &other, "GET", "/api/clothes", now).is_err());
+        // 고정 경로만: 하위 경로·GET·룩북 참조(웹 전용)는 서명해도 거절
+        for (m, p) in [
+            ("POST", "/api/outfits/worn/x"),
+            ("POST", "/api/outfits"),
+            ("GET", "/api/outfits/history"),
+            ("POST", "/api/outfits/from-look"),
+        ] {
+            let signed = sign(KEY, m, p, "user-a", now + 60);
+            assert!(verify(KEY, &signed, m, p, now).is_err(), "{m} {p}");
+        }
         // 수명이 너무 긴 서명
         let long = sign(KEY, "POST", P, "user-a", now + MAX_TTL_SECS + 1);
         assert!(verify(KEY, &long, "POST", P, now).is_err());

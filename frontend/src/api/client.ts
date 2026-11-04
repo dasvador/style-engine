@@ -52,8 +52,8 @@ function parseErrorMessage(status: number, raw: string, statusText: string): str
  *
  * 아직 로그인 화면이 없다. 로컬 개발은 백엔드를 `WARDROBE_AUTH_MODE=dev-default-loopback` 으로 켜서
  * 토큰 없이 기존(default) 옷장을 쓴다. 다른 계정으로 시험하려면 `POST /api/user/register` 로 받은 토큰을
- * 브라우저 저장소의 `wardrobe.apiToken` 에 넣는다. 이 경우 `/static` 사진은 보이지 않는다(보호 경로
- * `/api/images/{file}` 은 헤더가 필요해 `<img>` 로는 못 읽는다 — 로그인 범위에서 다룬다).
+ * 브라우저 저장소의 `wardrobe.apiToken` 에 넣는다. 이 경우 `/static` 사진은 보이지 않아, 코디 기록 화면은
+ * 보호 경로 `/api/images/{file}` 을 `apiBlob` 으로 읽는다(룩북 화면은 아직 `/static` 이다 — 로그인 범위에서 다룬다).
  */
 const TOKEN_KEY = 'wardrobe.apiToken';
 
@@ -99,6 +99,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 const jsonHeaders = { 'Content-Type': 'application/json' };
+
+/** 인증이 필요한 파일을 받는다. `<img>` 는 Authorization 헤더를 보낼 수 없어 blob 으로 읽는다. */
+export async function apiBlob(path: string, signal?: AbortSignal): Promise<Blob> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { headers: authHeaders(), signal });
+  } catch (cause) {
+    throw new ApiError(0, '서버에 연결할 수 없습니다.', String(cause));
+  }
+  if (!res.ok) {
+    const raw = await res.text().catch(() => '');
+    throw new ApiError(res.status, parseErrorMessage(res.status, raw, res.statusText), raw);
+  }
+  return res.blob();
+}
 
 export function apiGet<T>(path: string): Promise<T> {
   return request<T>(path);

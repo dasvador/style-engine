@@ -510,6 +510,22 @@ async fn get_multi_recommendation(
         reranked.sort_by_key(|c| std::cmp::Reverse(c.final_score));
     }
 
+    // 실제로 입은 기록의 작은 감점(`wear_history`). 계획·취소·추천 이력은 들어오지 않고, 후보를
+    // 빼지 않는다. 읽지 못하면 감점 없이 그대로 추천한다.
+    let today = crate::services::outfit_flow::today_kst();
+    let recent_wear = crate::services::wear_history::load_recent(&state.db, user_id, today)
+        .await
+        .unwrap_or_else(|e| {
+            warn!("착용 기록을 읽지 못해 감점 없이 추천한다: {e}");
+            Default::default()
+        });
+    crate::services::wear_history::apply_penalty(&mut reranked, &clothes, &recent_wear, today);
+    reranked.sort_by(|a, b| {
+        b.final_score
+            .cmp(&a.final_score)
+            .then_with(|| b.style_score.cmp(&a.style_score))
+    });
+
     // 이미 보여 준 코디와 거의 같은 후보를 뺀다. 무드를 바꿔 요청해도 같은 코디가 다시
     // 나오던 문제 — 화면이 무드마다 따로 요청해서 서버는 앞서 보여 준 것을 몰랐다.
     // 아래 모드 선택 함수는 그대로 두고 그 입력만 거른다.
@@ -859,7 +875,14 @@ async fn get_multi_recommendation(
             &clothes,
         );
 
-        let reason = build_mode_reason(key, scoring, &revival_items, todays_idx, ai_idx);
+        // 입은 기록의 감점은 "최근 코디와 다르다" 는 뜻이 아니다. 설명은 `wear_note` 가 따로 한다.
+        let mut for_reason = scoring.clone();
+        for_reason.recency_penalty -= winner.wear_penalty;
+        let reason = build_mode_reason(key, &for_reason, &revival_items, todays_idx, ai_idx);
+        let wear_note = {
+            let ids: Vec<&str> = outfit.iter().map(|o| o.id.as_str()).collect();
+            crate::services::wear_history::wear_note(&ids, &recent_wear, today, winner.wear_penalty)
+        };
 
         modes.push(ModeRecommendation {
             mode: key.to_string(),
@@ -878,6 +901,8 @@ async fn get_multi_recommendation(
             silhouette_delta: silhouette_of(ai_idx),
             mood_waiver: Some(waiver_of(ai_idx).total()),
             feedback_bonus: winner.feedback_bonus,
+            outfit_ref: None,
+            wear_note,
         });
     }
 
@@ -913,7 +938,7 @@ async fn get_multi_recommendation(
         mood,
         &weather,
         debug_override,
-        &modes,
+        &mut modes,
         &clothes,
     )
     .await;
@@ -935,7 +960,7 @@ async fn record_batch(
     mood: Option<StyleGenre>,
     weather: &crate::models::weather::CurrentWeather,
     debug_override: bool,
-    modes: &[ModeRecommendation],
+    modes: &mut [ModeRecommendation],
     clothes: &[Clothing],
 ) -> Option<String> {
     use crate::services::outfit_comparison as cmp;
@@ -971,13 +996,33 @@ async fn record_batch(
         weather: weather_json,
         provenance,
     };
-    match cmp::record_batch(&state.db, user_id, &ctx, &candidates).await {
+    let batch_id = match cmp::record_batch(&state.db, user_id, &ctx, &candidates).await {
         Ok(id) => id,
         Err(e) => {
             warn!("recommendation_batch 기록 실패: {e}");
             None
         }
+    };
+    // 코디마다 서버 참조를 만든다. 실패하면 그 응답은 바꾸기·기록을 못 할 뿐 추천은 그대로다.
+    if let Some(id) = &batch_id {
+        match crate::services::outfit_flow::save_batch_refs(
+            &state.db,
+            user_id,
+            id,
+            &ctx,
+            &candidates,
+        )
+        .await
+        {
+            Ok(refs) => {
+                for (mode, r) in modes.iter_mut().zip(refs) {
+                    mode.outfit_ref = r;
+                }
+            }
+            Err(e) => warn!("outfit_ref 기록 실패: {e}"),
+        }
     }
+    batch_id
 }
 
 /// 개발용 기온 덮어쓰기를 받을지. 서버가 `ALLOW_DEBUG_WEATHER=1` 로 떠 있을 때만이다 —
@@ -1439,7 +1484,7 @@ async fn supplement_candidates(
 /// `outfit_scorer::total_outfit_score_with_feedback` 이 base 점수에 얹는 것과 같은
 /// 두 층이다 — 아이템별 누적 보정과 reason tag 선호도. 여기서는 style_engine 이
 /// 낸 점수에 얹어야 하므로 보정분만 따로 계산한다.
-fn feedback_bonus(
+pub(crate) fn feedback_bonus(
     items: &[&Clothing],
     feedback: &crate::services::outfit_scorer::FeedbackContext,
 ) -> i32 {
@@ -1458,7 +1503,7 @@ fn feedback_bonus(
 }
 
 /// 요청 하나에 쓸 피드백 맥락을 읽어 온다.
-async fn load_feedback(
+pub(crate) async fn load_feedback(
     db: &sqlx::MySqlPool,
     user_id: &str,
 ) -> crate::services::outfit_scorer::FeedbackContext {
@@ -1873,7 +1918,7 @@ fn category_to_slot(cat: &str) -> Option<SlotKind> {
     }
 }
 
-fn current_season_label() -> Option<String> {
+pub(crate) fn current_season_label() -> Option<String> {
     let month = chrono::Local::now().month();
     Some(
         match month {

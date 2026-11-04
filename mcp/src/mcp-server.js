@@ -5,7 +5,8 @@
 // live 모드(계정 연결 OAuth)에서는 연결된 계정 본인의 프로필·옷장을 읽는 도구 둘이 더해진다. 이 둘은 어댑터
 // (adapters/live.js)를 통해 서비스 DB 를 SELECT 로만 읽는다 — Rust 서버(3003)를 거치지 않는다.
 // 위임 키가 설정돼 있으면 실제 코디 추천 도구(recommend_my_outfit)도 나온다. 이것만 루프백의 Rust 추천 엔진을
-// 부른다(recommend.js) — 모델 비용이 들고 추천 이력이 남는다.
+// 부른다(recommend.js) — 모델 비용이 들고 추천 이력이 남는다. 코디 흐름 도구 다섯(한 벌 바꾸기·계획·착용·기록 수정·내역)도
+// 같은 위임으로 Rust 를 부른다(outfit-tools.js). 코디는 Rust 가 만든 참조(outfit_ref)로만 가리킨다.
 // 파일·URL·셸·임의 HTTP 를 다루는 도구는 없다.
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -17,6 +18,7 @@ import { CATEGORIES, MOODS, SITUATIONS } from './fixtures.js';
 import { PHOTO_SETS } from './photo-sets.js';
 import { COMPARISON_ID_PATTERN, DEMO_NOTICE, StoreError } from './demo-store.js';
 import { CHOICES, COMMENT_RAW_MAX_CHARS, REASONS } from './vote.js';
+import { OUTFIT_TOOL_SCOPE, OUTFIT_TOOL_NAMES, OUTFIT_INSTRUCTIONS, registerOutfitTools } from './outfit-tools.js';
 
 export const SERVER_INFO = { name: 'wardrobe-edit-demo', version: '0.3.0' };
 /**
@@ -39,6 +41,7 @@ export const TOOL_NAMES = {
   myWardrobe: 'list_my_wardrobe',
   // live + 위임 키가 있을 때만
   recommend: 'recommend_my_outfit',
+  ...OUTFIT_TOOL_NAMES,
 };
 
 /**
@@ -186,6 +189,7 @@ export function serverInstructions(live) {
       ? 'recommend_my_outfit 는 실제 추천 엔진으로 내 옷장·저장된 지역의 지금 날씨·추천 이력을 써서 오늘 코디를 고른다. ' +
         '부를 때마다 AI 모델 비용이 들고 오늘의 추천이 내 추천 이력에 남으므로(착용 기록은 아니다) 사용자가 추천을 원할 때 한 번만 부르고, ' +
         '같은 조건으로 되풀이해 부르거나 실패했다고 바로 다시 부르지 않는다. 추천 결과는 데모 비교·데모 사진과 섞지 않는다. ' +
+        OUTFIT_INSTRUCTIONS +
         '옷 사진 등록·코디 사진 생성은 아직 연결되지 않았다 — 해 주는 척하지 않는다. '
       : '실제 추천 엔진과 옷 사진 등록은 아직 연결되지 않았다 — 해 주는 척하지 않는다. ') +
     CHOICE_RULES
@@ -461,14 +465,19 @@ function authChallenge(live, { error, description, scope }) {
 /**
  * live 모드에서 이 도구에 필요한 scope 가 토큰에 있는가. demo 모드(live 없음)는 통과.
  * 토큰 주체가 없으면(이론상 HTTP 층에서 이미 막힌다) 익명으로 진행하지 않고 거절한다.
- * @param {'read'|'write'|'recommend'} kind
+ * @param {'read'|'write'|'recommend'|'outfits'} kind
  */
-function checkScope(extra, live, kind) {
+export function checkScope(extra, live, kind) {
   if (!live) return null;
   if (!ownerOf(extra)) {
     return authChallenge(live, { error: 'invalid_token', description: 'Link your Wardrobe Edit account' });
   }
-  const needed = { read: [live.scopes.read], write: [live.scopes.read, live.scopes.write], recommend: [live.scopes.read, live.scopes.recommend] }[kind];
+  const needed = {
+    read: [live.scopes.read],
+    write: [live.scopes.read, live.scopes.write],
+    recommend: [live.scopes.read, live.scopes.recommend],
+    outfits: [live.scopes.read, live.scopes.outfits],
+  }[kind];
   const granted = extra.authInfo.scopes ?? [];
   if (needed.every((s) => granted.includes(s))) return null;
   return authChallenge(live, {
@@ -477,8 +486,10 @@ function checkScope(extra, live, kind) {
       read: 'Reading needs the wardrobe.read permission',
       write: 'Saving choices needs the comparisons.write permission',
       recommend: 'Outfit recommendations need the recommendations.write permission. Reconnect to grant it',
+      outfits: 'Saving outfit plans and wear records needs the outfits.write permission. Reconnect to grant it',
     }[kind],
-    scope: needed.join(' '),
+    // 다시 연결하면 그 scope 로 토큰이 새로 나온다. 코디 기록은 추천과 같이 쓰므로 추천 권한을 잃지 않게 같이 요청한다.
+    scope: (kind === 'outfits' ? [...needed, live.scopes.recommend] : needed).join(' '),
   });
 }
 
@@ -493,6 +504,7 @@ export const RECOMMEND_MOODS = [
 ];
 
 /** 오늘의 추천·다른 조합·안 입은 옷 활용. */
+const OUTFIT_REF = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const recommendItemSchema = z.object({ id: z.string(), name: z.string(), category: z.string(), reason: z.string() });
 const recommendOutput = z.object({
   ok: z.boolean(),
@@ -519,6 +531,11 @@ const recommendOutput = z.object({
         score: z.number().describe('내부 순위 점수. 확률이나 100점 만점이 아니며 100을 넘을 수 있다.'),
         tips: z.array(z.string()),
         items: z.array(recommendItemSchema),
+        outfit_ref: z
+          .string()
+          .nullable()
+          .describe('이 코디의 서버 참조. 바꾸기·계획·착용 기록에 이 값을 그대로 쓴다. 비어 있으면 이 코디는 기록할 수 없다.'),
+        wear_note: z.string().nullable().describe('최근 실제로 입은 옷이 들어 있으면 그 사실 한 줄.'),
       }),
     )
     .optional(),
@@ -540,7 +557,7 @@ const RECOMMEND_MESSAGES = {
   upstream_error: '추천 서버가 오류를 돌려줬어요. 데모 결과로 바꾸지 않았어요.',
   foreign_item: '추천 결과에 이 계정의 옷이 아닌 항목이 있어 결과를 보여 주지 않았어요.',
 };
-const SIDE_EFFECTS = '오늘의 추천 1건이 내 추천 이력에 남고(다음 추천의 반복 감점에 쓰인다, 착용 기록 아님), 응답 묶음이 추천 기록(recommendation_batch)에 남는다.';
+const SIDE_EFFECTS = '오늘의 추천 1건이 내 추천 이력에 남고(다음 추천의 반복 감점에 쓰인다, 착용 기록 아님), 응답 묶음과 코디 참조가 추천 기록에 남는다.';
 
 /** 실패 결과. 문장은 언제나 위의 고정 안내다 — 추천 서버의 오류 본문을 그대로 내보내지 않는다. */
 function recommendFailure(request, outcome) {
@@ -572,6 +589,8 @@ async function shapeRecommendation(live, userId, request, body, context) {
     verdict: str(m.verdict, 40),
     score: typeof m.score === 'number' && Number.isFinite(m.score) ? m.score : 0,
     tips: Array.isArray(m.tips) ? m.tips.slice(0, 6).map((t) => str(t, 300)) : [],
+    outfit_ref: typeof m.outfit_ref === 'string' && OUTFIT_REF.test(m.outfit_ref) ? m.outfit_ref : null,
+    wear_note: str(m.wear_note, 400) || null,
     items: (Array.isArray(m.outfit) ? m.outfit : []).map((i) => ({
       id: str(i.id, 64),
       name: str(i.name, 200),
@@ -609,7 +628,9 @@ function recommendText(r) {
     (m) =>
       `■ ${m.label} (${m.verdict} ${m.score})\n${m.items.map((i) => `- [${i.category}] ${i.name} (id ${i.id}): ${i.reason}`).join('\n')}` +
       (m.summary ? `\n${m.summary}` : '') +
-      (m.reason ? `\n선정 이유: ${m.reason}` : ''),
+      (m.reason ? `\n선정 이유: ${m.reason}` : '') +
+      (m.wear_note ? `\n${m.wear_note}` : '') +
+      (m.outfit_ref ? `\n코디 참조: ${m.outfit_ref}` : '\n이 코디는 참조가 없어 바꾸기·기록을 할 수 없어요.'),
   );
   return [...head, ...body, '점수는 후보끼리 순위를 정하는 내부 점수예요(확률·100점 만점 아님).', `기록: ${r.side_effects}`].join('\n\n');
 }
@@ -624,7 +645,7 @@ function registerRecommendTool(server, live) {
         '(오늘의 추천·다른 조합·안 입은 옷 활용 중 나오는 것). 데모가 아니다. 어느 계정인지는 연결(OAuth)이 정한다. ' +
         '부작용: 부를 때마다 AI 모델 호출 비용이 들고, 오늘의 추천 1건이 추천 이력(착용 기록 아님)과 추천 기록에 남는다. ' +
         '사용자가 추천을 원할 때 한 번만 부른다. 같은 조건으로 되풀이하거나, 실패·시간 초과 뒤 바로 다시 부르지 않는다. ' +
-        '사진은 돌려주지 않는다. situation 기본은 일상. mood 를 쓰려면 gender 도 정한다. ' +
+        '코디마다 outfit_ref 가 있다 — 바꾸기·계획·착용 기록은 이 값을 그대로 쓴다. 사진은 돌려주지 않는다. situation 기본은 일상. mood 를 쓰려면 gender 도 정한다. ' +
         'score 는 후보끼리 순위를 정하는 내부 점수다 — 확률이나 100점 만점이 아니고 100을 넘을 수 있으며, 코디 품질을 보장하는 값이 아니다.',
       inputSchema: z.strictObject({
         situation: z.enum(RECOMMEND_SITUATIONS).optional().describe('상황. 기본 일상(웹 홈과 같다). 출근·데이트는 격식을 더 본다.'),
@@ -667,7 +688,10 @@ function registerRecommendTool(server, live) {
 }
 
 function registerLiveTools(server, live) {
-  if (live.recommender) registerRecommendTool(server, live);
+  if (live.recommender) {
+    registerRecommendTool(server, live);
+    registerOutfitTools(server, live, { checkScope, ownerOf });
+  }
   const LIVE_NOTE =
     '연결된 내 Wardrobe Edit 계정의 실제 데이터를 읽는다(읽기 전용). 어느 계정인지는 연결(OAuth 토큰)이 정한다 — 사용자 id 를 인자로 받지 않는다.';
   server.registerTool(
@@ -749,6 +773,7 @@ function declareSecuritySchemes(server, live) {
   const schemesFor = (name) => {
     if (!live) return [{ type: 'noauth' }];
     if (name === TOOL_NAMES.recommend) return [{ type: 'oauth2', scopes: [live.scopes.read, live.scopes.recommend] }];
+    if (OUTFIT_TOOL_SCOPE[name]) return [{ type: 'oauth2', scopes: OUTFIT_TOOL_SCOPE[name].map((k) => live.scopes[k]) }];
     const scopes = WRITE_TOOLS.has(name) ? [live.scopes.read, live.scopes.write] : [live.scopes.read];
     return [{ type: 'oauth2', scopes }];
   };

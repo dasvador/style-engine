@@ -47,4 +47,8 @@ hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
 
+[features]
+# E2E 전용: 모델·날씨 호출을 고정 응답으로 바꾼다(`services::llm::stub`). 운영 빌드에는 들어가지 않는다.
+e2e-stub = []
+
 [dev-dependencies]

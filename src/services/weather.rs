@@ -12,6 +12,11 @@ pub async fn fetch_weather(
     latitude: f64,
     longitude: f64,
 ) -> anyhow::Result<CurrentWeather> {
+    #[cfg(feature = "e2e-stub")]
+    if std::env::var("WARDROBE_E2E_STUB").as_deref() == Ok("1") {
+        return Ok(crate::services::llm::stub::weather());
+    }
+
     if !kma_api_key.is_empty() {
         match fetch_from_kma(client, kma_api_key, latitude, longitude).await {
             Ok(w) => return Ok(w),

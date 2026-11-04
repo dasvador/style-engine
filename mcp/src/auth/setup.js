@@ -3,7 +3,7 @@
 import { getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
 
 import { AuthStore } from './store.js';
-import { SCOPE_COMPARISONS_WRITE, SCOPE_READ, SCOPE_RECOMMEND, createAuthApp, createOAuthProvider } from './oauth.js';
+import { SCOPE_COMPARISONS_WRITE, SCOPE_OUTFITS, SCOPE_READ, SCOPE_RECOMMEND, createAuthApp, createOAuthProvider } from './oauth.js';
 
 /**
  * @param {{ origin: string, authStoreFile: string|null, linkCodesFile: string, redirectAllowlist: string[],
@@ -31,7 +31,7 @@ export async function createLiveAuth({ origin, authStoreFile, linkCodesFile, red
     live: {
       adapter,
       resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(resource),
-      scopes: { read: SCOPE_READ, write: SCOPE_COMPARISONS_WRITE, recommend: SCOPE_RECOMMEND },
+      scopes: { read: SCOPE_READ, write: SCOPE_COMPARISONS_WRITE, recommend: SCOPE_RECOMMEND, outfits: SCOPE_OUTFITS },
       // 실제 추천(RecommendClient). 위임 키가 없으면 null — 추천 도구가 나오지 않는다.
       recommender,
     },

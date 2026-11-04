@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api/endpoints';
+import { isUncertainWrite, outfitErrorMessage, outfitIdKey, seoulToday } from '../lib/outfitRecord';
 import { errorMessage } from '../api/client';
 import type {
   Clothing,
@@ -135,6 +136,34 @@ export function HomePage({
   const looksRef = useRef<Look[]>([]);
   looksRef.current = looks;
 
+  // 저장 중인 코디. 상태 갱신을 기다리지 않고 두 번 누르기를 막는다.
+  const pendingPlans = useRef(new Set<string>());
+  // 방금 만든 코디의 룩 저장. 끝나면 룩 id 를 돌려준다(실패하면 undefined).
+  const lookSaves = useRef(new Map<string, Promise<string | undefined>>());
+
+  /** 오늘의 서버 기록으로 카드 표시를 맞춘다. 읽지 못하면 표시를 건드리지 않고 `null`. */
+  const reconcilePlans = useCallback(async () => {
+    try {
+      const date = seoulToday();
+      const { records } = await api.outfits.history({ from: date, to: date, limit: 100 });
+      const today = new Map<string, 'planned' | 'worn'>();
+      for (const r of records) {
+        const key = outfitIdKey(r.items.map((i) => i.id));
+        if (key && r.status !== 'cancelled') today.set(key, r.status);
+      }
+      setLooks((prev) =>
+        prev.map((l) => {
+          if (pendingPlans.current.has(l.key)) return l;
+          const key = outfitIdKey(l.outfit.map((o) => o.id));
+          return { ...l, plan: key ? today.get(key) : undefined };
+        }),
+      );
+      return today;
+    } catch {
+      return null;
+    }
+  }, []);
+
   // 지난번에 만든 코디를 다시 불러온다. 한 장에 비용을 들여 만든 것이라
   // 새로고침했다고 버리지 않는다. 이미지는 저장해 둔 프롬프트로 캐시에서 돌아온다.
   useEffect(() => {
@@ -160,20 +189,21 @@ export function HomePage({
             reason: v.reason ?? '',
             recommendation: v.recommendation ?? '',
             liked: v.liked,
-            worn: v.worn,
             requestId: v.request_id ?? undefined,
             best: v.best === 1,
           })),
         );
+        await reconcilePlans();
       } catch {
         // 못 불러와도 새로 만들면 된다 — 화면을 막지는 않는다.
       }
     })();
-  }, [openLookId]);
+  }, [openLookId, reconcilePlans]);
   const [compareBatch, setCompareBatch] = useState<CompareBatch | null>(readCompareBatch);
   const [recLoading, setRecLoading] = useState(false);
   const [recError, setRecError] = useState<string | null>(null);
   const [recNotice, setRecNotice] = useState<string | null>(null);
+  const [planNotice, setPlanNotice] = useState<{ text: string; ok: boolean } | null>(null);
   const recSectionRef = useRef<HTMLDivElement>(null);
 
   const selectedMoodDescription =
@@ -253,8 +283,9 @@ export function HomePage({
         reason: m.reason,
         recommendation: m.recommendation,
         liked: false,
-        worn: false,
         requestId,
+        outfitRef: m.outfit_ref,
+        wearNote: m.wear_note,
       }));
 
       // 이전 목록과의 중복뿐 아니라 이번 응답 안의 중복도 걸러야 한다 —
@@ -290,8 +321,8 @@ export function HomePage({
       // 벗어나면 비용을 들여 만든 코디가 그냥 사라진다. DB 쓰기는 금방이므로
       // 전부 저장한 뒤에 이미지를 받는다.
       void (async () => {
-        await Promise.all(
-          added.map(async (l) => {
+        const saves = added.map((l) => {
+          const task = (async () => {
             try {
               const saved = await api.lookbook.save({
                 mood_key: l.moodKey,
@@ -309,11 +340,16 @@ export function HomePage({
               setLooks((prev) =>
                 prev.map((x) => (x.key === l.key ? { ...x, savedId: saved.id } : x)),
               );
+              return saved.id;
             } catch {
               // 저장에 실패해도 화면은 그대로 쓴다.
+              return undefined;
             }
-          }),
-        );
+          })();
+          lookSaves.current.set(l.key, task);
+          return task;
+        });
+        await Promise.all(saves);
 
         // 이미지는 하나씩 — 한꺼번에 몰아 보내면 생성이 서로 밀린다.
         for (const l of added) {
@@ -331,33 +367,22 @@ export function HomePage({
   /** 취향 신호. 카드를 넘겨 본 것과 구분해, 버튼을 눌렀을 때만 보낸다.
    *  이미 켜진 것을 다시 누르면 취소한다 — 잘못 누른 것을 되돌릴 길이 없었다.
    *  취소는 서버가 그때 남긴 피드백까지 되돌린다. */
-  const sendFeedback = async (look: Look, type: 'like' | 'worn') => {
-    const on = type === 'like' ? look.liked : look.worn;
-    if (on) {
-      const off = type === 'like' ? { liked: false } : { worn: false };
-      setLooks((prev) => prev.map((l) => (l.key === look.key ? { ...l, ...off } : l)));
+  const sendLike = async (look: Look) => {
+    if (look.liked) {
+      setLooks((prev) => prev.map((l) => (l.key === look.key ? { ...l, liked: false } : l)));
       try {
-        if (look.savedId) await api.lookbook.mark(look.savedId, off);
+        if (look.savedId) await api.lookbook.mark(look.savedId, { liked: false });
       } catch {
         // 취소 실패로 화면을 되돌리지는 않는다.
       }
       return;
     }
     const slot = (category: string) => look.outfit.find((o) => o.category === category)?.name;
-    setLooks((prev) =>
-      prev.map((l) =>
-        l.key === look.key ? { ...l, liked: type === 'like' || l.liked, worn: type === 'worn' || l.worn } : l,
-      ),
-    );
+    setLooks((prev) => prev.map((l) => (l.key === look.key ? { ...l, liked: true } : l)));
     try {
-      if (look.savedId) {
-        await api.lookbook.mark(look.savedId, {
-          liked: type === 'like' || undefined,
-          worn: type === 'worn' || undefined,
-        });
-      }
+      if (look.savedId) await api.lookbook.mark(look.savedId, { liked: true });
       await api.feedback({
-        feedback_type: type,
+        feedback_type: 'like',
         reasons: [],
         inner_name: slot('상의'),
         outer_name: slot('아우터'),
@@ -367,6 +392,54 @@ export function HomePage({
       });
     } catch {
       // 취향 기록 실패로 화면을 되돌리지는 않는다 — 다음 추천에 덜 반영될 뿐이다.
+    }
+  };
+
+  /**
+   * '오늘 입을래요' 는 입을 계획 저장이다. 예전 worn 표시·피드백은 새로 남기지 않는다 — 다음 추천에 쓰이는 것은
+   * 실제로 입은 기록뿐이다. 서버가 저장을 확인한 뒤에만 표시를 켠다. 같은 날 같은 구성은 서버가 한 행으로
+   * 묶으므로 다시 눌러도 중복되지 않는다. 취소·입은 기록은 최신 revision 을 보는 기록 화면에서 한다.
+   */
+  const savePlan = async (look: Look) => {
+    if (pendingPlans.current.has(look.key)) return;
+    pendingPlans.current.add(look.key);
+    setLooks((prev) => prev.map((l) => (l.key === look.key ? { ...l, plan: 'pending' } : l)));
+    setPlanNotice(null);
+    let plan: Look['plan'];
+    try {
+      // 방금 만든 카드는 룩 저장이 끝나기 전일 수 있다. 룩 없이 저장하면 사진을 영영 잇지 못한다.
+      const lookId = look.savedId ?? (await lookSaves.current.get(look.key)) ?? undefined;
+      const outfitRef = look.outfitRef ?? (lookId ? (await api.outfits.fromLook(lookId)).outfit_ref : null);
+      if (!outfitRef) {
+        setPlanNotice({ text: '코디 정보가 아직 저장되지 않아 입을 계획으로 남기지 못했어요. 잠시 뒤 다시 눌러 주세요.', ok: false });
+        return;
+      }
+      // 이 카드의 룩을 함께 보낸다. 서버가 그 룩과 지금 사진을 기록에 고정한다.
+      const { record } = await api.outfits.plan(outfitRef, lookId);
+      plan = record.status === 'worn' ? 'worn' : 'planned';
+      setPlanNotice({
+        text: plan === 'worn' ? '오늘 이 코디를 입은 기록이 이미 있어요.' : '오늘 입을 코디로 저장했어요. 취소와 입은 기록은 기록 화면에서 남겨요.',
+        ok: true,
+      });
+    } catch (err) {
+      if (!isUncertainWrite(err)) {
+        setPlanNotice({ text: `입을 계획으로 남기지 못했어요. ${outfitErrorMessage(err)}`, ok: false });
+        return;
+      }
+      // 응답만 못 받았을 수 있다. 서버 기록을 다시 읽어 결과를 정한다.
+      const today = await reconcilePlans();
+      const key = outfitIdKey(look.outfit.map((o) => o.id));
+      plan = today && key ? today.get(key) : undefined;
+      setPlanNotice(
+        plan
+          ? { text: '응답은 놓쳤지만 오늘 기록에 저장된 것을 확인했어요.', ok: true }
+          : today
+            ? { text: '오늘 기록에서 찾지 못했어요. 다시 눌러도 중복되지 않아요.', ok: false }
+            : { text: outfitErrorMessage(err), ok: false },
+      );
+    } finally {
+      pendingPlans.current.delete(look.key);
+      setLooks((prev) => prev.map((l) => (l.key === look.key ? { ...l, plan } : l)));
     }
   };
 
@@ -540,10 +613,19 @@ export function HomePage({
             looks={looks}
             activeIndex={Math.min(activeLook, looks.length - 1)}
             onSelect={setActiveLook}
-            onLike={(l) => void sendFeedback(l, 'like')}
-            onWearToday={(l) => void sendFeedback(l, 'worn')}
+            onLike={(l) => void sendLike(l)}
+            onWearToday={(l) => (l.plan ? navigate('/outfits') : void savePlan(l))}
             onBest={(l) => void pickBest(l)}
           />
+        )}
+
+        {planNotice && (
+          <div className={`msg ${planNotice.ok ? 'msg-loading' : 'msg-error'}`} role="status">
+            {planNotice.text}{' '}
+            <button className="link-action" onClick={() => navigate('/outfits')}>
+              기록 보기 →
+            </button>
+          </div>
         )}
 
         {looks.length > 0 && compareBatch && (

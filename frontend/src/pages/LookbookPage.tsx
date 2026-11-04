@@ -9,7 +9,7 @@ import { EmptyState, ErrorMessage, Loading } from '../components/Status';
 const FILTERS = [
   { key: 'all', label: '전체' },
   { key: 'liked', label: '마음에 들어요' },
-  { key: 'worn', label: '오늘 입을래요' },
+  { key: 'worn', label: '예전 입을래요 표시' },
 ] as const;
 
 type FilterKey = (typeof FILTERS)[number]['key'];
@@ -83,6 +83,15 @@ export function LookbookPage() {
               </button>
             ))}
           </div>
+          {filter === 'worn' && (
+            <p className="wear-note">
+              예전에 남긴 표시예요. 지금은 '오늘 입을래요' 가 입을 계획으로 저장되고, 계획과 입은 기록은{' '}
+              <button className="link-action" onClick={() => navigate('/outfits')}>
+                기록 화면
+              </button>
+              에서 봐요.
+            </p>
+          )}
 
           {shown.length === 0 ? (
             <EmptyState icon="Lookbook" text="이 조건에 맞는 코디가 없습니다." />
@@ -222,7 +231,7 @@ function LookCard({
       {(look.liked || look.worn) && (
         <span className="saved-card-marks">
           {look.liked && <i className="mark-liked" title="마음에 들어요" />}
-          {look.worn && <i className="mark-worn" title="오늘 입을래요" />}
+          {look.worn && <i className="mark-worn" title="예전 입을래요 표시(입은 기록 아님)" />}
         </span>
       )}
     </div>

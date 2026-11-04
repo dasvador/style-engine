@@ -27,6 +27,8 @@ pub mod config;
 pub mod error;
 pub mod openai;
 pub mod provider;
+#[cfg(feature = "e2e-stub")]
+pub mod stub;
 pub mod types;
 pub mod usage;
 
@@ -98,6 +100,14 @@ impl LlmClient {
         chat_providers.insert(anthropic.id(), anthropic);
         if !anthropic_key.is_empty() {
             configured.insert(ProviderId::Anthropic);
+        }
+
+        #[cfg(feature = "e2e-stub")]
+        if std::env::var("WARDROBE_E2E_STUB").as_deref() == Ok("1") {
+            let fake = Arc::new(stub::StubProvider);
+            chat_providers.insert(ProviderId::OpenAi, fake.clone());
+            embedding_providers.insert(ProviderId::OpenAi, fake);
+            configured.insert(ProviderId::OpenAi);
         }
 
         let client = Self {

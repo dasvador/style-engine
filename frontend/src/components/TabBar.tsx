@@ -28,6 +28,16 @@ const TABS = [
     ),
   },
   {
+    to: '/outfits',
+    label: '기록',
+    icon: (
+      <>
+        <rect x="3" y="4" width="18" height="17" rx="2" />
+        <path d="M3 9h18M8 2v4M16 2v4" />
+      </>
+    ),
+  },
+  {
     to: '/wardrobe',
     label: '옷장',
     icon: (

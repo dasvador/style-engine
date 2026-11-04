@@ -1278,3 +1278,31 @@ button, input, select, textarea { font-family: inherit; }
 .compare-status-actions { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
 .compare-result .compare-grid { margin: 16px 0 18px; }
 .compare-result-comment { font-size: 0.84rem; color: var(--ink-soft); margin-top: 6px; }
+
+/* ─────────────────────────────────────────────
+   코디 기록 — 입을 계획·입은 기록
+   ───────────────────────────────────────────── */
+.wear-note { font-size: 0.82rem; color: var(--ink-soft); line-height: 1.6; margin: 8px 0 12px; }
+.wear-card {
+  border-top: 1px solid var(--line);
+  padding: 14px 0;
+}
+.wear-card.cancelled { opacity: 0.6; }
+.wear-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.wear-status {
+  font-size: 0.75rem; padding: 3px 9px;
+  border: 1px solid var(--line); border-radius: var(--r-pill);
+  color: var(--ink-soft);
+}
+.wear-status.worn { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.wear-edit { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 0; }
+.wear-edit select, .wear-edit input {
+  min-height: 44px; padding: 0 10px;
+  border: 1px solid var(--line); border-radius: var(--r-btn);
+  background: transparent; color: var(--ink); font-size: 0.85rem;
+}
+.wear-edit input { flex: 1 1 160px; min-width: 0; }
+.wear-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.wear-open { display: inline-block; padding: 6px 0; font-size: 0.85rem; }
+.wear-detail-image { margin: 0 -18px 14px; }
+.wear-removed { font-size: 0.72rem; color: var(--ink-faint); margin-left: 6px; }

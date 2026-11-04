@@ -11,6 +11,8 @@ import { ChatPage } from './pages/ChatPage';
 import { EvaluatePage } from './pages/EvaluatePage';
 import { ComparePage } from './pages/ComparePage';
 import { LookbookPage } from './pages/LookbookPage';
+import { WearDetailPage } from './pages/WearDetailPage';
+import { WearPage } from './pages/WearPage';
 import { WardrobePage } from './pages/WardrobePage';
 import { ItemDetailPage } from './pages/ItemDetailPage';
 
@@ -100,6 +102,8 @@ export function App() {
           <Route path="compare" element={<ComparePage clothes={clothes.items} moods={moods} />} />
           <Route path="compare/:id" element={<ComparePage clothes={clothes.items} moods={moods} />} />
           <Route path="lookbook" element={<LookbookPage />} />
+          <Route path="outfits" element={<WearPage />} />
+          <Route path="outfits/:recordId" element={<WearDetailPage />} />
           <Route
             path="wardrobe"
             element={

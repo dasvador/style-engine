@@ -52,7 +52,7 @@ describe('live 모드 — OAuth 와 계정 격리(가짜 어댑터)', () => {
     assert.equal(as.issuer, prm.authorization_servers[0], 'issuer 가 정확히 같은 문자열');
     assert.ok(as.code_challenge_methods_supported.includes('S256'));
     assert.ok(as.registration_endpoint);
-    assert.deepEqual(as.scopes_supported, ['wardrobe.read', 'comparisons.write', 'recommendations.write']);
+    assert.deepEqual(as.scopes_supported, ['wardrobe.read', 'comparisons.write', 'recommendations.write', 'outfits.write']);
   });
 
   test('토큰 없음·틀린 토큰 → 401 + WWW-Authenticate(resource_metadata)', async () => {

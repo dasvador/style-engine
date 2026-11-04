@@ -668,6 +668,8 @@ mod tests {
             silhouette_delta: None,
             mood_waiver: None,
             feedback_bonus: 0,
+            outfit_ref: None,
+            wear_note: None,
         };
         let modes = [
             mode("todays_pick", ["t1", "b1"]),

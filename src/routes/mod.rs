@@ -6,6 +6,7 @@ pub mod health;
 pub mod images;
 pub mod lookbook;
 pub mod outfit;
+pub mod outfit_flow;
 pub mod recommendation;
 pub mod reference;
 pub mod region;
@@ -27,6 +28,7 @@ pub fn api_router() -> Router<AppState> {
         .nest("/recommendation", recommendation::router())
         .nest("/references", reference::router())
         .nest("/outfit", outfit::router())
+        .nest("/outfits", outfit_flow::router())
         .nest("/chat", chat::router())
         .nest("/feedback", feedback::router())
         .nest("/user", user::router())
@@ -81,3 +83,5 @@ pub fn spa_router() -> Router<AppState> {
 
 #[cfg(test)]
 mod auth_isolation_tests;
+#[cfg(test)]
+mod outfit_flow_tests;

@@ -171,7 +171,7 @@ pub fn shoe_weather(item: &Clothing, temp: f64) -> ShoeWeather {
     ShoeWeather::Fine
 }
 
-fn is_temp_appropriate(item: &Clothing, temp: f64) -> bool {
+pub fn is_temp_appropriate(item: &Clothing, temp: f64) -> bool {
     if shoe_weather(item, temp) == ShoeWeather::Unsuitable {
         return false;
     }

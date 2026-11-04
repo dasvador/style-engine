@@ -5,7 +5,7 @@
  * 경로는 기존 UI 가 쓰던 것과 동일하다 — 이번 전환으로 API 를 바꾸지 않았다.
  */
 
-import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from './client';
+import { apiBlob, apiDelete, apiGet, apiPatch, apiPost, apiPut } from './client';
 import type {
   ChatBody,
   ChatResponse,
@@ -34,6 +34,12 @@ import type {
   Comparison,
   ComparisonVote,
   ComparisonVoteBody,
+  WearDetail,
+  WearHistory,
+  WearReaction,
+  WearRecordUpdate,
+  WearStatus,
+  WearWriteResult,
 } from '../types/api';
 
 export const api = {
@@ -91,6 +97,24 @@ export const api = {
       apiDelete<{ id: string }>(
         `/lookbook/${id}/best?request_id=${encodeURIComponent(request_id)}`,
       ),
+  },
+
+  /** 내 생성 사진. 소유자 확인을 거치는 보호 경로다. */
+  images: {
+    blob: (file: string, signal?: AbortSignal) => apiBlob(`/images/${encodeURIComponent(file)}`, signal),
+  },
+
+  /** 입을 계획과 실제 착용 기록. 코디는 서버 참조로만 가리킨다. */
+  outfits: {
+    history: (body: { status?: WearStatus; limit?: number; from?: string; to?: string } = {}) =>
+      apiPost<WearHistory>('/outfits/history', body),
+    detail: (record_id: string) => apiPost<WearDetail>('/outfits/detail', { record_id }),
+    plan: (outfit_ref: string, look_id?: string) =>
+      apiPost<WearWriteResult>('/outfits/plan', { outfit_ref, look_id }),
+    confirm: (record_id: string, expected_revision: number, body: { reaction?: WearReaction; date?: string } = {}) =>
+      apiPost<WearWriteResult>('/outfits/worn', { record_id, expected_revision, ...body }),
+    update: (body: WearRecordUpdate) => apiPost<WearWriteResult>('/outfits/record', body),
+    fromLook: (look_id: string) => apiPost<{ outfit_ref: string }>('/outfits/from-look', { look_id }),
   },
 
   /** 두 코디 비교. 사용자는 서버가 요청에서 정한다 — 본문에 싣지 않는다. */

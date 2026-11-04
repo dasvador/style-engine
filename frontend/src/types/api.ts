@@ -154,6 +154,10 @@ export interface ModeRecommendation {
   mood_waiver?: number | null;
   /** `scoring_detail.style_score` 중 피드백 보정분. */
   feedback_bonus?: number;
+  /** 서버가 남긴 이 코디의 참조. 입을 계획·입은 기록은 이 값으로 코디를 가리킨다. */
+  outfit_ref?: string;
+  /** 최근 실제로 입은 옷이 들어 있으면 그 사실 한 줄. */
+  wear_note?: string;
 }
 
 export interface MultiModeRecommendation {
@@ -332,12 +336,17 @@ export interface Look {
   reason: string;
   recommendation: string;
   liked: boolean;
-  worn: boolean;
   /** 서버에 저장된 행의 id. 저장 응답을 받으면 채워진다. */
   savedId?: string;
   /** 이 코디가 나온 추천 한 번. 같은 값끼리 "이번엔 이게 제일" 을 하나 고른다. */
   requestId?: string;
   best?: boolean;
+  /** 서버 코디 참조. 저장된 룩을 다시 연 경우에는 없어서 룩 id 로 받아 온다. */
+  outfitRef?: string;
+  /** 오늘 이 코디의 서버 기록 상태. 서버가 확인한 뒤에만 채운다. 취소는 기록 화면에서 한다. */
+  plan?: 'pending' | 'planned' | 'worn';
+  /** 최근 입은 옷이 들어 있다는 사실 한 줄. */
+  wearNote?: string;
 }
 
 export interface SetGenresBody {
@@ -442,4 +451,70 @@ export interface ComparisonVoteBody {
   choice: ComparisonChoice;
   reasons: ComparisonReason[];
   comment?: string;
+}
+
+// ─── 코디 기록 (src/routes/outfit_flow.rs) ───
+
+export type WearStatus = 'planned' | 'worn' | 'cancelled';
+export type WearReaction = 'comfortable' | 'uncomfortable' | 'too_cold' | 'too_hot' | 'liked' | 'disliked';
+
+export interface WearItem {
+  id: string;
+  name: string;
+  category: string;
+  color: string | null;
+}
+
+/** 입을 계획·입은 기록 한 건. 옷은 그때의 값으로 남아 있다. */
+export interface WearRecord {
+  record_id: string;
+  outfit_ref: string;
+  status: WearStatus;
+  /** 서울 기준 YYYY-MM-DD */
+  date: string;
+  items: WearItem[];
+  occasion: string | null;
+  mood_key: string | null;
+  temperature: number | null;
+  reaction: WearReaction | null;
+  comment: string | null;
+  revision: number;
+}
+
+export interface WearWriteResult {
+  outcome: string;
+  record: WearRecord;
+}
+
+export interface WearHistory {
+  today: string;
+  records: WearRecord[];
+  has_more: boolean;
+}
+
+/** 기록의 코디 한 벌 보기(`POST /api/outfits/detail`). 사진은 이미 있는 것만 온다. */
+export interface WearDetail {
+  record: WearRecord;
+  source: string;
+  look: { id: string; title: string } | null;
+  /** linked: 고정된 룩이 있다. deleted: 고정된 룩을 지웠다. none: 고정된 룩이 없다. */
+  look_status: 'linked' | 'deleted' | 'none';
+  image: {
+    status: 'available' | 'file_missing' | 'none';
+    /** `/api/images/{file}` 의 파일 이름. */
+    file: string | null;
+    presentation: 'model' | 'flat_lay' | null;
+    /** at_save: 저장할 때의 사진. later: 저장 뒤 그 룩에 처음 생긴 사진. migrated: 예전 기록에 나중에 연결한 사진. */
+    basis: 'at_save' | 'later' | 'migrated' | null;
+  };
+  removed_item_ids: string[];
+}
+
+export interface WearRecordUpdate {
+  record_id: string;
+  expected_revision: number;
+  action: 'cancel' | 'undo' | 'edit';
+  date?: string;
+  reaction?: WearReaction | null;
+  comment?: string | null;
 }

@@ -236,7 +236,7 @@ async fn save_look(
 // 이미지 프롬프트(착장 문구)를 보내도 그 계정의 사진을 받거나, 그 계정의 룩에 사진을 붙이지 못한다.
 
 /// 지금 프롬프트로 내가 만든 사진이 캐시에 있으면 그 경로.
-async fn cached_image_path(
+pub(crate) async fn cached_image_path(
     db: &sqlx::MySqlPool,
     owner: &str,
     image_prompt: &str,

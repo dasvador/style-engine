@@ -93,6 +93,8 @@ pub struct OutfitCandidate {
     pub diversity_bonus: i32,
     /// 오늘 날씨에 경계인 착장의 감점. 실패는 감점이 아니라 후보에서 뺀다.
     pub weather_penalty: i32,
+    /// `recency_penalty` 중 실제로 입은 기록에서 온 몫(`wear_history`). 설명에 따로 쓴다.
+    pub wear_penalty: i32,
     pub final_score: i32,
 
     /// 원본 AI 추천 인덱스 (candidates 배열 내 위치)
@@ -136,6 +138,13 @@ pub struct ModeRecommendation {
     pub mood_waiver: Option<i32>,
     /// `scoring_detail.style_score` 중 피드백(좋아요·아쉬워요) 보정분.
     pub feedback_bonus: i32,
+    /// 서버가 남긴 이 코디의 참조(`outfit_ref`). 바꾸기·계획·착용 기록은 이 값으로만 코디를 가리킨다.
+    /// 기록에 실패하면 비어 있다.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outfit_ref: Option<String>,
+    /// 최근 실제로 입은 옷이 들어 있으면 그 사실 한 줄(`wear_history::wear_note`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wear_note: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -172,6 +181,7 @@ impl OutfitCandidate {
             recency_penalty: 0,
             diversity_bonus: 0,
             weather_penalty: 0,
+            wear_penalty: 0,
             final_score: 0,
             ai_candidate_index,
         }

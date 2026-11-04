@@ -19,7 +19,7 @@ const KEY = randomBytes(32);
 const EVIL_ERROR =
   'OPENAI_API_KEY=sk-FAKEFAKEFAKEFAKE1234 is invalid; db mysql://root:hunter2@127.0.0.1:3306/wardrobe ' +
   'see http://127.0.0.1:3003/internal/debug data:image/png;base64,EVILPNG';
-const ALL_SCOPES = 'wardrobe.read comparisons.write recommendations.write';
+const ALL_SCOPES = 'wardrobe.read comparisons.write recommendations.write outfits.write';
 
 /** Rust 쪽 검증과 같은 규칙. 맞으면 user id, 아니면 null. */
 function verifyDelegation(header, method, path) {
@@ -270,7 +270,7 @@ describe('recommend_my_outfit — 실제 추천 연결(가짜 Rust 서버)', () 
     reset();
     const r = await call('user-a');
     const all = JSON.stringify(r);
-    for (const leak of ['data:image', 'SECRETPHOTO', 'image_url', 'wear', 'internal prompt', 'batch-user-a', 'batch_id', 'shadow_score', 'scoring_detail', 'x-wardrobe-delegation', KEY.toString('hex')]) {
+    for (const leak of ['data:image', 'SECRETPHOTO', 'image_url', '"wear"', 'internal prompt', 'batch-user-a', 'batch_id', 'shadow_score', 'scoring_detail', 'x-wardrobe-delegation', KEY.toString('hex')]) {
       assert.ok(!all.includes(leak), `응답에 ${leak} 이 없다`);
     }
     const sent = up.state.requests[0].headers['x-wardrobe-delegation'];

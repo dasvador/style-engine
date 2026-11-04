@@ -8,6 +8,13 @@ import {
 } from '../hooks/useOutfitImage';
 import { OutfitImage } from './OutfitImage';
 
+const PLAN_LABEL = {
+  none: '오늘 입을래요',
+  pending: '저장 중...',
+  planned: '입을 계획 ✓ · 기록 보기',
+  worn: '입음 ✓ · 기록 보기',
+};
+
 interface Props {
   looks: Look[];
   activeIndex: number;
@@ -166,12 +173,13 @@ export function LookbookStack({
           {active.liked ? '마음에 들어요 ✓' : '마음에 들어요'}
         </button>
         <button
-          className={`chip-action${active.worn ? ' on' : ''}`}
+          className={`chip-action${active.plan === 'planned' || active.plan === 'worn' ? ' on' : ''}`}
           onClick={() => onWearToday(active)}
-          aria-pressed={active.worn}
-          title={active.worn ? '다시 누르면 취소돼요' : undefined}
+          disabled={active.plan === 'pending'}
+          aria-busy={active.plan === 'pending'}
+          title={active.plan ? '취소나 입은 기록은 기록 화면에서 해요' : '입을 계획으로 저장해요. 입었다는 기록은 아니에요'}
         >
-          {active.worn ? '오늘 입을래요 ✓' : '오늘 입을래요'}
+          {PLAN_LABEL[active.plan ?? 'none']}
         </button>
         {siblings >= 2 && (
           <button
@@ -200,6 +208,7 @@ export function LookbookStack({
       </ul>
 
       <p className="mode-reason">{active.reason}</p>
+      {active.wearNote && <p className="mode-reason">{active.wearNote}</p>}
 
       <Details look={active} />
     </section>

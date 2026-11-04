@@ -28,7 +28,7 @@ pub fn router() -> Router<AppState> {
 }
 
 /// 서버가 만든 이름(`<uuid v4>.png`)만 받는다. 경로 구분자·`..` 는 들어올 수 없다.
-fn valid_name(file: &str) -> bool {
+pub(crate) fn valid_name(file: &str) -> bool {
     file.strip_suffix(".png")
         .is_some_and(|stem| uuid::Uuid::parse_str(stem).is_ok() && stem.len() == 36)
 }
