@@ -27,6 +27,7 @@ import {
   InvalidTokenError,
 } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 
+import { DCR_REJECTIONS, dcrDiagnostic } from './dcr-diagnostic.js';
 import { AuthStore, randomToken, sha256 } from './store.js';
 import { findLinkCode } from './link-codes.js';
 
@@ -84,18 +85,18 @@ export function createOAuthProvider({ store, issuer, resource, redirectAllowlist
     async registerClient(client) {
       const uris = client.redirect_uris ?? [];
       if (uris.length === 0 || uris.some((u) => !allowlist.has(String(u)))) {
-        throw new InvalidClientMetadataError('redirect_uri 가 허용 목록에 없어요.');
+        throw new InvalidClientMetadataError(DCR_REJECTIONS.redirect_uri_not_allowed);
       }
       const grants = client.grant_types ?? ['authorization_code', 'refresh_token'];
       if (grants.some((g) => !['authorization_code', 'refresh_token'].includes(g))) {
-        throw new InvalidClientMetadataError('authorization_code·refresh_token 만 지원해요.');
+        throw new InvalidClientMetadataError(DCR_REJECTIONS.grant_type_not_supported);
       }
       const method = client.token_endpoint_auth_method ?? 'client_secret_basic';
       if (!['none', 'client_secret_post', 'client_secret_basic'].includes(method)) {
-        throw new InvalidClientMetadataError('지원하지 않는 token_endpoint_auth_method 예요.');
+        throw new InvalidClientMetadataError(DCR_REJECTIONS.auth_method_not_supported);
       }
       if (Object.keys(store.data.clients).length >= MAX_CLIENTS) {
-        throw new InvalidClientMetadataError('등록할 수 있는 클라이언트 수를 넘었어요.');
+        throw new InvalidClientMetadataError(DCR_REJECTIONS.client_limit_reached);
       }
       const full = {
         ...client,
@@ -401,10 +402,13 @@ ${error ? `<p class="err" role="alert">${escapeHtml(error)}</p>` : ''}
  * @param {{ provider: ReturnType<typeof createOAuthProvider>, issuer: URL, resource: URL, ownOrigin: string,
  *           onMcp: (req, res) => void }} deps
  */
-export function createAuthApp({ provider, issuer, resource, ownOrigin, onMcp }) {
+export function createAuthApp({ provider, issuer, resource, ownOrigin, onMcp, redirectAllowlist = [], diagLog = null }) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', false);
+
+  // MCP_ACCESS_LOG=1 일 때만. 허용 목록은 표시에만 쓰고 판정은 registerClient 가 한다.
+  if (diagLog) app.use('/register', dcrDiagnostic({ allowlist: new Set(redirectAllowlist), log: diagLog }));
 
   app.use(
     mcpAuthRouter({

@@ -35,6 +35,7 @@ export async function createLiveAuth({ origin, authStoreFile, linkCodesFile, red
       // 실제 추천(RecommendClient). 위임 키가 없으면 null — 추천 도구가 나오지 않는다.
       recommender,
     },
-    makeApp: (onMcp) => createAuthApp({ provider, issuer, resource, ownOrigin: issuer.origin, onMcp }),
+    makeApp: (onMcp, diagLog = null) =>
+      createAuthApp({ provider, issuer, resource, ownOrigin: issuer.origin, onMcp, redirectAllowlist, diagLog }),
   };
 }

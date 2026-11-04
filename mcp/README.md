@@ -47,7 +47,7 @@ npm start         # UI 빌드(dist/ui.html) 후 http://127.0.0.1:8787/mcp
 | `LIVE_RECOMMEND_PORT` | `3003` | live 전용. Rust 서버 포트. 호스트는 언제나 `127.0.0.1`(바꿀 수 없다) |
 | `RECOMMEND_TIMEOUT_SECONDS` | `90` | live 전용. 추천 응답을 기다리는 최대 시간(5..300). 넘으면 끊고 다시 부르지 않는다 |
 | `RECOMMEND_MAX_CONCURRENT` | `2` | live 전용. 동시에 보내는 추천 수(1..8). 한 계정은 언제나 하나 |
-| `MCP_ACCESS_LOG` | 없음 | `1`이면 요청마다 진단용 한 줄(`access 메서드 경로 상태 ms rpc=메서드(도구) auth=yes/no origin=호스트 accept proto ua`)을 stderr에 남긴다. 토큰·쿼리·본문·도구 인자·결과 값은 남기지 않는다 |
+| `MCP_ACCESS_LOG` | 없음 | `1`이면 요청마다 진단용 한 줄(`access 메서드 경로 상태 ms rpc=메서드(도구) auth=yes/no origin=호스트 accept proto ua`)을 stderr에 남긴다. 토큰·쿼리·본문·도구 인자·결과 값은 남기지 않는다. live 모드의 `POST /register`는 `dcr status= error= reason= issues= redirect_uris=` 한 줄을 더 남긴다: 거절 이유, 스키마가 거절한 필드 경로·코드, redirect_uri 의 scheme·host·path 와 허용 여부(쿼리·조각·사용자 정보는 지우고 `has_query` 같은 표시만). client_secret·client_id·본문은 남기지 않는다 |
 | `WARDROBE_MCP_MODE` | `demo` | `demo`(샘플 데이터, 인증 없음) 또는 `live`(계정 연결 OAuth + 본인 옷장 읽기). 그 밖의 값이면 시작하지 않는다 |
 | `LIVE_DATABASE_URL` | 없음 | live 전용. 옷장 DB 접속 문자열(읽기만 한다). 로그에 남기지 않는다 |
 | `LIVE_LOCAL_ISSUER` | 없음 | live 전용. `1`이면 발급자를 `http://127.0.0.1:포트`로(로컬 시험용, ChatGPT 에서는 못 씀) |

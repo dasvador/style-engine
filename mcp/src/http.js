@@ -196,7 +196,7 @@ export function createHttpServer({ store, uiHtml, config, log = () => {}, assets
     }
   }
 
-  const authApp = auth ? auth.makeApp((req, res) => void handleMcp(req, res)) : null;
+  const authApp = auth ? auth.makeApp((req, res) => void handleMcp(req, res), config.accessLog ? log : null) : null;
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://placeholder');
