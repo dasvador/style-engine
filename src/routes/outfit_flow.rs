@@ -741,15 +741,17 @@ async fn replace_item(
         });
     }
 
-    // 무드를 읽을 수 없는 후보를 뺀다. 전부 그렇다면 남겨 두고 알린다(추천과 같은 기준).
+    // 무드를 읽을 수 없는 후보를 뺀다. 전부 그렇다면 남겨 두고 알린다. 기준은 홈·상담과 같은
+    // `mood_gate::reads_as_seen` 이다 — 글램은 코트를 열어도 보이는 상의·하의에 근거가 있어야 한다.
+    let seen = |m: StyleGenre, item: &Clothing| {
+        let items: Vec<&Clothing> = keep.iter().copied().chain([item]).collect();
+        mood_gate::reads_as_seen(m, &items, Some(temperature))
+    };
     let mut notice = None;
     if explicit.is_none()
         && let Some(m) = mood
     {
-        let reads = |s: &Scored<'_>| {
-            let items: Vec<&Clothing> = keep.iter().copied().chain([s.item]).collect();
-            mood_gate::reads_as_at(m, &items, Some(temperature)) != Some(false)
-        };
+        let reads = |s: &Scored<'_>| seen(m, s.item) != Some(false);
         if scored.iter().any(reads) {
             scored.retain(reads);
         } else if !scored.is_empty() {
@@ -794,8 +796,17 @@ async fn replace_item(
                 }
             })
             .collect();
+        // 글램으로 읽히지 않는 대안(글램 후보가 없어 남긴 기본 옷, 또는 사용자가 직접 고른 옷)은
+        // 글램 코디로 저장하지 않는다 — 그 참조로 계획·착용·사진을 이어도 글램을 사칭하지 않게.
+        // 다른 무드는 예전과 같다.
+        let off_mood =
+            mood == Some(StyleGenre::Glam) && seen(StyleGenre::Glam, s.item) == Some(false);
         let mut new_context = outfit.context.clone();
         if let Some(obj) = new_context.as_object_mut() {
+            if off_mood {
+                obj.insert("mood_key".into(), Value::Null);
+                obj.insert("off_mood_from".into(), json!(StyleGenre::Glam.as_str()));
+            }
             obj.insert("replaced_from".into(), json!(target.id));
             obj.insert("weather_at".into(), json!(basis.at));
             let weather = obj.entry("weather").or_insert_with(|| json!({}));
@@ -844,6 +855,7 @@ async fn replace_item(
             "item_key": item_key(items.iter().map(|i| i.id.as_str())),
             "rationale": rationale,
             "weather_fit": if s.borderline { "borderline" } else { "ok" },
+            "off_mood": off_mood,
         }));
     }
 

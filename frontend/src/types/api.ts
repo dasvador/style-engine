@@ -158,6 +158,8 @@ export interface ModeRecommendation {
   outfit_ref?: string;
   /** 최근 실제로 입은 옷이 들어 있으면 그 사실 한 줄. */
   wear_note?: string;
+  /** 고른 무드를 읽을 수 없는 기본 코디 카드면 true. 그 무드로 표시하지 않는다. */
+  off_mood?: boolean;
 }
 
 export interface MultiModeRecommendation {
@@ -255,6 +257,8 @@ export interface ChatItem {
 export interface ChatResponse {
   reply: string;
   items: ChatItem[];
+  /** 고른 무드(지금은 글램)로 읽히지 않는 코디. 그 무드로 표시하거나 그 무드의 사진으로 그리지 않는다. */
+  off_mood?: boolean;
 }
 
 export interface ChatBody {

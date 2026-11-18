@@ -557,12 +557,197 @@ pub fn prefer_visible_color(
     (Some(todays), variation)
 }
 
+/// 엣지 추운 날 같은 묶음의 외투 차이. 다른 조합의 외투가 오늘의 추천과 같은 옷이거나 네 축
+/// (색·겉감·실루엣·기장, `look_signature::OuterLook`) 중 둘 미만으로만 다르면, 오늘의 추천과
+/// 상하의가 다르고 외투가 두 축 이상 다른 후보 중 점수가 가까운(`VARIATION_OUTER_MARGIN`) 것을
+/// 고른다. 품질 기준은 컬러 선택과 같다(스타일 68 단계·날씨 경계 뺀 60). 엣지 색이 켜져 있고
+/// 오늘의 추천이 무채색인데 지금 다른 조합에 색이 보이면, 바꿀 후보도 색이 보여야 한다.
+/// 맞는 후보가 없으면 그대로다 — 카드를 없애지 않는다.
+pub fn prefer_distinct_outer(
+    servable: &[OutfitCandidate],
+    todays: Option<&ModeSelectionResult>,
+    variation: Option<ModeSelectionResult>,
+    temperature: f64,
+    clothes: &[Clothing],
+    colour_on: bool,
+) -> Option<ModeSelectionResult> {
+    use crate::services::look_signature::outer_look;
+    let (Some(t), Some(v)) = (todays, variation.as_ref()) else {
+        return variation;
+    };
+    let look = |c: &OutfitCandidate| find_clothing(&c.outer_id, clothes).and_then(outer_look);
+    let Some(t_outer) = look(&t.candidate) else {
+        return variation;
+    };
+    let apart = |c: &OutfitCandidate| look(c).map(|o| (o.id != t_outer.id, o.axes_apart(&t_outer)));
+    let distinct = |c: &OutfitCandidate| apart(c).is_some_and(|(other, n)| other && n >= 2);
+    if distinct(&v.candidate) {
+        return variation;
+    }
+    let shows = |c: &OutfitCandidate| visible_color(c, clothes, temperature).is_some();
+    let need_colour = colour_on && !shows(&t.candidate) && shows(&v.candidate);
+    let key = |c: &OutfitCandidate| {
+        c.style_score + c.diversity_bonus * 3 - c.recency_penalty - c.weather_penalty
+    };
+    let floor = key(&v.candidate) - VARIATION_OUTER_MARGIN;
+    let style_bar = if v.candidate.style_score >= VARIATION_STYLE_BAR {
+        VARIATION_STYLE_BAR
+    } else {
+        i32::MIN
+    };
+    let pick = servable
+        .iter()
+        .filter(|c| !has_same_top_bottom(c, &t.candidate) && distinct(c))
+        .filter(|c| c.style_score - c.weather_penalty >= COLOR_QUALITY_FLOOR)
+        .filter(|c| c.style_score >= style_bar && key(c) >= floor)
+        .filter(|c| !need_colour || shows(c))
+        .max_by_key(|c| key(c));
+    match pick {
+        Some(c) => Some(ModeSelectionResult {
+            scoring: build_variation_scoring(c),
+            candidate: c.clone(),
+        }),
+        None => variation,
+    }
+}
+
+/// 다른 조합의 외투를 바꿀 수 있는 점수 차이(컬러 선택과 같은 폭).
+const VARIATION_OUTER_MARGIN: i32 = 10;
+
+/// 엣지 추운 날 첫 카드의 외투가 직전 요청의 첫 카드 외투(`last_outer`, 요청의 `avoid_outfits` 맨 앞)와
+/// 같은 옷이거나 두 축 미만으로만 다르면, 같은 자격 단계(`today_tier`) 이상이고 적합도 감점을 뺀 최종
+/// 점수가 `TODAY_COLOR_MARGIN` 안인 후보 중 외투가 두 축 이상 다른 것을 고른다(2026-11-18 실측: 반복
+/// 감점이 대부분의 외투에서 상한에 닿아 같은 퍼퍼가 첫 카드에 세 번 연속 나왔다). 지금 첫 카드에 색이
+/// 보이고 엣지 색이 켜져 있으면 바꿀 후보도 색이 보여야 한다. 바꿨으면 `true` — 호출하는 쪽이 다른
+/// 조합을 다시 고른다. 맞는 후보가 없으면 그대로다.
+pub fn prefer_fresh_today_outer(
+    servable: &[OutfitCandidate],
+    todays: Option<ModeSelectionResult>,
+    last_outer: Option<&crate::services::look_signature::OuterLook>,
+    temperature: f64,
+    clothes: &[Clothing],
+    colour_on: bool,
+) -> (Option<ModeSelectionResult>, bool) {
+    use crate::services::look_signature::outer_look;
+    let (Some(t), Some(last)) = (todays.as_ref(), last_outer) else {
+        return (todays, false);
+    };
+    let outer = |c: &OutfitCandidate| find_clothing(&c.outer_id, clothes).and_then(outer_look);
+    let fresh =
+        |c: &OutfitCandidate| outer(c).is_some_and(|o| o.id != last.id && o.axes_apart(last) >= 2);
+    if outer(&t.candidate).is_none() || fresh(&t.candidate) {
+        return (todays, false);
+    }
+    let shows = |c: &OutfitCandidate| visible_color(c, clothes, temperature).is_some();
+    let need_colour = colour_on && shows(&t.candidate);
+    let winner_tier = today_tier(&t.candidate, temperature, clothes);
+    let pick = servable
+        .iter()
+        .filter(|c| !is_same_outfit(c, &t.candidate) && fresh(c))
+        .filter(|c| !need_colour || shows(c))
+        .filter(|c| today_tier(c, temperature, clothes) <= winner_tier)
+        .map(|c| {
+            let fitness = evaluate_today_fitness(c, temperature, clothes);
+            (c, fitness.penalty, c.final_score - fitness.penalty)
+        })
+        .filter(|(_, _, adj)| *adj >= t.scoring.final_score - TODAY_COLOR_MARGIN)
+        .max_by_key(|(_, _, adj)| *adj);
+    match pick {
+        Some((c, penalty, adjusted)) => (
+            Some(ModeSelectionResult {
+                scoring: ScoringDetail {
+                    style_score: c.style_score,
+                    recency_penalty: c.recency_penalty + penalty,
+                    diversity_bonus: c.diversity_bonus,
+                    dormant_bonus: 0,
+                    weather_penalty: c.weather_penalty,
+                    final_score: adjusted,
+                },
+                candidate: c.clone(),
+            }),
+            true,
+        ),
+        None => (todays, false),
+    }
+}
+
+/// 엣지 같은 묶음의 하의 차이(2026-11-18). 다른 조합의 하의가 오늘의 추천과 같은 옷이거나 네 축
+/// (색 묶음·종류·기장·소재, `look_signature::BottomLook`) 중 둘 미만으로만 다르면 — 예: 차콜 울 와이드
+/// 슬랙스와 블랙 울 배럴 팬츠 — 오늘의 추천과 상하의가 다르고 하의가 두 축 이상 다른 후보 중 점수가
+/// 가까운(`VARIATION_OUTER_MARGIN`) 것을 고른다. 품질 기준은 외투·컬러 선택과 같다(스타일 68 단계·
+/// 날씨 경계 뺀 60). 엣지 색이 켜져 있고 오늘의 추천이 무채색인데 지금 다른 조합에 색이 보이면, 바꿀
+/// 후보도 색이 보여야 한다. `keep_outer`(추운 날)이고 지금 다른 조합의 외투가 오늘의 추천과 두 축 이상
+/// 다르면 바꿀 후보도 그래야 한다 — 외투 차이(`prefer_distinct_outer`)를 잃지 않는다. 다른 조합의
+/// 하의가 직전 요청의 카드에 나온 하의(`recent_bottoms`, 최신 몇 장의 하의 id)이면 그것도 바꿀 이유다 —
+/// 2026-11-18 실측에서 같은 레더 미디 스커트가 연속 두 요청의 다른 조합에 나왔다. 바꿀 후보는 그
+/// 하의도 아니어야 한다. 맞는 후보가 없으면 그대로다 — 카드를 없애지 않는다.
+#[allow(clippy::too_many_arguments)]
+pub fn prefer_distinct_bottom(
+    servable: &[OutfitCandidate],
+    todays: Option<&ModeSelectionResult>,
+    variation: Option<ModeSelectionResult>,
+    temperature: f64,
+    clothes: &[Clothing],
+    colour_on: bool,
+    keep_outer: bool,
+    recent_bottoms: &[String],
+) -> Option<ModeSelectionResult> {
+    use crate::services::look_signature::{bottom_look, outer_look};
+    let (Some(t), Some(v)) = (todays, variation.as_ref()) else {
+        return variation;
+    };
+    let bottom = |c: &OutfitCandidate| find_clothing(&c.bottom_id, clothes).and_then(bottom_look);
+    let Some(t_bottom) = bottom(&t.candidate) else {
+        return variation;
+    };
+    let distinct = |c: &OutfitCandidate| {
+        bottom(c).is_some_and(|b| {
+            b.id != t_bottom.id && b.axes_apart(&t_bottom) >= 2 && !recent_bottoms.contains(&b.id)
+        })
+    };
+    if distinct(&v.candidate) {
+        return variation;
+    }
+    let outer = |c: &OutfitCandidate| find_clothing(&c.outer_id, clothes).and_then(outer_look);
+    let outer_apart = |c: &OutfitCandidate| match (outer(c), outer(&t.candidate)) {
+        (Some(o), Some(t_o)) => o.id != t_o.id && o.axes_apart(&t_o) >= 2,
+        _ => false,
+    };
+    let need_outer = keep_outer && outer_apart(&v.candidate);
+    let shows = |c: &OutfitCandidate| visible_color(c, clothes, temperature).is_some();
+    let need_colour = colour_on && !shows(&t.candidate) && shows(&v.candidate);
+    let key = |c: &OutfitCandidate| {
+        c.style_score + c.diversity_bonus * 3 - c.recency_penalty - c.weather_penalty
+    };
+    let floor = key(&v.candidate) - VARIATION_OUTER_MARGIN;
+    let style_bar = if v.candidate.style_score >= VARIATION_STYLE_BAR {
+        VARIATION_STYLE_BAR
+    } else {
+        i32::MIN
+    };
+    let pick = servable
+        .iter()
+        .filter(|c| !has_same_top_bottom(c, &t.candidate) && distinct(c))
+        .filter(|c| c.style_score - c.weather_penalty >= COLOR_QUALITY_FLOOR)
+        .filter(|c| c.style_score >= style_bar && key(c) >= floor)
+        .filter(|c| !need_colour || shows(c))
+        .filter(|c| !need_outer || outer_apart(c))
+        .max_by_key(|c| key(c));
+    match pick {
+        Some(c) => Some(ModeSelectionResult {
+            scoring: build_variation_scoring(c),
+            candidate: c.clone(),
+        }),
+        None => variation,
+    }
+}
+
 /// 오늘의 추천에서 컬러 후보를 고를 수 있는 점수 차이.
 const TODAY_COLOR_MARGIN: i32 = 5;
 /// 다른 조합에서 컬러 후보를 고를 수 있는 점수 차이.
 const VARIATION_COLOR_MARGIN: i32 = 10;
 /// 다른 조합이 먼저 고르는 스타일 점수.
-const VARIATION_STYLE_BAR: i32 = 68;
+pub(crate) const VARIATION_STYLE_BAR: i32 = 68;
 /// 컬러 후보가 갖춰야 할 스타일 점수(날씨 경계 감점을 뺀 값).
 const COLOR_QUALITY_FLOOR: i32 = 60;
 

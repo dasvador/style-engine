@@ -94,8 +94,15 @@ async fn save_exchange(
     body: &ChatRequest,
     reply: &str,
     items: &[ChatItem],
+    off_mood: bool,
 ) {
     let items_json = (!items.is_empty()).then(|| json!(items));
+    // 고른 무드로 읽히지 않는 코디는 그 무드로 남기지 않는다 — 다시 열 때 그 무드의 사진을 만들지 않게.
+    let ai_mood = if off_mood {
+        None
+    } else {
+        body.style_mood.clone()
+    };
     let base_json =
         (!items.is_empty() && !body.previous_items.is_empty()).then(|| json!(body.previous_items));
     let saved = sqlx::query(
@@ -109,7 +116,7 @@ async fn save_exchange(
     .bind(reply)
     .bind(items_json)
     .bind(base_json)
-    .bind(&body.style_mood)
+    .bind(&ai_mood)
     .execute(db)
     .await;
     if let Err(e) = saved {
@@ -134,6 +141,11 @@ struct ChatRequest {
 struct ChatResponse {
     reply: String,
     items: Vec<ChatItem>,
+    /// 고른 무드(지금은 글램)로 읽히지 않는 코디 — 그 무드의 조합이 없어 기본 코디로 채운 경우다.
+    /// 화면은 이 코디를 그 무드로 표시하거나 그 무드의 사진으로 그리지 않는다. 기준은 홈과 같다
+    /// (`mood_gate::reads_as_seen`). 아니면 보내지 않는다.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    off_mood: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -171,6 +183,46 @@ fn apply_wear(items: &mut [ChatItem], clothes: &[Clothing], temperature: Option<
 /// 없는 예전 기록이면 정확히 같은 이름이 하나일 때만 찾는다(`item_resolution`).
 fn item_clothing<'a>(item: &ChatItem, clothes: &'a [Clothing]) -> Option<&'a Clothing> {
     crate::services::item_resolution::resolve_id_or_legacy(item.id.as_deref(), &item.name, clothes)
+}
+
+/// 도구 결과에 "이 코디는 고른 무드가 아니다" 를 적는다. 모델이 기본 코디를 글램이라고 소개하지 않게
+/// 한다. 무드로 읽히거나 결과가 JSON 객체가 아니면 그대로 돌려준다.
+fn with_off_mood_note(result: String, off_mood: bool) -> String {
+    if !off_mood {
+        return result;
+    }
+    match serde_json::from_str::<serde_json::Value>(&result) {
+        Ok(serde_json::Value::Object(mut obj)) => {
+            obj.insert(
+                "mood_note".into(),
+                json!("옷장에서 고른 무드(글램)의 근거가 상의·하의에 있는 조합을 찾지 못해 기본 코디다. 글램 코디라고 소개하지 말고, 글램 근거가 있는 옷이 부족하다고 한 문장으로 알려라."),
+            );
+            serde_json::Value::Object(obj).to_string()
+        }
+        _ => result,
+    }
+}
+
+/// 상담이 돌려줄 코디가 고른 무드로 읽히지 않는가(홈·매일 코디와 같은 `mood_gate::reads_as_seen`).
+///
+/// 지금은 글램만 본다 — 조합 단계(`build_final_outfit`)가 글램 조합을 찾지 못하면 기본 코디로
+/// 채우는데, 그 코디를 글램으로 표시·저장하면 사진도 글램으로 그려진다. 다른 무드의 표시는
+/// 예전과 같다. 옷장에 없는 칸(유저 원문으로 바꾼 칸)은 판정에서 뺀다.
+fn off_mood_for(
+    mood: Option<StyleGenre>,
+    items: &[ChatItem],
+    clothes: &[Clothing],
+    temperature: Option<f64>,
+) -> bool {
+    if mood != Some(StyleGenre::Glam) || items.is_empty() {
+        return false;
+    }
+    let pieces: Vec<&Clothing> = items
+        .iter()
+        .filter(|i| i.owned)
+        .filter_map(|i| item_clothing(i, clothes))
+        .collect();
+    crate::services::mood_gate::reads_as_seen(StyleGenre::Glam, &pieces, temperature) == Some(false)
 }
 
 /// 옷장 카테고리 → 상담 카드의 슬롯 이름. 화면(`lib/lookbook.ts` 의 `CATEGORY_TO_SLOT`)과 같다.
@@ -359,10 +411,11 @@ async fn chat(
     // 사진은 그대로인데 착장만 엉뚱하게 바뀐다. 모델을 부르지 않고 바로 알린다.
     if has_previous && asks_to_modify_item(&body.message) {
         let reply = "지금은 옷장에 있는 다른 옷으로 바꾸는 것만 할 수 있어요. 그래픽이나 자수처럼 옷 자체를 고치는 건 아직 못 해요.".to_string();
-        save_exchange(&state.db, user_id, &body, &reply, &[]).await;
+        save_exchange(&state.db, user_id, &body, &reply, &[], false).await;
         return Ok(Json(ChatResponse {
             reply,
             items: Vec::new(),
+            off_mood: false,
         }));
     }
     // 유저가 말한 카테고리. 비어 있으면("좀 더 화사하게") 어느 칸이든 바꿀 수 있다.
@@ -538,9 +591,10 @@ async fn chat(
                                 mood,
                             },
                         );
+                        let off = off_mood_for(mood, &items, &clothes, temperature);
                         final_items = items;
                         final_item_ids = chosen_ids;
-                        outfit_json
+                        with_off_mood_note(outfit_json, off)
                     }
                     "get_outfit" => {
                         let user_query = fn_args["user_query"]
@@ -576,9 +630,10 @@ async fn chat(
                                 }
                             }
                         }
+                        let off = off_mood_for(mood, &items, &clothes, temperature);
                         final_items = items;
                         final_item_ids = chosen_ids;
-                        outfit_json
+                        with_off_mood_note(outfit_json, off)
                     }
                     "swap_item"
                         if !swap_allowed(
@@ -631,15 +686,19 @@ async fn chat(
                                     .iter()
                                     .map(|i| json!({"slot": i.slot, "id": i.id, "name": i.name, "category": i.category}))
                                     .collect();
+                                let off = off_mood_for(mood, &items, &clothes, temperature);
                                 final_items = items;
                                 final_item_ids = ids;
                                 // 무엇이 무엇으로 바뀌었는지 따로 적는다. 목록만 주면 모델이
                                 // 자기가 검색한 말("블랙 로퍼")로 답해 실제 아이템과 어긋난다.
-                                json!({
-                                    "changed": { "category": category, "from": from, "to": to },
-                                    "items": items_json,
-                                })
-                                .to_string()
+                                with_off_mood_note(
+                                    json!({
+                                        "changed": { "category": category, "from": from, "to": to },
+                                        "items": items_json,
+                                    })
+                                    .to_string(),
+                                    off,
+                                )
                             }
                             None => json!({
                                 "error": "옷장에 유저가 말한 아이템이 없다. 바꾸지 말고, 없다는 것을 유저에게 한 문장으로 알려라."
@@ -835,11 +894,24 @@ async fn chat(
     }
 
     apply_wear(&mut final_items, &clothes, temperature);
-    save_exchange(&state.db, user_id, &body, &final_reply, &final_items).await;
+    let off_mood = off_mood_for(mood, &final_items, &clothes, temperature);
+    if off_mood {
+        tracing::info!(mood = ?mood, "상담 코디가 고른 무드로 읽히지 않아 기본 코디로 표시한다");
+    }
+    save_exchange(
+        &state.db,
+        user_id,
+        &body,
+        &final_reply,
+        &final_items,
+        off_mood,
+    )
+    .await;
 
     Ok(Json(ChatResponse {
         reply: final_reply,
         items: final_items,
+        off_mood,
     }))
 }
 
@@ -2429,7 +2501,235 @@ fn has_sheen_fabric(items: &str) -> bool {
     .any(|w| lower.contains(w))
 }
 
+/// 보온 판정이 붙이는 기본 착용 지시(`serving_ranker::outer_wear`). 벨트·허리선 변형은 여밈
+/// 자체가 형태의 포인트라 건드리지 않는다.
+const OUTER_WORN_CLOSED: &str = "worn closed with its own fastening, arms in the sleeves";
+
+/// 머리 위로 입거나 앞이 트이지 않는 아우터. 앞을 열 수 없으니 그대로 둔다.
+const PULLOVER_OUTER_WORDS: [&str; 14] = [
+    "pullover",
+    "pull-over",
+    "anorak",
+    "overhead",
+    "half-zip",
+    "half zip",
+    "quarter-zip",
+    "quarter zip",
+    "poncho",
+    "cape",
+    "풀오버",
+    "아노락",
+    "판초",
+    "케이프",
+];
+
+/// 엣지 룩북에서 비대칭 밑단 저지가 착장의 중심이고, 그 위의 아우터가 보온 판정으로
+/// "여며 입기" 지시를 받은 경우 — 사진에서만 아우터 앞을 열어 상의 포인트가 보이게 한
+/// 착장 문구를 돌려준다. 해당하지 않으면 `None`(문구·프롬프트·캐시 키 모두 예전과 같다).
+///
+/// 2026-11-18: 페트롤틸 코쿤 다운 퍼퍼를 닫아 입으라는 지시 때문에 차콜 비대칭 헴 저지가
+/// 통째로 가려졌다. 보온 판정(`outer_wear`)과 원래 코디는 바꾸지 않는다 — 양팔은 소매에 둔
+/// 채 촬영 순간 앞만 연다. 고치는 곳은 outerwear 슬롯의 착용 지시 한 곳뿐이다.
+///
+/// 오탐을 막는 조건:
+/// - 상의(top/inner)의 겉감이 저지여야 한다. 아우터·후드의 저지 안감은 세지 않는다.
+/// - 상의에 비대칭·한쪽이 처지는 밑단이 있어야 한다. 평범한 저지 티는 해당하지 않는다.
+/// - 아우터는 기본 여밈 지시를 받은, 앞이 열리는 종류여야 한다. 풀오버·판초류는 제외.
+fn edgy_open_outer_items(items: &str) -> Option<String> {
+    let slots = split_image_items(items);
+    let desc_of = |pred: &dyn Fn(&str) -> bool| {
+        slots
+            .iter()
+            .find(|(s, _)| pred(&s.to_lowercase()))
+            .map(|(_, d)| d.as_str())
+    };
+    let top = desc_of(&|s| s.starts_with("top") || s.starts_with("inner"))?;
+    let outer = desc_of(&|s| s == "outerwear" || s == "outer")?;
+
+    let top_l = top
+        .to_lowercase()
+        .replace("jersey-lined", "")
+        .replace("jersey lined", "")
+        .replace("jersey lining", "");
+    let jersey_shell = top_l.contains("jersey");
+    let uneven_hem = [
+        "asymmetric hem",
+        "asymmetrical hem",
+        "hem dipping",
+        "dipping longer",
+        "uneven hem",
+        "high-low hem",
+    ]
+    .iter()
+    .any(|w| top_l.contains(w));
+    if !(jersey_shell && uneven_hem) {
+        return None;
+    }
+
+    let outer_l = outer.to_lowercase();
+    if !outer.contains(OUTER_WORN_CLOSED)
+        || PULLOVER_OUTER_WORDS.iter().any(|w| outer_l.contains(w))
+    {
+        return None;
+    }
+
+    let bottom = match desc_of(&|s| s == "pants" || s == "bottom" || s == "bottoms") {
+        Some(p) => {
+            let p = p.to_lowercase();
+            if ["skirt", "스커트", "치마"].iter().any(|w| p.contains(w)) {
+                "skirt"
+            } else {
+                "trousers"
+            }
+        }
+        None => "legs",
+    };
+    let has_bag = slots.iter().any(|(s, _)| s.eq_ignore_ascii_case("bag"));
+    let bag = if has_bag {
+        "; her bag is carried at her side, clear of the opening"
+    } else {
+        ""
+    };
+    let open = format!(
+        "both arms in the sleeves, the front worn open wide at the moment of the photo so the \
+         jersey top underneath and its uneven hem, the front line of the {bottom} and the shoes \
+         all stay in view{bag}"
+    );
+    let new_outer = outer.replacen(OUTER_WORN_CLOSED, &open, 1);
+    Some(items.replacen(outer, &new_outer, 1))
+}
+
+/// 보온 판정이 붙이는 벨트 여밈 지시(`serving_ranker::outer_wear`).
+const OUTER_WORN_BELTED: &str =
+    "worn closed with its own belt tied at the waist, arms in the sleeves";
+/// 보온 판정이 붙이는 아워글라스 단추 여밈 지시(`serving_ranker::outer_wear`).
+const OUTER_WORN_HOURGLASS: &str =
+    "worn buttoned closed, arms in the sleeves, so the nipped waist and flared hem show";
+
+/// 앞이 트이지 않는 상의형 겉옷(머리로 입는 후드·스웻). 지퍼가 있으면 연다.
+const PULLOVER_TOP_WORDS: [&str; 6] = [
+    "hoodie",
+    "sweatshirt",
+    "후드티",
+    "맨투맨",
+    "스웻셔츠",
+    "후드 티",
+];
+
+/// 글램·엣지·팝 새 룩북 사진에서 앞여밈 아우터를 연 착장 문구. 열지 않으면 `None`
+/// (그 무드의 착장 문구·프롬프트·캐시 키가 예전과 같다).
+///
+/// 2026-11-19: 추운 날 보온 판정의 여밈 지시(일반·벨트·아워글라스)나 지시 없는 앞여밈
+/// 코트·재킷·패딩 모두 사진에서는 양팔을 소매에 넣은 채 앞만 자연스럽게 열어, 이너와 하의가
+/// 보이게 한다. 보온 판정·추천·응답의 `wear` 는 바꾸지 않는다 — 고치는 곳은 이미지 프롬프트에
+/// 넣는 outerwear 슬롯 문구 한 곳이다. 엣지의 비대칭 밑단 저지 룩은 예전 문구
+/// (`edgy_open_outer_items`)를 그대로 쓴다.
+///
+/// 열지 않는 경우: 다른 무드, 아우터 없음, 풀오버·하프집·판초·후드티처럼 앞여밈이 없는 옷,
+/// 이미 열린 착용이거나 모르는 착용 지시.
+fn lookbook_open_outer_items(genre: StyleGenre, items: &str) -> Option<String> {
+    if !matches!(genre, StyleGenre::Glam | StyleGenre::Edgy | StyleGenre::Pop) {
+        return None;
+    }
+    if genre == StyleGenre::Edgy
+        && let Some(opened) = edgy_open_outer_items(items)
+    {
+        return Some(opened);
+    }
+    let slots = split_image_items(items);
+    let (_, outer) = slots
+        .iter()
+        .find(|(s, _)| s.eq_ignore_ascii_case("outerwear") || s.eq_ignore_ascii_case("outer"))?;
+    let outer_l = outer.to_lowercase();
+    if PULLOVER_OUTER_WORDS.iter().any(|w| outer_l.contains(w)) {
+        return None;
+    }
+    let zips = ["zip", "집업", "지퍼"].iter().any(|w| outer_l.contains(w));
+    if !zips && PULLOVER_TOP_WORDS.iter().any(|w| outer_l.contains(w)) {
+        return None;
+    }
+
+    // 원래 달린 여밈별로 사진에서 어떻게 두는지. 없는 벨트·단추를 만들지 않는다.
+    enum Closure {
+        Plain,
+        Belted,
+        Hourglass,
+        Unstated,
+    }
+    let closure = if outer.contains(OUTER_WORN_CLOSED) {
+        Closure::Plain
+    } else if outer.contains(OUTER_WORN_BELTED) {
+        Closure::Belted
+    } else if outer.contains(OUTER_WORN_HOURGLASS) {
+        Closure::Hourglass
+    } else if outer_l.contains("worn ") {
+        // 이미 열린 착용이거나 모르는 지시 — 그대로 둔다.
+        return None;
+    } else {
+        Closure::Unstated
+    };
+
+    let bottom = match slots
+        .iter()
+        .find(|(s, _)| matches!(s.to_lowercase().as_str(), "pants" | "bottom" | "bottoms"))
+    {
+        Some((_, p)) => {
+            let p = p.to_lowercase();
+            if ["skirt", "스커트", "치마"].iter().any(|w| p.contains(w)) {
+                "skirt"
+            } else {
+                "trousers"
+            }
+        }
+        None => "legs",
+    };
+    let has_bag = slots.iter().any(|(s, _)| s.eq_ignore_ascii_case("bag"));
+    let bag = if has_bag {
+        ", her bag carried at her side, clear of the opening"
+    } else {
+        ""
+    };
+    let fastening = match closure {
+        Closure::Belted => {
+            "the front left unbuttoned and its own belt untied, the belt ends hanging loose at \
+             the sides"
+        }
+        Closure::Hourglass => "the front left unbuttoned",
+        Closure::Plain | Closure::Unstated => "the front left unfastened",
+    };
+    let shape = match closure {
+        Closure::Hourglass => {
+            "its defined shoulders, nipped waist and flared hem keep their own cut, the open \
+             fronts falling in the line of the flare"
+        }
+        _ => "its shoulder line, length and any flare or volume in the hem keep their own cut",
+    };
+    let open = format!(
+        "both arms in the sleeves, sitting on her shoulders exactly as cut, never slipped off \
+         or draped over them; {fastening}, so it falls open naturally and is never pulled \
+         closed by her hands; the top underneath, the front line of the {bottom} and the shoes \
+         stay in view{bag}; {shape}"
+    );
+
+    let new_outer = match closure {
+        Closure::Plain => outer.replacen(OUTER_WORN_CLOSED, &open, 1),
+        Closure::Belted => outer.replacen(OUTER_WORN_BELTED, &open, 1),
+        Closure::Hourglass => outer.replacen(OUTER_WORN_HOURGLASS, &open, 1),
+        // 지시가 없는 아우터: 소재 괄호 끝에 붙이거나, 괄호가 없으면 새로 단다.
+        Closure::Unstated => match outer.strip_suffix(')') {
+            Some(head) if head.contains('(') => format!("{head}; {open})"),
+            _ => format!("{outer} ({open})"),
+        },
+    };
+    Some(items.replacen(outer.as_str(), &new_outer, 1))
+}
+
 fn build_image_prompt(genre: StyleGenre, items: &str, hash: u64) -> String {
+    // 글램·엣지·팝은 앞여밈 아우터를 사진에서 연다(`lookbook_open_outer_items`). 해시·헤어·
+    // 장소·자세는 원래 착장 문구로 고른다 — 같은 코디의 인물·장면이 바뀌지 않는다.
+    let opened_outer = lookbook_open_outer_items(genre, items);
+    let outer_open = opened_outer.is_some();
+    let worn_items = opened_outer.as_deref().unwrap_or(items);
     let hair = pick_hair(genre, hash);
 
     // 장소도 착장 해시로 고른다. 헤어(`pick_hair`)와 출신(`model_origin`)은 다른
@@ -2829,6 +3129,12 @@ Avoid: {base_avoid}, casual sneakers, oversized baggy fit, vintage distressing, 
                 "Every listed fabric keeps its own surface: matte fabrics stay matte, with \
                  no sheen added."
             };
+            let items = worn_items;
+            let unchanged = if outer_open {
+                "Apart from the outerwear front, which is worn open exactly as listed, nothing is opened up, and nothing is shortened or embellished"
+            } else {
+                "Nothing is shortened, opened up or embellished"
+            };
             format!(
                 r#"Fashion editorial photograph of a woman between her mid-twenties and mid-thirties, dressed to be noticed and at ease with it. She must be female.
 
@@ -2836,7 +3142,7 @@ Face: {base_face}
 
 Body: {base_body}
 
-Outfit: The female model is wearing {items} — worn so that one or two pieces carry the look, through a fabric that catches the light or a sculpted line, while the plainer pieces hold it steady. Nothing is shortened, opened up or embellished: every neckline, hem, slit and surface stays exactly as listed. Her hair stays clear of the neckline and the shoulder line. {base_fidelity}
+Outfit: The female model is wearing {items} — worn so that one or two pieces carry the look, through a fabric that catches the light or a sculpted line, while the plainer pieces hold it steady. {unchanged}: every neckline, hem, slit and surface stays exactly as listed. Her hair stays clear of the neckline and the shoulder line. {base_fidelity}
 
 Garments: {base_garments}
 
@@ -2859,14 +3165,24 @@ Avoid: {base_avoid}, nightclub interior, neon lighting, stage costume, red-carpe
         }
         // 엣지: 비대칭·각진 어깨·다리의 재단 같은 형태와, 가죽과 니트·울·데님의 표면 대비가
         // 보이게 입는다. 펑크 의상·장식·찢김·피어싱·타투를 더하지 않는다.
-        StyleGenre::Edgy => format!(
-            r#"Fashion editorial photograph of a woman {age}, dressed with a sharp, confident edge. She must be female.
+        StyleGenre::Edgy => {
+            // 앞여밈 아우터는 사진에서만 앞을 연다(`lookbook_open_outer_items` — 비대칭 밑단
+            // 저지 룩은 `edgy_open_outer_items` 문구). 열지 않으면 착장 문구와 아래 문장이 예전과
+            // 한 글자도 같다 — 캐시가 그대로다.
+            let items = worn_items;
+            let unchanged = if outer_open {
+                "Apart from the outerwear front, which is worn open exactly as listed, nothing is opened up, and nothing is shortened, ripped or embellished"
+            } else {
+                "Nothing is shortened, opened up, ripped or embellished"
+            };
+            format!(
+                r#"Fashion editorial photograph of a woman {age}, dressed with a sharp, confident edge. She must be female.
 
 Face: {base_face}
 
 Body: {base_body}
 
-Outfit: The female model is wearing {items} — worn so the shape of each piece reads: asymmetric lines, structured shoulders and the cut of the legs stay exactly as listed, and where leather sits against knit, wool or denim the contrast between the surfaces shows. Nothing is shortened, opened up, ripped or embellished: every neckline, hem and surface stays exactly as listed. Her hair stays clear of the neckline and the shoulder line. {base_fidelity}
+Outfit: The female model is wearing {items} — worn so the shape of each piece reads: asymmetric lines, structured shoulders and the cut of the legs stay exactly as listed, and where leather sits against knit, wool or denim the contrast between the surfaces shows. {unchanged}: every neckline, hem and surface stays exactly as listed. Her hair stays clear of the neckline and the shoulder line. {base_fidelity}
 
 Garments: {base_garments}
 
@@ -2885,17 +3201,27 @@ Colour: {base_color}
 Style: {base_style}
 
 Avoid: {base_avoid}, punk costume, studs, spikes, chains, safety pins, rips, distressing or hardware that the listed garments do not have, piercings, tattoos, chokers, necklaces, earrings, sunglasses, a dark grungy alley, graffiti, neon lighting, nightclub interior."#
-        ),
+            )
+        }
         // 팝: 색과 무늬가 착장을 이끈다. 목록의 색·배색·스트라이프·체크·그래픽을 그대로 두고 새
         // 프린트·로고·장식·소품을 더하지 않는다. 어린아이 같은 연출·코스튬으로 가지 않는다.
-        StyleGenre::Pop => format!(
-            r#"Fashion editorial photograph of a woman {age}, dressed in a bright, playful, colour-led way. She must be female.
+        // 앞여밈 아우터를 연 사진이면 "여민 옷은 열지 말라"(2026-10-17) 문장을 연 상태에 맞는
+        // 문장으로 바꾼다. 열지 않은 착장은 예전 문장 그대로다.
+        StyleGenre::Pop => {
+            let items = worn_items;
+            let closed_rule = if outer_open {
+                "The outerwear is worn open exactly as listed, both arms in its sleeves; every other piece is worn just as listed."
+            } else {
+                "A piece described as worn closed stays fastened all the way — never open it to show the colour of what is underneath."
+            };
+            format!(
+                r#"Fashion editorial photograph of a woman {age}, dressed in a bright, playful, colour-led way. She must be female.
 
 Face: {base_face}
 
 Body: {base_body}
 
-Outfit: The female model is wearing {items} — worn so the colours and patterns of the pieces read clearly: every listed colour, colour-block, stripe, check and graphic stays exactly as listed, with no new print, logo, slogan or decoration added. Bright pieces sit together just as they are listed. A piece described as worn closed stays fastened all the way — never open it to show the colour of what is underneath. {base_fidelity}
+Outfit: The female model is wearing {items} — worn so the colours and patterns of the pieces read clearly: every listed colour, colour-block, stripe, check and graphic stays exactly as listed, with no new print, logo, slogan or decoration added. Bright pieces sit together just as they are listed. {closed_rule} {base_fidelity}
 
 Garments: {base_garments}
 
@@ -2914,7 +3240,8 @@ Colour: {base_color}
 Style: {base_style}
 
 Avoid: {base_avoid}, an amusement park, a candy shop, a graffiti wall, neon lighting, nightclub interior, costume or cosplay styling, childish or kid-like styling, toy-like props, balloons, idol stage styling, jewellery, glasses, bandanas, hats or scarves that are not listed, added prints or logos."#
-        ),
+            )
+        }
         StyleGenre::Bohemian => format!(
             r#"Fashion editorial photograph of a woman in her 20s, dressed in a loose, bohemian way. She must be female.
 
@@ -3681,19 +4008,19 @@ fn best_fit_swap<'a>(
         .iter()
         .filter(|c| !crate::services::mood_gate::hidden_on_mild_pop_day(c, mood, temperature))
         .collect();
-    let keeps_pop: Vec<&Clothing> = if mood == Some(StyleGenre::Pop) {
-        candidates
+    // 글램도 같다 — 바꾼 뒤에도 보이는 착장이 글램인 옷을 먼저 본다(홈과 같은 기준,
+    // `mood_gate::reads_as_seen`). 엣지는 예전과 같다.
+    let keeps_pop: Vec<&Clothing> = match mood {
+        Some(m @ (StyleGenre::Pop | StyleGenre::Glam)) => candidates
             .iter()
             .copied()
             .filter(|c| {
                 let mut outfit = kept.to_vec();
                 outfit.push(c);
-                crate::services::mood_gate::reads_as_at(StyleGenre::Pop, &outfit, temperature)
-                    == Some(true)
+                crate::services::mood_gate::reads_as_seen(m, &outfit, temperature) == Some(true)
             })
-            .collect()
-    } else {
-        Vec::new()
+            .collect(),
+        _ => Vec::new(),
     };
     let pool: Vec<&Clothing> = if keeps_pop.is_empty() {
         candidates
@@ -4029,6 +4356,17 @@ fn tool_evaluate_outfit(
         issues.push("low_grounding: 접지감 부족".to_string());
     }
 
+    // 글램: 홈·매일 코디와 같은 기준(`mood_gate::reads_as_seen`) — 사진은 코트 앞을 열어 그리므로
+    // 상의·하의에 글램 근거가 있어야 한다. 코트·가방·신발만 빛나는 조합은 글램으로 통과시키지 않는다.
+    if mood == Some(StyleGenre::Glam)
+        && crate::services::mood_gate::reads_as_seen(StyleGenre::Glam, &items, None) == Some(false)
+    {
+        issues.push(
+            "glam_inner_missing: 코트를 열면 보이는 상의·하의에 글램 근거(새틴·벨벳·메탈릭·원숄더·드레이프 등)가 없음"
+                .to_string(),
+        );
+    }
+
     let pass = issues.is_empty();
     json!({"pass": pass, "issues": issues, "score_summary": {
         "strong_style_count": strong_count,
@@ -4118,9 +4456,18 @@ fn today_outfit(
     // 기준 옷은 코디에 반드시 들어간다 — 2°C 에 안감 없는 라이더가 기준이면 모든 조합이
     // 날씨 경계다. 그래서 몇 벌을 시도해, 날씨 판정이 통과인 코디를 경계인 코디보다 먼저
     // 고른다. 같은 판정 안에서는 최근에 덜 나온 기준 옷이 먼저다.
-    // (날씨 통과, 기준 옷, build_final_outfit 결과)
+    // 글램은 그보다 먼저 보이는 착장이 글램인 코디를 고른다(`mood_gate::reads_as_seen`, 홈과 같은
+    // 기준) — 글램 코트가 기준 옷이면 안의 옷이 기본템인 코디가 날씨 통과로 먼저 끝났다. 다른
+    // 무드는 예전과 같다.
+    // ((글램으로 보임, 날씨 통과), 기준 옷, build_final_outfit 결과)
     type Built = (String, Vec<ChatItem>, Vec<String>);
-    let mut best: Option<(bool, &Clothing, Built)> = None;
+    let reads_seen = |pieces: &[&Clothing]| {
+        ctx.mood
+            .filter(|m| *m == StyleGenre::Glam)
+            .and_then(|m| crate::services::mood_gate::reads_as_seen(m, pieces, ctx.temperature))
+            .unwrap_or(true)
+    };
+    let mut best: Option<((bool, bool), &Clothing, Built)> = None;
     for anchor in anchors.into_iter().take(6) {
         let Some((desc, items, chosen_ids)) = build_final_outfit(anchor, clothes, ctx) else {
             continue;
@@ -4131,10 +4478,11 @@ fn today_outfit(
             .collect();
         let pass =
             today_fit_of(&pieces, temp) == crate::services::style_engine_v2::TodayFitLevel::Pass;
-        if best.as_ref().is_none_or(|b| pass && !b.0) {
-            best = Some((pass, anchor, (desc, items, chosen_ids)));
+        let key = (reads_seen(&pieces), pass);
+        if best.as_ref().is_none_or(|b| key > b.0) {
+            best = Some((key, anchor, (desc, items, chosen_ids)));
         }
-        if pass {
+        if key == (true, true) {
             break;
         }
     }
@@ -4290,12 +4638,13 @@ fn build_final_outfit<'a>(
             .collect();
     }
     combos.sort_by_key(|a| std::cmp::Reverse(a.1));
-    // 홈과 같은 무드 게이트(`services::mood_gate`). 글램이면 빛을 받는 소재나 조형적인
-    // 실루엣이, 엣지면 형태나 가죽 옷이 하나라도 있는 조합 중 최고점을 고른다. 그런 조합이
-    // 없으면 원래 최고점이다 — 빈 답보다 낫다.
+    // 홈과 같은 무드 게이트(`mood_gate::reads_as_seen`). 글램이면 코트를 열어도 보이는 상의·하의에
+    // 빛을 받는 소재나 조형적인 실루엣이(코트만으로는 아니다), 엣지면 형태나 가죽 옷이 하나라도
+    // 있는 조합 중 최고점을 고른다. 그런 조합이 없으면 원래 최고점이다 — 빈 답보다 낫다. 그때
+    // 응답은 그 무드로 표시하지 않는다(`ChatResponse::off_mood`).
     let reads = |o: &Vec<&Clothing>| {
         ctx.mood
-            .and_then(|m| crate::services::mood_gate::reads_as_at(m, o, ctx.temperature))
+            .and_then(|m| crate::services::mood_gate::reads_as_seen(m, o, ctx.temperature))
             .unwrap_or(true)
     };
     let (best_outfit, best_score) = combos
@@ -5291,8 +5640,14 @@ mod tests {
     fn edgy_prompt_keeps_colour_surface_and_listed_pieces() {
         for h in [0u64, 1, 42, 1 << 40, 3 << 48, u64::MAX] {
             let p = build_image_prompt(StyleGenre::Edgy, EDGY_ITEMS, h);
-            assert!(p.contains(EDGY_ITEMS));
-            assert!(p.contains("worn closed with its own fastening, arms in the sleeves"));
+            // 여민 울 코트는 사진에서 앞만 연다(2026-11-19). 나머지 슬롯은 목록 그대로다.
+            let opened = lookbook_open_outer_items(StyleGenre::Edgy, EDGY_ITEMS).unwrap();
+            assert!(p.contains(&opened));
+            assert!(!p.contains("worn closed"));
+            assert!(opened.contains(
+                "heavy wool, structured shoulders, insulated lining; both arms in the sleeves"
+            ));
+            assert!(p.contains("Apart from the outerwear front"));
             assert!(!p.contains("muted neutral palette"));
             assert!(!p.contains("restrained saturation"));
             assert!(p.contains("true-to-life saturation"));
@@ -5317,6 +5672,334 @@ mod tests {
             // 걷다가 돌아보기를 포함한 공통 자세와 머리부터 신발까지 보이는 구도는 그대로다.
             assert!(p.contains("Full body visible from head to shoes"));
         }
+    }
+
+    /// 2026-11-18 GET /api/lookbook 최신 원본(여성 엣지)의 착장 문구.
+    const EDGY_JERSEY_PUFFER: &str = "top/inner: 차콜 비대칭 헴 저지 롱슬리브 (matte cotton jersey, asymmetric hem dipping longer on one side, long sleeves, close fit), \
+         pants: 인디고 와이드 데님 (denim, wide leg, rigid), \
+         outerwear: 페트롤틸 퍼널넥 코쿤 다운 퍼퍼 (visible shell: matte nylon, wide channel quilting; insulation: down fill (down and feather); high funnel neck, sculpted cocoon volume gathered by drawcord hem, hip-length; worn closed with its own fastening, arms in the sleeves), \
+         shoes: 블랙 레더 앵클부츠 (leather, block heel ankle boot), \
+         bag: 버건디 레더 박스 크로스백 (smooth leather, compact box shape, adjustable crossbody strap)";
+
+    const EDGY_UNCHANGED_LINE: &str = "Nothing is shortened, opened up, ripped or embellished: every neckline, hem and surface stays exactly as listed.";
+
+    /// 비대칭 밑단 저지가 중심인 엣지 룩: 아우터 슬롯만 "앞을 연" 착용으로 바뀌고, 닫으라는
+    /// 문구·"열지 말라" 문장이 완성 프롬프트에 남지 않는다. 아우터의 보온 설명(다운 충전재 등)과
+    /// 나머지 슬롯은 한 글자도 그대로이고, 착장 해시(원 코디)는 바뀌지 않는다.
+    #[test]
+    fn edgy_jersey_focus_opens_only_the_outer_slot() {
+        let opened = edgy_open_outer_items(EDGY_JERSEY_PUFFER).expect("대상 룩");
+        let before = split_image_items(EDGY_JERSEY_PUFFER);
+        let after = split_image_items(&opened);
+        assert_eq!(before.len(), after.len());
+        for ((s0, d0), (s1, d1)) in before.iter().zip(&after) {
+            assert_eq!(s0, s1);
+            if s0 == "outerwear" {
+                assert!(!d1.contains("worn closed"));
+                assert!(d1.contains("both arms in the sleeves"));
+                assert!(d1.contains("front worn open wide at the moment of the photo"));
+                assert!(d1.contains("uneven hem"));
+                assert!(d1.contains("front line of the trousers"));
+                assert!(d1.contains("shoes"));
+                assert!(d1.contains("bag is carried at her side"));
+                assert!(d1.contains("insulation: down fill (down and feather)"));
+                assert!(d1.contains("sculpted cocoon volume gathered by drawcord hem, hip-length"));
+            } else {
+                assert_eq!(d0, d1, "{s0} 는 그대로");
+            }
+        }
+
+        for h in [0u64, 1, 42, 1 << 40, 3 << 48, u64::MAX] {
+            let p = build_image_prompt(StyleGenre::Edgy, EDGY_JERSEY_PUFFER, h);
+            assert!(p.contains(&opened));
+            assert!(!p.contains("worn closed"), "{h}");
+            assert!(!p.contains("Nothing is shortened, opened up"), "{h}");
+            assert!(!p.contains("never open it"), "{h}");
+            assert!(
+                p.contains("Apart from the outerwear front, which is worn open exactly as listed")
+            );
+            assert!(p.contains("Full body visible from head to shoes"));
+        }
+
+        // 캐시: 착장 해시는 원 문구로 걸려 그대로이고, 같은 입력이면 같은 키다.
+        let (oh, ph, _, _) = image_cache_keys(EDGY_JERSEY_PUFFER, StyleGenre::Edgy);
+        let (oh_other, ph_other, _, _) = image_cache_keys(EDGY_JERSEY_PUFFER, StyleGenre::Street);
+        assert_eq!(oh, oh_other);
+        assert_ne!(ph, ph_other);
+        assert_eq!((oh, ph), {
+            let k = image_cache_keys(EDGY_JERSEY_PUFFER, StyleGenre::Edgy);
+            (k.0, k.1)
+        });
+    }
+
+    /// 저지 문구("open wide")는 엣지만 쓴다. 글램·팝은 같은 착장이면 일반 열림 문구를, 다른
+    /// 무드는 닫힌 아우터 지시를 그대로 둔다.
+    #[test]
+    fn open_outer_is_glam_edgy_pop_only() {
+        for g in StyleGenre::ALL.iter().filter(|g| **g != StyleGenre::Edgy) {
+            for h in [0u64, 42, u64::MAX] {
+                let p = build_image_prompt(*g, EDGY_JERSEY_PUFFER, h);
+                assert!(!p.contains("front worn open wide"), "{g}");
+                if matches!(g, StyleGenre::Glam | StyleGenre::Pop) {
+                    assert!(!p.contains(EDGY_JERSEY_PUFFER), "{g}");
+                    assert!(!p.contains("worn closed"), "{g}");
+                    assert!(p.contains("the front left unfastened"), "{g}");
+                } else {
+                    assert!(p.contains(EDGY_JERSEY_PUFFER), "{g}");
+                    assert!(!p.contains("front left unfastened"), "{g}");
+                    assert_eq!(lookbook_open_outer_items(*g, EDGY_JERSEY_PUFFER), None);
+                }
+            }
+        }
+    }
+
+    /// 저지 문구의 오탐 없음: 아래 착장은 엣지여도 비대칭 저지 문구("open wide")를 쓰지 않는다.
+    /// 앞여밈 아우터면 일반 열림 문구로, 풀오버·아우터 없음이면 예전 문구 그대로다.
+    #[test]
+    fn edgy_open_outer_skips_non_targets() {
+        let swap = |from: &str, to: &str| EDGY_JERSEY_PUFFER.replacen(from, to, 1);
+        let cases = [
+            // 기존 엣지 니트(비대칭 넥) + 울 코트
+            EDGY_ITEMS.to_string(),
+            // 평범한 저지 티
+            swap(
+                "차콜 비대칭 헴 저지 롱슬리브 (matte cotton jersey, asymmetric hem dipping longer on one side, long sleeves, close fit)",
+                "화이트 티 (cotton jersey, crew neck)",
+            ),
+            // 저지는 안감일 뿐인 가죽 상의
+            swap(
+                "matte cotton jersey, asymmetric hem",
+                "smooth leather, jersey lining, asymmetric hem",
+            ),
+            // 풀오버 아우터
+            swap("코쿤 다운 퍼퍼 (", "코쿤 풀오버 아노락 (pullover, "),
+            // 이미 닫힘 지시가 없는(온화한 날) 아우터
+            swap(
+                "; worn closed with its own fastening, arms in the sleeves",
+                "",
+            ),
+            // 벨트로 여미는 코트 — 여밈이 형태의 포인트
+            swap(
+                "worn closed with its own fastening",
+                "worn closed with its own belt tied at the waist",
+            ),
+        ];
+        // 아우터 없음
+        let no_outer = "top/inner: 차콜 비대칭 헴 저지 롱슬리브 (matte cotton jersey, asymmetric hem dipping longer on one side), pants: 인디고 와이드 데님 (denim, wide leg), shoes: 블랙 레더 앵클부츠 (leather)";
+        for items in cases.iter().map(String::as_str).chain([no_outer]) {
+            assert_eq!(edgy_open_outer_items(items), None, "{items}");
+            let stays_shut = items == no_outer || items.contains("pullover");
+            for h in [0u64, 42, u64::MAX] {
+                let p = build_image_prompt(StyleGenre::Edgy, items, h);
+                assert!(!p.contains("front worn open wide"));
+                if stays_shut {
+                    assert!(p.contains(items));
+                    assert!(p.contains(EDGY_UNCHANGED_LINE), "{items}");
+                    assert!(!p.contains("Apart from the outerwear front"));
+                } else {
+                    assert!(!p.contains("worn closed"), "{items}");
+                    assert!(p.contains("so it falls open naturally"), "{items}");
+                    assert!(p.contains("Apart from the outerwear front"));
+                }
+            }
+        }
+    }
+
+    /// 2026-11-18 15:11 룩북에 담긴 마지막 실제 글램 아워글라스 코디(`lookbook_look.image_prompt`).
+    const GLAM_HOURGLASS: &str = "top/inner: 샴페인 메탈릭 니트 탑 (fine lurex knit, subtle metallic sheen, crew neck, long sleeves), pants: 블랙 와이드 슬랙스 (polyester, wide leg, clean drape), outerwear: 블랙 아워글라스 롱 울 코트 (heavy wool blend, hourglass silhouette, defined shoulders, nipped waist, flared hem, mid-calf length, wide peaked lapels, matte buttons, insulated lining; worn buttoned closed, arms in the sleeves, so the nipped waist and flared hem show), shoes: 블랙 새틴 포인티드 펌프스 (satin upper, pointed toe, mid heel), bag: 실버 체인 미니 크로스백 (leather, silver chain, mini)";
+
+    /// 조립된 최종 프롬프트에서 아우터에 걸리는 "닫아라/열지 말라" 문장이 하나도 없다.
+    fn assert_no_closed_conflict(p: &str) {
+        for w in [
+            "worn closed",
+            "buttoned closed",
+            "belt tied at the waist",
+            "never open it",
+            "stays fastened",
+            "Nothing is shortened, opened up",
+        ] {
+            assert!(!p.contains(w), "{w}");
+        }
+        assert!(p.contains("both arms in the sleeves"));
+        assert!(p.contains("never slipped off or draped over them"));
+        assert!(p.contains("never pulled closed by her hands"));
+    }
+
+    /// 실제 글램 아워글라스 저장 지시: 단추 여밈 지시가 열림으로 바뀌고, 코트의 어깨·허리·플레어
+    /// 재단은 그대로 말한다. 나머지 슬롯·글램 문장·인물(해시·헤어·장소)은 그대로다.
+    #[test]
+    fn glam_hourglass_coat_opens_but_keeps_its_cut() {
+        let opened = lookbook_open_outer_items(StyleGenre::Glam, GLAM_HOURGLASS).unwrap();
+        let before = split_image_items(GLAM_HOURGLASS);
+        let after = split_image_items(&opened);
+        assert_eq!(before.len(), after.len());
+        for ((s0, d0), (s1, d1)) in before.iter().zip(&after) {
+            assert_eq!(s0, s1);
+            if s0 == "outerwear" {
+                assert!(d1.starts_with(
+                    "블랙 아워글라스 롱 울 코트 (heavy wool blend, hourglass silhouette, defined shoulders, nipped waist, flared hem"
+                ));
+                assert!(d1.contains("the front left unbuttoned"));
+                assert!(d1.contains(
+                    "its defined shoulders, nipped waist and flared hem keep their own cut"
+                ));
+                assert!(d1.contains("front line of the trousers"));
+                assert!(d1.contains("her bag carried at her side"));
+                assert!(d1.ends_with(')'));
+            } else {
+                assert_eq!(d0, d1, "{s0}");
+            }
+        }
+        for h in [0u64, 1, 42, 1 << 56, u64::MAX] {
+            let p = build_image_prompt(StyleGenre::Glam, GLAM_HOURGLASS, h);
+            assert!(p.contains(&opened));
+            assert_no_closed_conflict(&p);
+            assert!(p.contains(
+                "Apart from the outerwear front, which is worn open exactly as listed, nothing is opened up, and nothing is shortened or embellished: every neckline, hem, slit and surface stays exactly as listed."
+            ));
+            // 글램 고유 문장은 그대로다.
+            assert!(p.contains("dressed to be noticed"));
+            assert!(p.contains("soft, natural reflections that follow the drape"));
+        }
+        // 실제 진입점의 키: 착장 해시는 원 문구로 걸려 그대로(룩북 고정 사진·편집 기준 조회가
+        // 같다), 프롬프트 해시만 바뀐다. 인물·장면은 원 해시로 골라 같은 사람·장소다.
+        let (oh, _, hv, prompt) = image_cache_keys(GLAM_HOURGLASS, StyleGenre::Glam);
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        std::hash::Hash::hash(&GLAM_HOURGLASS, &mut hasher);
+        assert_eq!(oh, format!("{:016x}", std::hash::Hasher::finish(&hasher)));
+        assert!(prompt.contains(pick_hair(StyleGenre::Glam, hv)));
+        assert!(prompt.contains(pick_setting(StyleGenre::Glam, hv)));
+        assert_no_closed_conflict(&prompt);
+    }
+
+    /// 벨트 코트·지시 없는(따뜻한 날) 앞여밈 코트·재킷·패딩도 연다. 벨트는 풀어 늘어뜨리고(없는
+    /// 벨트를 만들지 않는다), 지시가 없으면 소재 괄호 끝에 붙인다. 글램·엣지·팝 모두 같다.
+    #[test]
+    fn belted_and_unstated_front_opening_outers_open() {
+        let belted = GLAM_HOURGLASS.replacen(
+            "worn buttoned closed, arms in the sleeves, so the nipped waist and flared hem show",
+            "worn closed with its own belt tied at the waist, arms in the sleeves",
+            1,
+        );
+        let warm = GLAM_HOURGLASS.replacen(
+            "; worn buttoned closed, arms in the sleeves, so the nipped waist and flared hem show",
+            "",
+            1,
+        );
+        let bare_name = "top/inner: 화이트 티 (cotton jersey), pants: 블랙 레더 미디 스커트 (leather, midi), outerwear: 블랙 레더 라이더 자켓, shoes: 블랙 부츠 (leather)";
+        for g in [StyleGenre::Glam, StyleGenre::Edgy, StyleGenre::Pop] {
+            let b = lookbook_open_outer_items(g, &belted).unwrap();
+            assert!(b.contains("its own belt untied, the belt ends hanging loose at the sides"));
+            assert!(b.contains("any flare or volume in the hem keep their own cut"));
+            let w = lookbook_open_outer_items(g, &warm).unwrap();
+            assert!(w.contains("matte buttons, insulated lining; both arms in the sleeves"));
+            assert!(w.contains("the front left unfastened"));
+            let n = lookbook_open_outer_items(g, bare_name).unwrap();
+            assert!(n.contains("outerwear: 블랙 레더 라이더 자켓 (both arms in the sleeves"));
+            assert!(n.contains("front line of the skirt"));
+            assert!(!n.contains("her bag"));
+            for items in [belted.as_str(), warm.as_str(), bare_name] {
+                for h in [0u64, 42, u64::MAX] {
+                    assert_no_closed_conflict(&build_image_prompt(g, items, h));
+                }
+            }
+        }
+    }
+
+    /// 앞여밈이 없는 옷·이미 열린 착용·아우터 없음은 열지 않는다 — 프롬프트가 예전 그대로다
+    /// (팝의 "열지 말라" 문장, 글램·엣지의 "nothing opened up" 문장 유지). 지퍼 후드는 연다.
+    #[test]
+    fn non_front_opening_outers_are_never_forced_open() {
+        let base = "top/inner: 코발트 블루 크롭 니트 (soft cotton-blend knit, cropped length), pants: 블랙 와이드 슬랙스 (polyester, wide leg), outerwear: {O}, shoes: 블랙 레더 앵클부츠 (leather)";
+        let shut = [
+            "그레이 하프집 플리스 (fleece, half-zip, stand collar; worn closed with its own fastening, arms in the sleeves)",
+            "올리브 풀오버 아노락 (nylon, pullover, kangaroo pocket)",
+            "카멜 울 판초 (wool, poncho)",
+            "그레이 후드티 (cotton fleece, hoodie)",
+            "블랙 트렌치코트 (cotton gabardine; worn open over the shoulders)",
+        ];
+        for o in shut {
+            let items = base.replace("{O}", o);
+            for g in [StyleGenre::Glam, StyleGenre::Edgy, StyleGenre::Pop] {
+                assert_eq!(lookbook_open_outer_items(g, &items), None, "{g} {o}");
+                let p = build_image_prompt(g, &items, 42);
+                assert!(p.contains(&items));
+                assert!(!p.contains("so it falls open naturally"));
+                assert!(!p.contains("Apart from the outerwear front"));
+            }
+            let pop = build_image_prompt(StyleGenre::Pop, &items, 7);
+            assert!(pop.contains("never open it to show the colour of what is underneath"));
+        }
+        let no_outer = "top/inner: 블랙 리브 탱크탑 (ribbed cotton), pants: 샴페인 새틴 슬립 미디스커트 (satin, bias cut), shoes: 누드베이지 플랫 (leather)";
+        for g in [StyleGenre::Glam, StyleGenre::Edgy, StyleGenre::Pop] {
+            assert_eq!(lookbook_open_outer_items(g, no_outer), None);
+        }
+        assert!(
+            build_image_prompt(StyleGenre::Glam, no_outer, 3)
+                .contains("Nothing is shortened, opened up or embellished")
+        );
+        let zip_hood = base.replace("{O}", "네이비 스웻 집업 후디 (french terry, hooded zip)");
+        assert!(lookbook_open_outer_items(StyleGenre::Pop, &zip_hood).is_some());
+    }
+
+    /// 스커트면 "trousers" 대신 스커트로, 가방이 없으면 가방 문구를 쓰지 않는다.
+    #[test]
+    fn edgy_open_outer_names_the_bottom_and_bag_it_has() {
+        let skirt = EDGY_JERSEY_PUFFER
+            .replacen(
+                "인디고 와이드 데님 (denim, wide leg, rigid)",
+                "블랙 레더 미디 스커트 (leather, midi length)",
+                1,
+            )
+            .replacen(
+                ", bag: 버건디 레더 박스 크로스백 (smooth leather, compact box shape, adjustable crossbody strap)",
+                "",
+                1,
+            );
+        let opened = edgy_open_outer_items(&skirt).unwrap();
+        assert!(opened.contains("front line of the skirt"));
+        assert!(!opened.contains("trousers"));
+        assert!(!opened.contains("her bag"));
+    }
+
+    /// 실제 생성 1장(유료). DB·캐시·룩북은 읽지도 쓰지도 않고, 서버와 같은 프롬프트·크기·품질로
+    /// 만든 원본 PNG 바이트를 `EDGY_OPEN_OUTER_OUT`(기본 /tmp/edgy_open_outer) 아래에만 저장한다.
+    /// 성별 검수 단계는 거치지 않는다.
+    ///
+    /// `cargo test --lib edgy_open_outer_live_render -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore = "유료 이미지 생성 — 수동 실행"]
+    async fn edgy_open_outer_live_render() {
+        use base64::Engine;
+        let _ = dotenvy::dotenv();
+        let (outfit_hash, prompt_hash, _, prompt) =
+            image_cache_keys(EDGY_JERSEY_PUFFER, StyleGenre::Edgy);
+        assert!(prompt.contains("front worn open wide"));
+        let llm = crate::services::llm::LlmClient::from_env(reqwest::Client::new());
+        let image = llm
+            .generate_image(&LlmImageRequest {
+                prompt: prompt.clone(),
+                size: "1024x1536".to_string(),
+                quality: "low".to_string(),
+                moderation: Some(image_moderation()),
+            })
+            .await
+            .expect("이미지 생성");
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(&image.b64_png)
+            .unwrap();
+        let dir = std::path::PathBuf::from(
+            std::env::var("EDGY_OPEN_OUTER_OUT").unwrap_or("/tmp/edgy_open_outer".into()),
+        );
+        std::fs::create_dir_all(&dir).unwrap();
+        let png = dir.join(format!("{outfit_hash}_{prompt_hash}.png"));
+        std::fs::write(&png, &bytes).unwrap();
+        std::fs::write(
+            dir.join(format!("{outfit_hash}_{prompt_hash}.prompt.txt")),
+            &prompt,
+        )
+        .unwrap();
+        println!("saved {}", png.display());
     }
 
     /// 엣지의 장소가 어두운 골목·그래피티·네온으로 수렴하지 않는다. 밝은 장소와 색이 있는
@@ -5677,12 +6360,18 @@ mod tests {
     /// 8°C 체크 코트 사진이 열린 채 나왔다). 표정은 밝지만 광고 미소·아이돌 포즈는 아니다.
     /// 공통 얼굴(실제 성인, 개인의 얼굴)과 머리부터 신발까지의 구도는 그대로다.
     #[test]
-    fn pop_prompt_keeps_listed_colours_and_closed_coats() {
+    fn pop_prompt_keeps_listed_colours_and_opens_coats() {
+        // 2026-11-19: 여민 코트도 새 사진에서는 양팔을 소매에 둔 채 앞만 연다. "열지 말라"
+        // 문장은 연 착장에서는 빠지고, 체크 코트의 색·무늬 설명은 그대로다.
+        let opened = lookbook_open_outer_items(StyleGenre::Pop, POP_ITEMS).unwrap();
+        assert!(opened.contains(
+            "bold check in green and red, knee-length, insulated lining; both arms in the sleeves"
+        ));
         for h in [0u64, 1, 42, 1 << 40, 3 << 48, u64::MAX] {
             let p = build_image_prompt(StyleGenre::Pop, POP_ITEMS, h);
-            assert!(p.contains(POP_ITEMS));
-            assert!(p.contains("worn closed with its own fastening, arms in the sleeves"));
-            assert!(p.contains("never open it to show the colour of what is underneath"));
+            assert!(p.contains(&opened));
+            assert_no_closed_conflict(&p);
+            assert!(p.contains("The outerwear is worn open exactly as listed"));
             assert!(p.contains("no new print, logo, slogan or decoration added"));
             assert!(!p.contains("muted neutral palette"));
             assert!(!p.contains("restrained saturation"));
@@ -5873,6 +6562,222 @@ mod tests {
                 "attempt={attempt}"
             );
         }
+    }
+
+    // ─── 상담에도 홈 글램 기준(`mood_gate::reads_as_seen`) — 2026-11-19 사용자 ───
+
+    fn glam_cold_wardrobe(with_satin: bool) -> Vec<Clothing> {
+        use crate::models::style_vocab::Thickness;
+        let mut coat = chat_item(
+            "o",
+            "블랙 아워글라스 롱 울 코트",
+            "아우터",
+            "wool",
+            "hourglass silhouette, nipped waist, mid-calf length, insulated lining",
+        );
+        coat.thickness = Thickness::Thick;
+        coat.sub_category = Some("롱코트".into());
+        let mut knit = chat_item(
+            "k",
+            "아이보리 리브드 슬림 니트",
+            "상의",
+            "knit",
+            "ribbed knit, slim fit",
+        );
+        knit.color = Some("아이보리".into());
+        let mut slacks = chat_item(
+            "b",
+            "차콜 와이드 슬랙스",
+            "하의",
+            "wool",
+            "wide leg, full length",
+        );
+        slacks.color = Some("차콜".into());
+        let mut v = vec![
+            coat,
+            knit,
+            slacks,
+            chat_item("s", "블랙 레더 앵클부츠", "신발", "leather", "ankle boot"),
+            {
+                let mut bag = chat_item(
+                    "g",
+                    "실버 미니 체인 숄더백",
+                    "가방",
+                    "leather",
+                    "chain strap",
+                );
+                bag.color = Some("실버".into());
+                bag
+            },
+        ];
+        if with_satin {
+            v.push(chat_item(
+                "m",
+                "블랙 미디 새틴 롱스커트",
+                "하의",
+                "satin",
+                "satin, midi length",
+            ));
+        }
+        v
+    }
+
+    fn glam_ctx<'a>(
+        feedback: &'a outfit_scorer::FeedbackContext,
+        recent: &'a outfit_scorer::RecentHistory,
+        mood: Option<StyleGenre>,
+    ) -> OutfitContext<'a> {
+        OutfitContext {
+            user: None,
+            temperature: Some(3.0),
+            feedback,
+            recent,
+            mood,
+        }
+    }
+
+    /// 글램 코트(아워글라스)만 글램인 옷장: 홈처럼 코트만으로는 글램이 아니다. 상담은 기본 코디로
+    /// 채우되 글램으로 표시하지 않고(`off_mood_for`), 모델에게도 글램이라 소개하지 말라고 적는다.
+    /// 새틴 스커트가 있으면 그 조합을 고르고 글램으로 표시한다.
+    #[test]
+    fn chat_glam_uses_the_home_visible_inner_rule() {
+        let feedback = outfit_scorer::FeedbackContext {
+            item_adj: Default::default(),
+            preference: Default::default(),
+        };
+        let recent = outfit_scorer::RecentHistory {
+            item_freq: Default::default(),
+        };
+        let ctx = glam_ctx(&feedback, &recent, Some(StyleGenre::Glam));
+
+        let basic = glam_cold_wardrobe(false);
+        let (json_out, items, _) = today_outfit(&basic, &ctx);
+        assert!(!items.is_empty(), "{json_out}");
+        assert!(off_mood_for(
+            Some(StyleGenre::Glam),
+            &items,
+            &basic,
+            Some(3.0)
+        ));
+        let noted = with_off_mood_note(json_out.clone(), true);
+        assert!(noted.contains("mood_note"), "{noted}");
+        assert!(!with_off_mood_note(json_out, false).contains("mood_note"));
+        // 다른 무드 표시는 예전과 같다(엣지에서 이 코디는 판정하지 않는다).
+        assert!(!off_mood_for(
+            Some(StyleGenre::Edgy),
+            &items,
+            &basic,
+            Some(3.0)
+        ));
+
+        let with_satin = glam_cold_wardrobe(true);
+        let (_, items, _) = today_outfit(&with_satin, &ctx);
+        let names: Vec<&str> = items.iter().map(|i| i.name.as_str()).collect();
+        assert!(names.contains(&"블랙 미디 새틴 롱스커트"), "{names:?}");
+        assert!(!off_mood_for(
+            Some(StyleGenre::Glam),
+            &items,
+            &with_satin,
+            Some(3.0)
+        ));
+        // 기준 옷이 코트여도(get_outfit) 안에 보이는 하의를 글램으로 고른다. 새틴 스커트의 피드백
+        // 보정이 낮아 점수로는 슬랙스가 앞서는 상황이다 — 예전 판정(코트의 "hourglass" 로 통과)이면
+        // 슬랙스 코디가 글램으로 나갔다.
+        let cooler = outfit_scorer::FeedbackContext {
+            item_adj: [("블랙 미디 새틴 롱스커트".to_string(), -30)]
+                .into_iter()
+                .collect(),
+            preference: Default::default(),
+        };
+        let pick = |mood| {
+            let ctx = glam_ctx(&cooler, &recent, mood);
+            build_final_outfit(&with_satin[0], &with_satin, &ctx)
+                .unwrap()
+                .1
+                .into_iter()
+                .map(|i| i.name)
+                .collect::<Vec<_>>()
+        };
+        assert!(!pick(None).contains(&"블랙 미디 새틴 롱스커트".to_string()));
+        assert!(pick(Some(StyleGenre::Glam)).contains(&"블랙 미디 새틴 롱스커트".to_string()));
+    }
+
+    /// 검증(evaluate_outfit)도 같은 기준이다 — 코트만 글램이면 문제로 알리고, 안에 새틴이 있으면 알리지 않는다.
+    /// 글램이 아닌 무드에는 이 문제를 붙이지 않는다.
+    #[test]
+    fn chat_glam_evaluation_flags_a_coat_only_look() {
+        let w = glam_cold_wardrobe(true);
+        let pick = |ids: &[&str]| -> Vec<&Clothing> {
+            ids.iter()
+                .map(|id| w.iter().find(|c| c.id == *id).unwrap())
+                .collect()
+        };
+        let coat_only = pick(&["o", "k", "b", "s", "g"]);
+        let satin = pick(&["o", "k", "m", "s", "g"]);
+        let flagged = |items: &[&Clothing], mood| {
+            tool_evaluate_outfit(items, None, mood).contains("glam_inner_missing")
+        };
+        assert!(flagged(&coat_only, Some(StyleGenre::Glam)));
+        assert!(!flagged(&satin, Some(StyleGenre::Glam)));
+        assert!(!flagged(&coat_only, Some(StyleGenre::Edgy)));
+        assert!(!flagged(&coat_only, None));
+    }
+
+    /// 한 칸 바꾸기(swap_item, 원하는 것을 말하지 않음): 글램이면 바꾼 뒤에도 보이는 착장이 글램인 옷을
+    /// 먼저 본다. 그런 옷이 없으면 예전처럼 궁합 최고점이다.
+    #[test]
+    fn chat_glam_swap_keeps_a_visible_glam_piece() {
+        let w = glam_cold_wardrobe(true);
+        let kept: Vec<&Clothing> = ["o", "k", "s", "g"]
+            .iter()
+            .map(|id| w.iter().find(|c| c.id == *id).unwrap())
+            .collect();
+        let mut bottoms: Vec<Clothing> =
+            w.iter().filter(|c| c.category == "하의").cloned().collect();
+        for (id, name, color, mat, kw) in [
+            (
+                "d1",
+                "아이보리 와이드 데님",
+                "아이보리",
+                "denim",
+                "wide leg denim",
+            ),
+            (
+                "d2",
+                "블랙 스트레이트 데님",
+                "블랙",
+                "denim",
+                "straight denim",
+            ),
+            ("d3", "카멜 울 슬랙스", "카멜", "wool", "straight slacks"),
+            (
+                "d4",
+                "그레이 플리츠 스커트",
+                "그레이",
+                "wool",
+                "pleated midi",
+            ),
+        ] {
+            let mut c = chat_item(id, name, "하의", mat, kw);
+            c.color = Some(color.into());
+            bottoms.push(c);
+        }
+        // 궁합만 보면 새틴 스커트가 아니다(같은 점수의 데님이 뒤에 있다) — 아래 선택은 글램 기준 덕이다.
+        assert_ne!(
+            best_fit_swap(&bottoms, &kept, None, Some(3.0)).unwrap().id,
+            "m"
+        );
+        let glam = best_fit_swap(&bottoms, &kept, Some(StyleGenre::Glam), Some(3.0)).unwrap();
+        assert_eq!(glam.id, "m");
+        let only_slacks: Vec<Clothing> = bottoms.iter().filter(|c| c.id == "b").cloned().collect();
+        let fallback =
+            best_fit_swap(&only_slacks, &kept, Some(StyleGenre::Glam), Some(3.0)).unwrap();
+        assert_eq!(fallback.id, "b");
+        // 엣지·무드 없음은 예전과 같은 고르기다.
+        assert_eq!(
+            best_fit_swap(&bottoms, &kept, Some(StyleGenre::Edgy), Some(3.0)).map(|c| &c.id),
+            best_fit_swap(&bottoms, &kept, None, Some(3.0)).map(|c| &c.id),
+        );
     }
 }
 

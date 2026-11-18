@@ -219,6 +219,7 @@ impl Ctx {
             items,
             final_score: 80,
             style_score: 80,
+            off_mood: false,
         };
         let ctx = BatchContext {
             gender: None,
@@ -847,6 +848,7 @@ async fn batch_refs_are_stable_for_the_same_result() {
         items: vec![item],
         final_score: 80,
         style_score: 80,
+        off_mood: false,
     };
     let batch = uuid::Uuid::new_v4().to_string();
     let bc = BatchContext {
@@ -1852,5 +1854,142 @@ async fn database_refuses_bad_states_directly() {
             sqlx::query(sql).bind(id).execute(&ctx.db).await.is_err(),
             "{sql}"
         );
+    }
+}
+
+/// 글램 기준은 홈·상담·매일 코디가 같다(`mood_gate::reads_as_seen`, 2026-11-19 사용자).
+///   - 홈에서 '기본 코디' 로 보인 카드(off_mood)의 참조에는 무드를 적지 않는다.
+///   - 글램 코디의 하의 바꾸기: 상의·하의에 글램 근거가 생기는 옷만 남긴다. 그런 옷이 없으면 기본 옷을
+///     남기되 알리고(notice), 그 대안은 off_mood 이며 새 참조에 글램을 적지 않는다.
+#[tokio::test]
+async fn glam_refs_and_replacements_do_not_claim_glam_for_basic_looks() {
+    let ctx = ctx!();
+    let add = |user: usize,
+               key: &'static str,
+               category: &'static str,
+               material: &'static str,
+               keywords: &'static str| {
+        let ctx = &ctx;
+        async move {
+            sqlx::query(
+                "INSERT INTO clothing (id, user_id, name, category, color, thickness, tone, material_primary, texture_keywords) \
+                 VALUES (?, ?, ?, ?, '블랙', 'medium', '어두움', ?, ?)",
+            )
+            .bind(ctx.id(user, key))
+            .bind(ctx.user(user))
+            .bind(format!("{user}번 {key}"))
+            .bind(category)
+            .bind(material)
+            .bind(keywords)
+            .execute(&ctx.db)
+            .await
+            .expect("옷");
+        }
+    };
+    for user in 0..2 {
+        add(user, "gl-knit", "상의", "knit", "ribbed knit, slim fit").await;
+        add(user, "gl-slacks", "하의", "wool", "wide leg").await;
+        add(user, "gl-slacks2", "하의", "wool", "straight leg").await;
+        add(
+            user,
+            "gl-coat",
+            "아우터",
+            "wool",
+            "hourglass silhouette, long",
+        )
+        .await;
+        add(user, "gl-heel", "신발", "leather", "pointed pump").await;
+        add(user, "gl-bag", "가방", "leather", "shoulder bag").await;
+    }
+    // 0번만 새틴 스커트가 있다.
+    add(0, "gl-satin", "하의", "satin", "satin, midi length").await;
+
+    let glam_ref = |user: usize, off_mood: bool| {
+        let ctx = &ctx;
+        async move {
+            let items: Vec<ItemSnapshot> = [
+                ("gl-knit", "상의"),
+                ("gl-slacks", "하의"),
+                ("gl-coat", "아우터"),
+                ("gl-heel", "신발"),
+                ("gl-bag", "가방"),
+            ]
+            .iter()
+            .map(|(k, c)| ctx.snapshot(user, k, c))
+            .collect();
+            let cand = CandidateSnapshot {
+                mode: "todays_pick".into(),
+                position: 0,
+                item_key: item_key(items.iter().map(|i| i.id.as_str())),
+                items,
+                final_score: 80,
+                style_score: 80,
+                off_mood,
+            };
+            let bc = BatchContext {
+                gender: None,
+                mood_key: Some("glam"),
+                occasion: Some("일상"),
+                weather: json!({ "temperature": 15.0, "weather_description": "맑음" }),
+                provenance: json!({}),
+            };
+            let batch = uuid::Uuid::new_v4().to_string();
+            flow::save_batch_refs(&ctx.db, ctx.user(user), &batch, &bc, &[cand])
+                .await
+                .unwrap()
+                .remove(0)
+                .unwrap()
+        }
+    };
+
+    // 홈 '기본 코디' 카드의 참조에는 무드가 없다. 글램으로 보인 카드는 그대로 글램이다.
+    let basic = glam_ref(0, true).await;
+    let saved = flow::get_ref(&ctx.db, ctx.user(0), &basic).await.unwrap();
+    assert!(saved.context["mood_key"].is_null(), "{}", saved.context);
+    let glam = glam_ref(0, false).await;
+    let saved = flow::get_ref(&ctx.db, ctx.user(0), &glam).await.unwrap();
+    assert_eq!(saved.context["mood_key"], "glam");
+
+    // 0번: 코트(아워글라스)만 글램인 코디의 하의를 바꾸면 새틴 스커트만 남는다(슬랙스2 는 코트만 글램).
+    let (st, r) = ctx
+        .post(
+            0,
+            "replacement",
+            json!({ "outfit_ref": glam, "category": "하의" }),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    let alts = r["alternatives"].as_array().unwrap();
+    let new_items: Vec<&str> = alts
+        .iter()
+        .map(|a| a["new_item"]["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(new_items, [ctx.id(0, "gl-satin").as_str()], "{r}");
+    assert_eq!(alts[0]["off_mood"], false);
+    assert!(r["notice"].is_null(), "{r}");
+    let new_ref = alts[0]["outfit_ref"].as_str().unwrap();
+    let saved = flow::get_ref(&ctx.db, ctx.user(0), new_ref).await.unwrap();
+    assert_eq!(saved.context["mood_key"], "glam");
+
+    // 1번: 글램 근거가 생기는 하의가 없다 — 기본 옷을 남기되 알리고, 글램 코디로 저장하지 않는다.
+    let glam1 = glam_ref(1, false).await;
+    let (st, r) = ctx
+        .post(
+            1,
+            "replacement",
+            json!({ "outfit_ref": glam1, "category": "하의" }),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    assert!(r["notice"].is_string(), "{r}");
+    let alts = r["alternatives"].as_array().unwrap();
+    assert!(!alts.is_empty(), "{r}");
+    for a in alts {
+        assert_eq!(a["off_mood"], true, "{a}");
+        let saved = flow::get_ref(&ctx.db, ctx.user(1), a["outfit_ref"].as_str().unwrap())
+            .await
+            .unwrap();
+        assert!(saved.context["mood_key"].is_null(), "{}", saved.context);
+        assert_eq!(saved.context["off_mood_from"], "glam");
     }
 }

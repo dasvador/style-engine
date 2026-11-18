@@ -283,8 +283,9 @@ export function HomePage({
         key: `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`,
         sig: outfitSig(m.outfit),
         title: m.mode_label,
-        meta: `${time} · ${moodLabel} · ${r.weather_summary}`,
-        moodKey: selectedMood,
+        // 무드 후보가 없어 기본 코디로 채운 카드는 그 무드로 표시·저장·이미지 생성하지 않는다.
+        meta: `${time} · ${m.off_mood ? '기본 코디' : moodLabel} · ${r.weather_summary}`,
+        moodKey: m.off_mood ? null : selectedMood,
         outfit: m.outfit,
         reason: m.reason,
         recommendation: m.recommendation,
@@ -640,6 +641,7 @@ export function HomePage({
 
         {looks.length > 0 && compareBatch && (
           <CompareEntry
+            key={compareBatch.batchId}
             batch={compareBatch}
             onOpen={(batchId) => navigate('/compare', { state: { batchId } })}
           />
@@ -661,6 +663,20 @@ function CompareEntry({
   batch: CompareBatch;
   onOpen: (batchId: string) => void;
 }) {
+  const { batchId } = batch;
+  const [voted, setVoted] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!batchId) return;
+    let active = true;
+    void api.comparisons.hasVote(batchId).then(
+      (value) => { if (active) setVoted(value); },
+      () => { if (active) setVoted(false); },
+    );
+    return () => { active = false; };
+  }, [batchId]);
+
+  if (batchId && voted !== false) return null;
+
   const reason =
     batch.distinct < 2
       ? '이번 추천에는 서로 다른 코디가 두 벌 이상 없어 비교할 수 없어요. 코디를 더 만들면 다시 열려요.'

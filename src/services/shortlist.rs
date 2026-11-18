@@ -293,6 +293,9 @@ pub fn borrow_for_situation(
 }
 
 /// 얇은 이너가 많은 무드도 한겨울에 입을 수 있도록, 무드 안에 없는 겨울 외투 한 벌을 찾는다.
+// 바이너리의 홈 추천(`routes::recommendation`)만 쓴다. 같은 모듈이 라이브러리에도 컴파일되어
+// 거기서는 쓰이지 않는다.
+#[allow(dead_code)]
 pub(crate) fn borrow_winter_outer<'a>(
     pool: &[Clothing],
     wardrobe: &'a [Clothing],
@@ -465,6 +468,41 @@ pub fn build_shortlist<'a>(
     }
 
     selected
+}
+
+/// 반복 감점(`penalty`)으로 한 슬롯의 목록을 새로 고친다(엣지 하의 다양성, 2026-11-18). 날씨·상황을
+/// 지난 옷(`eligible`) 중 목록 밖에서 감점이 더 작은 옷이 있으면, 목록에서 감점이 가장 큰 옷과
+/// 바꾼다(목록 크기는 그대로). 그다음 감점이 작은 순서로 안정 정렬한다 — 모델이 보는 참조 번호
+/// (B1·B2…)도 그 순서다. 감점이 모두 같으면 목록은 그대로다. 날씨·상황 기준은 바꾸지 않는다.
+pub fn refresh_by<'a>(
+    selected: Vec<&'a Clothing>,
+    clothes: &'a [Clothing],
+    category: &str,
+    ctx: &ShortlistContext,
+    penalty: impl Fn(&Clothing) -> i32,
+) -> Vec<&'a Clothing> {
+    let mut list = selected;
+    let mut outside: Vec<(&'a Clothing, i32)> = eligible(clothes, category, ctx)
+        .into_iter()
+        .filter(|(c, _)| !list.iter().any(|s| s.id == c.id))
+        .collect();
+    outside.sort_by_key(|(c, score)| (penalty(c), std::cmp::Reverse(*score)));
+    for (c, _) in outside {
+        let Some((worst, worst_p)) = list
+            .iter()
+            .enumerate()
+            .map(|(i, s)| (i, penalty(s)))
+            .max_by_key(|(_, p)| *p)
+        else {
+            break;
+        };
+        if penalty(c) >= worst_p {
+            break;
+        }
+        list[worst] = c;
+    }
+    list.sort_by_key(|c| penalty(c));
+    list
 }
 
 /// 전체 wardrobe에서 모든 슬롯의 shortlist를 한 번에 생성.
@@ -1013,5 +1051,43 @@ mod tests {
         // 한 벌뿐이면 그대로다.
         let one = vec![winter("패디드 코트"), plain];
         assert_eq!(names(&one, -5.0).len(), 2);
+    }
+
+    /// 반복 감점으로 목록을 새로 고친다: 목록 밖의 덜 겹치는 옷이 가장 많이 겹치는 옷과 자리를
+    /// 바꾸고, 감점이 작은 순서로 정렬된다. 크기는 그대로, 감점이 모두 같으면 목록도 그대로다.
+    #[test]
+    fn refresh_by_swaps_in_fresher_items_and_orders_by_penalty() {
+        let clothes: Vec<Clothing> = ["a", "b", "c", "d"]
+            .iter()
+            .map(|n| item(n, "하의", Style::Basic, 2))
+            .collect();
+        let recent = HashSet::new();
+        let ctx = ShortlistContext {
+            temperature: 15.0,
+            situation: None,
+            current_season: None,
+            recent_item_ids: &recent,
+        };
+        let pick = |ids: &[&str]| -> Vec<&Clothing> {
+            ids.iter()
+                .map(|i| clothes.iter().find(|c| c.id == *i).unwrap())
+                .collect()
+        };
+        let pen = |c: &Clothing| match c.id.as_str() {
+            "a" => 5,
+            "b" => 1,
+            "c" => 3,
+            _ => 0,
+        };
+        let got: Vec<&str> = refresh_by(pick(&["a", "b", "c"]), &clothes, "하의", &ctx, pen)
+            .iter()
+            .map(|c| c.id.as_str())
+            .collect();
+        assert_eq!(got, ["d", "b", "c"]);
+        let same: Vec<&str> = refresh_by(pick(&["a", "b", "c"]), &clothes, "하의", &ctx, |_| 0)
+            .iter()
+            .map(|c| c.id.as_str())
+            .collect();
+        assert_eq!(same, ["a", "b", "c"]);
     }
 }

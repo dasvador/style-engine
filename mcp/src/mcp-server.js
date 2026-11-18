@@ -536,6 +536,10 @@ const recommendOutput = z.object({
           .nullable()
           .describe('이 코디의 서버 참조. 바꾸기·계획·착용 기록에 이 값을 그대로 쓴다. 비어 있으면 이 코디는 기록할 수 없다.'),
         wear_note: z.string().nullable().describe('최근 실제로 입은 옷이 들어 있으면 그 사실 한 줄.'),
+        off_mood: z
+          .boolean()
+          .optional()
+          .describe('true 면 고른 무드로 읽히지 않는 기본 코디다(그 무드의 후보가 없어 채움). 그 무드 코디로 소개하지 않는다.'),
       }),
     )
     .optional(),
@@ -591,6 +595,7 @@ async function shapeRecommendation(live, userId, request, body, context) {
     tips: Array.isArray(m.tips) ? m.tips.slice(0, 6).map((t) => str(t, 300)) : [],
     outfit_ref: typeof m.outfit_ref === 'string' && OUTFIT_REF.test(m.outfit_ref) ? m.outfit_ref : null,
     wear_note: str(m.wear_note, 400) || null,
+    off_mood: m.off_mood === true,
     items: (Array.isArray(m.outfit) ? m.outfit : []).map((i) => ({
       id: str(i.id, 64),
       name: str(i.name, 200),
@@ -626,7 +631,7 @@ function recommendText(r) {
   ].filter(Boolean);
   const body = r.modes.map(
     (m) =>
-      `■ ${m.label} (${m.verdict} ${m.score})\n${m.items.map((i) => `- [${i.category}] ${i.name} (id ${i.id}): ${i.reason}`).join('\n')}` +
+      `■ ${m.label}${m.off_mood ? ' · 기본 코디(고른 무드 근거 없음)' : ''} (${m.verdict} ${m.score})\n${m.items.map((i) => `- [${i.category}] ${i.name} (id ${i.id}): ${i.reason}`).join('\n')}` +
       (m.summary ? `\n${m.summary}` : '') +
       (m.reason ? `\n선정 이유: ${m.reason}` : '') +
       (m.wear_note ? `\n${m.wear_note}` : '') +

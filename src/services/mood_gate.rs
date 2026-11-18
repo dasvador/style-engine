@@ -382,6 +382,44 @@ pub fn reads_as_at(
     )
 }
 
+/// 홈 글램 카드에서 코트 안에 보이는 착장이 글램인가(2026-11-19 사용자).
+///
+/// 룩북 사진은 글램의 앞여밈 아우터를 열어 그린다(`chat::lookbook_open_outer_items`). 그래서
+/// 아우터 한 벌의 글램 요소만으로는 모자라다 — 2026-11-19 3.1°C 실제 오늘의 추천이 블랙
+/// 아워글라스 롱 울 코트(설명의 "hourglass" 로 글램 옷)에 블랙 리브드 슬림 니트·화이트 와이드
+/// 데님·블랙 레더 앵클부츠·블랙 미니 체인 숄더백이었고, 코트를 연 사진은 미니멀이었다.
+///
+/// 상의·하의 중 하나가 글램 옷(`is_glam_piece` — 새틴·벨벳·메탈릭·원숄더·드레이프·비대칭 등)
+/// 이거나, 사용자가 승인한 퍼·시어링 아우터 + 무광 트리밍 상의 짝(`mood_rules` 글램 규칙 6)이어야
+/// 한다. 가방·신발(체인 가방·가죽 부츠)은 세지 않는다. 색은 보지 않는다 — 흑백 착장도 소재·
+/// 형태 근거가 있으면 글램이다. 아우터가 없는 착장은 예전 판정(`reads_as`)과 같다.
+pub fn glam_visible_inner(outfit: &[&Clothing]) -> bool {
+    let by = |cat: &str| outfit.iter().copied().find(|c| c.category == cat);
+    let inner = outfit
+        .iter()
+        .any(|c| matches!(c.category.as_str(), "상의" | "하의") && is_glam_piece(c));
+    let pile_pair = matches!(
+        (by("아우터"), by("상의")),
+        (Some(o), Some(t)) if crate::services::mood_rules::pile_outer_and_trimmed_top(o, t)
+    );
+    inner || pile_pair
+}
+
+/// 화면에 보이는 착장으로 무드를 읽을 수 있는가 — 홈 추천(`routes::recommendation`)·상담
+/// (`routes::chat`)·매일 코디 바꾸기(`routes::outfit_flow`)가 함께 쓰는 한 기준이다(2026-11-19
+/// 사용자: 상담·매일 코디에도 홈 글램 기준을 적용). 글램만 `glam_visible_inner` 로 보고, 다른
+/// 무드는 `reads_as_at` 그대로다.
+pub fn reads_as_seen(
+    mood: StyleGenre,
+    outfit: &[&Clothing],
+    temperature: Option<f64>,
+) -> Option<bool> {
+    match mood {
+        StyleGenre::Glam => Some(glam_visible_inner(outfit)),
+        _ => reads_as_at(mood, outfit, temperature),
+    }
+}
+
 fn is_garment(category: &str) -> bool {
     matches!(category, "상의" | "하의" | "아우터")
 }

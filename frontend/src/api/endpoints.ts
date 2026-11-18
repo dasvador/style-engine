@@ -124,6 +124,7 @@ export const api = {
 
   /** 두 코디 비교. 사용자는 서버가 요청에서 정한다 — 본문에 싣지 않는다. */
   comparisons: {
+    hasVote: (batchId: string) => apiGet<boolean>(`/comparisons/by-batch/${encodeURIComponent(batchId)}/voted`),
     open: (batch_id: string) => apiPost<Comparison>('/comparisons', { batch_id }),
     get: (id: string) => apiGet<Comparison>(`/comparisons/${encodeURIComponent(id)}`),
     vote: (id: string, body: ComparisonVoteBody) =>

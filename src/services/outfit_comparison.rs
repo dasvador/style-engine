@@ -46,6 +46,10 @@ pub struct CandidateSnapshot {
     pub items: Vec<ItemSnapshot>,
     pub final_score: i32,
     pub style_score: i32,
+    /// 고른 무드로 읽히지 않아 '기본 코디' 로 보인 카드(`ModeRecommendation::off_mood`). 이 코디의
+    /// 참조(`outfit_flow::save_batch_refs`)에는 무드를 적지 않는다. 예전 기록에는 없다.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub off_mood: bool,
 }
 
 /// 같은 코디인지 가르는 키. 순서와 상관없이 정렬한 아이템 id 를 잇는다.
@@ -88,6 +92,7 @@ pub fn snapshot_modes(
                 items,
                 final_score: m.scoring_detail.final_score,
                 style_score: m.scoring_detail.style_score,
+                off_mood: m.off_mood,
             }
         })
         .collect()
@@ -625,6 +630,7 @@ mod tests {
                 .collect(),
             final_score: 0,
             style_score: 0,
+            off_mood: false,
         }
     }
 

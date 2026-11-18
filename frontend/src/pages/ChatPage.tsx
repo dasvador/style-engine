@@ -131,7 +131,8 @@ export function ChatPage({ weather, gender, moods, selectedMood, onMoodChange }:
               reply: r.reply,
               items: r.items,
               baseItems: previousItems,
-              mood: selectedMood,
+              // 고른 무드의 조합이 없어 기본 코디로 채운 답은 그 무드의 사진으로 그리지 않는다(서버 기록도 같다).
+              mood: r.off_mood ? null : selectedMood,
             }
           : { kind: 'ai-text', id, text: r.reply || '추천 결과가 없습니다.' },
       ]);

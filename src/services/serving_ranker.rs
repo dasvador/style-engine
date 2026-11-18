@@ -27,7 +27,7 @@ const OUTER_BONUS: i32 = 2;
 /// 운영의 보수적인 기준선이지, 이 기온에서 누구나 춥다는 과학적 경계가 아니다.
 pub(crate) const NEAR_FREEZING_C: f64 = 5.0;
 /// 이 기온 미만에서는 하체가 얼마나 드러나는지를 따로 본다(같은 성격의 운영 기준).
-const LEG_CHECK_BELOW_C: f64 = 10.0;
+pub(crate) const LEG_CHECK_BELOW_C: f64 = 10.0;
 /// 이 기온 미만에서 코트는 여며 입는 것을 기준으로 판정하고, 그 상태를 응답·이미지에 넘긴다.
 pub const CLOSED_COAT_BELOW_C: f64 = 12.0;
 

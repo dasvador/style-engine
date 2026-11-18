@@ -198,6 +198,7 @@ const replaceOutput = z.object({
         items: z.array(itemOut),
         rationale: z.array(z.string()),
         weather_fit: z.string(),
+        off_mood: z.boolean().optional().describe('true 면 원래 코디의 무드(글램)로 읽히지 않는 대안이다. 그 무드 코디로 소개하지 않는다.'),
       }),
     )
     .optional(),
@@ -238,6 +239,7 @@ async function shapeReplacement(live, userId, body) {
     items: Array.isArray(a?.items) ? a.items.map(shapeItem) : [],
     rationale: Array.isArray(a?.rationale) ? a.rationale.slice(0, 6).map((t) => str(t, 300) ?? '') : [],
     weather_fit: str(a?.weather_fit, 20) ?? 'ok',
+    off_mood: a?.off_mood === true,
   }));
   if (alternatives.some((a) => !UUID.test(a.outfit_ref) || a.items.length === 0)) return failure('upstream_error');
   const ids = alternatives.flatMap((a) => a.items.map((i) => i.id));
@@ -257,7 +259,7 @@ async function shapeReplacement(live, userId, body) {
   const text = [
     `${result.message}. 고르면 그 outfit_ref 로 계획하거나 입은 기록을 남겨요. 지금은 아무것도 저장·기록하지 않았어요.`,
     ...alternatives.map(
-      (a) => `■ ${a.new_item.name} (옷 id ${a.new_item.id}, 코디 참조 ${a.outfit_ref})\n${a.items.map((i) => `- [${i.category}] ${i.name}`).join('\n')}\n이유: ${a.rationale.join(' ')}`,
+      (a) => `■ ${a.new_item.name}${a.off_mood ? ' · 기본 코디(무드 근거 없음)' : ''} (옷 id ${a.new_item.id}, 코디 참조 ${a.outfit_ref})\n${a.items.map((i) => `- [${i.category}] ${i.name}`).join('\n')}\n이유: ${a.rationale.join(' ')}`,
     ),
     result.notice ? `안내: ${result.notice}` : null,
     result.limitations.length ? `한계: ${result.limitations.join(' ')}` : null,

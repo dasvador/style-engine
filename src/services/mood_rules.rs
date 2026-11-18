@@ -306,6 +306,11 @@ pub fn pile_outer_over_trimmed_matte_top(ctx: &OutfitContext) -> bool {
     let (Some(outer), Some(top)) = (slot(SlotKind::Outer), slot(SlotKind::Top)) else {
         return false;
     };
+    pile_outer_and_trimmed_top(outer, top)
+}
+
+/// 규칙 6의 짝을 옷 두 벌로 본다. 홈 글램 판정(`mood_gate::glam_visible_inner`)도 같은 기준을 쓴다.
+pub fn pile_outer_and_trimmed_top(outer: &Clothing, top: &Clothing) -> bool {
     is_fur_or_shearling_outer(outer) && is_trimmed_matte_top(top) && !colours_clash(top, outer)
 }
 

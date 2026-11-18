@@ -145,6 +145,10 @@ pub struct ModeRecommendation {
     /// 최근 실제로 입은 옷이 들어 있으면 그 사실 한 줄(`wear_history::wear_note`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wear_note: Option<String>,
+    /// 고른 무드를 읽을 수 없는 카드(무드 후보가 없어 기본 코디로 채운 경우)면 `true`. 화면은 이
+    /// 카드를 그 무드로 표시하지 않는다. 무드를 읽거나 무드를 판정하지 않으면 보내지 않는다.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub off_mood: bool,
 }
 
 #[derive(Debug, Serialize)]

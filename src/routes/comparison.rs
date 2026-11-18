@@ -24,6 +24,7 @@ use crate::services::outfit_comparison::{
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", post(create))
+        .route("/by-batch/{batch_id}/voted", get(has_vote))
         .route("/{id}", get(show))
         .route("/{id}/vote", post(vote))
 }
@@ -70,6 +71,24 @@ async fn create(
         )),
         Err(CreateError::Db(e)) => Err(AppError::Database(e)),
     }
+}
+
+/// 홈의 버튼 표시 여부만 읽는다. 비교를 열거나 노출 이력을 만들지 않는다.
+async fn has_vote(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(batch_id): Path<String>,
+) -> Result<Json<bool>, AppError> {
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM outfit_comparison c
+         JOIN outfit_comparison_vote v ON v.comparison_id = c.id AND v.user_id = c.user_id
+         WHERE c.user_id = ? AND c.batch_id = ?",
+    )
+    .bind(&auth.user_id)
+    .bind(batch_id)
+    .fetch_one(&state.db)
+    .await?;
+    Ok(Json(count > 0))
 }
 
 async fn show(
@@ -224,6 +243,7 @@ mod tests {
             items,
             final_score: 90,
             style_score: 90,
+            off_mood: false,
         }
     }
 
@@ -670,6 +690,7 @@ mod tests {
             feedback_bonus: 0,
             outfit_ref: None,
             wear_note: None,
+            off_mood: false,
         };
         let modes = [
             mode("todays_pick", ["t1", "b1"]),

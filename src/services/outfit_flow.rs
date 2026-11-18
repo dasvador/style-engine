@@ -423,9 +423,10 @@ pub async fn save_batch_refs(
                 parent_ref_id: None,
                 replaced_category: None,
                 items: &c.items,
+                // '기본 코디' 로 보인 카드는 무드 없이 남긴다 — 계획·착용·바꾸기가 그 무드를 사칭하지 않게.
                 context: json!({
                     "occasion": ctx.occasion,
-                    "mood_key": ctx.mood_key,
+                    "mood_key": if c.off_mood { None } else { ctx.mood_key },
                     "gender": ctx.gender,
                     "mode": c.mode,
                     "weather": ctx.weather,
