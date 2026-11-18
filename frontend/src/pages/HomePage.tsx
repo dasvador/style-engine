@@ -126,7 +126,10 @@ export function HomePage({
 }: Props) {
   const navigate = useNavigate();
   // 내 룩북에서 카드를 눌러 들어오면 그 코디를 바로 띄운다.
-  const openLookId = (useLocation().state as { lookId?: string } | null)?.lookId ?? null;
+  const entry = useLocation().state as { lookId?: string; view?: 'original' | 'side' } | null;
+  const openLookId = entry?.lookId ?? null;
+  // 룩북 카드에서 옆모습을 보다 들어왔으면 그 코디만 옆모습으로 연다. 다른 코디로 넘기면 끝난다.
+  const [sideEntryId, setSideEntryId] = useState(entry?.view === 'side' ? openLookId : null);
   // 생성한 코디를 덮어쓰지 않고 쌓는다. 이미 비용을 들여 만든 이미지를 매번
   // 버리지 않고, 사용자가 둘을 나란히 두고 고를 수 있게 하기 위해서다.
   const [looks, setLooks] = useState<Look[]>([]);
@@ -191,6 +194,9 @@ export function HomePage({
             liked: v.liked,
             requestId: v.request_id ?? undefined,
             best: v.best === 1,
+            side: v.side_eligible
+              ? { status: v.side_status, imagePath: v.side_image_path }
+              : undefined,
           })),
         );
         await reconcilePlans();
@@ -612,7 +618,11 @@ export function HomePage({
           <LookbookStack
             looks={looks}
             activeIndex={Math.min(activeLook, looks.length - 1)}
-            onSelect={setActiveLook}
+            onSelect={(i) => {
+              setSideEntryId(null);
+              setActiveLook(i);
+            }}
+            sideEntryId={sideEntryId}
             onLike={(l) => void sendLike(l)}
             onWearToday={(l) => (l.plan ? navigate('/outfits') : void savePlan(l))}
             onBest={(l) => void pickBest(l)}

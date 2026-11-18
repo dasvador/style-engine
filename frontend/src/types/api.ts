@@ -347,6 +347,8 @@ export interface Look {
   plan?: 'pending' | 'planned' | 'worn';
   /** 최근 입은 옷이 들어 있다는 사실 한 줄. */
   wearNote?: string;
+  /** 저장된 룩을 다시 연 경우의 옆모습 정보. 옆모습을 만들 수 없는 사진이면 없다. */
+  side?: { status: SideStatus | null; imagePath: string | null };
 }
 
 export interface SetGenresBody {
@@ -374,6 +376,21 @@ export interface SavedLook {
   /** 이 코디가 나온 가장 최근 홈 추천과, 그 묶음에서 "제일" 로 골랐는지(1). */
   request_id: string | null;
   best: number;
+  /** 이 사진의 90도 옆모습 상태. 만든 적이 없으면 null. */
+  side_status: SideStatus | null;
+  /** 다 만든 옆모습. 원본(`image_path`)은 그대로 있다. */
+  side_image_path: string | null;
+  /** 옆모습을 만들 수 있는 사진인가(내 착용 사진, 의류 배치 아님). */
+  side_eligible: boolean;
+}
+
+export type SideStatus = 'none' | 'pending' | 'ready' | 'failed' | 'blocked' | 'budget';
+
+export interface SideView {
+  status: SideStatus;
+  image_path: string | null;
+  /** 다시 누르면 다시 만들어 볼 수 있는가. */
+  retryable: boolean;
 }
 
 /** 룩북에서 지우는 이유. 코디가 별로인 것만 취향 비교에서 진 쪽으로 센다. */

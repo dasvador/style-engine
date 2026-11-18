@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/endpoints';
 import { errorMessage } from '../api/client';
 import type { DeleteReason, SavedLook } from '../types/api';
+import { useLookSide, type AngleView, type LookSide } from '../hooks/useLookSide';
+import { SideError, SideToggle } from '../components/SideToggle';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState, ErrorMessage, Loading } from '../components/Status';
 
@@ -101,7 +103,7 @@ export function LookbookPage() {
                 <LookCard
                   key={l.id}
                   look={l}
-                  onOpen={() => navigate('/', { state: { lookId: l.id } })}
+                  onOpen={(view) => navigate('/', { state: { lookId: l.id, view } })}
                   onGenerated={(id, image_path) =>
                     setLooks((prev) =>
                       (prev ?? []).map((x) => (x.id === id ? { ...x, image_path } : x)),
@@ -125,7 +127,7 @@ function LookCard({
   onDeleted,
 }: {
   look: SavedLook;
-  onOpen: () => void;
+  onOpen: (view: AngleView) => void;
   onGenerated: (id: string, url: string) => void;
   onDeleted: (id: string) => void;
 }) {
@@ -148,6 +150,9 @@ function LookCard({
     }
   };
   const url = look.image_path;
+  const side = useLookSide(look.id, { status: look.side_status, imagePath: look.side_image_path });
+  // 카드에서 옆모습을 보는 중이면 상세도 옆모습으로 연다.
+  const open = () => onOpen(side.shownUrl ? 'side' : 'original');
 
   // 사진이 없는 코디는 생성한 적이 없거나 검증을 통과하지 못한 것이다.
   // 목록을 여는 것만으로 자동 생성하지는 않는다 — 비용이 조용히 나가면 안 된다.
@@ -169,9 +174,7 @@ function LookCard({
   return (
     <div className="saved-card">
       {url ? (
-        <button className="saved-open" onClick={onOpen} title="이 코디 열기">
-          <img className="saved-thumb" src={url} alt="" />
-        </button>
+        <LookPhoto look={look} url={url} side={side} onOpen={open} />
       ) : (
         <span className="saved-thumb-empty">
           {making ? (
@@ -185,7 +188,7 @@ function LookCard({
           )}
         </span>
       )}
-      <button className="saved-open-text" onClick={onOpen}>
+      <button className="saved-open-text" onClick={open}>
         <span className="saved-card-title">{look.title}</span>
         <span className="saved-card-meta">{formatDate(look.created_at)}</span>
         <span className="saved-card-items">
@@ -235,6 +238,44 @@ function LookCard({
         </span>
       )}
     </div>
+  );
+}
+
+/**
+ * 룩북 사진과 그 90도 옆모습.
+ *
+ * 사진을 누르면 늘 코디 상세로 간다. 옆모습을 보는 중이면 상세도 옆모습으로 연다.
+ * 원본/옆모습 전환은 사진 위 모서리의 따로 있는 버튼이라 사진 누르기와 겹치지 않는다.
+ */
+function LookPhoto({
+  look,
+  url,
+  side,
+  onOpen,
+}: {
+  look: SavedLook;
+  url: string;
+  side: LookSide;
+  onOpen: () => void;
+}) {
+  return (
+    <>
+      <div className="saved-photo">
+        <button
+          className="saved-open"
+          onClick={onOpen}
+          title="이 코디 열기"
+        >
+          <img
+            className="saved-thumb"
+            src={side.shownUrl ?? url}
+            alt={side.shownUrl ? '옆모습' : ''}
+          />
+        </button>
+        {look.side_eligible && <SideToggle side={side} />}
+      </div>
+      <SideError side={side} />
+    </>
   );
 }
 

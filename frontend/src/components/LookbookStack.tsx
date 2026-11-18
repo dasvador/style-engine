@@ -7,6 +7,8 @@ import {
   subscribeOutfitImages,
 } from '../hooks/useOutfitImage';
 import { OutfitImage } from './OutfitImage';
+import { useLookSide } from '../hooks/useLookSide';
+import { SideError, SideToggle } from './SideToggle';
 
 const PLAN_LABEL = {
   none: '오늘 입을래요',
@@ -22,6 +24,8 @@ interface Props {
   onLike: (look: Look) => void;
   onWearToday: (look: Look) => void;
   onBest: (look: Look) => void;
+  /** 이 저장 룩은 처음에 옆모습으로 연다(룩북 카드에서 옆모습을 보다 들어온 경우). */
+  sideEntryId?: string | null;
 }
 
 /**
@@ -41,6 +45,7 @@ export function LookbookStack({
   onLike,
   onWearToday,
   onBest,
+  sideEntryId,
 }: Props) {
   // 이미지가 캐시에 들어오는 즉시 썸네일을 다시 그린다.
   useSyncExternalStore(subscribeOutfitImages, outfitImageVersion, outfitImageVersion);
@@ -106,7 +111,16 @@ export function LookbookStack({
               </svg>
             </span>
           )}
-          <OutfitImage items={outfitToImageItems(active.outfit)} mood={active.moodKey} />
+          {active.side && active.savedId ? (
+            <SidedImage
+              look={active}
+              lookId={active.savedId}
+              side={active.side}
+              startSide={active.savedId === sideEntryId}
+            />
+          ) : (
+            <OutfitImage items={outfitToImageItems(active.outfit)} mood={active.moodKey} />
+          )}
           <h3 className="lookbook-face-title">{active.title}</h3>
           <p className="lookbook-face-meta">{active.meta}</p>
         </article>
@@ -212,6 +226,35 @@ export function LookbookStack({
 
       <Details look={active} />
     </section>
+  );
+}
+
+/**
+ * 저장된 룩의 큰 사진과 원본/옆모습 전환. 룩 카드(`key={active.key}`) 안에 있어 코디를 넘기면
+ * 새로 마운트된다 — 앞 코디의 옆모습·만드는 중 상태가 다음 코디로 넘어가지 않는다.
+ */
+function SidedImage({
+  look,
+  lookId,
+  side: initial,
+  startSide,
+}: {
+  look: Look;
+  lookId: string;
+  side: NonNullable<Look['side']>;
+  startSide: boolean;
+}) {
+  const side = useLookSide(lookId, initial, startSide ? 'side' : 'original');
+  return (
+    <>
+      <OutfitImage
+        items={outfitToImageItems(look.outfit)}
+        mood={look.moodKey}
+        overrideSrc={side.shownUrl ? { url: side.shownUrl, alt: '옆모습' } : null}
+        overlay={<SideToggle side={side} />}
+      />
+      <SideError side={side} />
+    </>
   );
 }
 

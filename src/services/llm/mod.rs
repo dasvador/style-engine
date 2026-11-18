@@ -274,9 +274,26 @@ impl LlmClient {
         .await
     }
 
+    /// 테스트에서 이미지 provider 를 갈아 끼운다 — 유료 호출 없이 생성·편집 경로를 잰다.
+    /// (라이브러리 쪽 테스트 빌드에서는 쓰는 곳이 없다 — 라우트 테스트는 바이너리 쪽에 있다.)
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub(crate) fn with_image_provider(mut self, provider: Arc<dyn ImageProvider>) -> Self {
+        self.image_providers.insert(provider.id(), provider);
+        self
+    }
+
     /// 이미 만든 그림에서 일부만 바꾼다. 재시도·계측은 생성과 같다.
     pub async fn edit_image(&self, req: &ImageEditRequest) -> Result<ImageResult, LlmError> {
-        let task = LlmTask::ImageEdit;
+        self.edit_image_as(LlmTask::ImageEdit, req).await
+    }
+
+    /// 편집을 다른 task(모델 설정)로 보낸다. 예: 룩북 옆모습(`ImageAngle`).
+    pub async fn edit_image_as(
+        &self,
+        task: LlmTask,
+        req: &ImageEditRequest,
+    ) -> Result<ImageResult, LlmError> {
         let cfg = self.config.task(task).clone();
 
         let provider = self

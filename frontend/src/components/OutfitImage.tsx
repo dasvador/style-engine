@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useOutfitImage } from "../hooks/useOutfitImage";
 
 interface Props {
@@ -9,17 +10,21 @@ interface Props {
     name: string;
     material?: string | null;
   }[];
+  /** 원본 대신 보여 줄 사진(예: 옆모습). 자리 크기·안내 문구는 그대로다. */
+  overrideSrc?: { url: string; alt: string } | null;
+  /** 사진 자리 위에 겹쳐 두는 것(예: 원본/옆모습 전환). */
+  overlay?: ReactNode;
 }
 
 /** 룩북/추천 카드의 생성 이미지 자리. 로딩·실패 상태를 자체적으로 표시한다. */
-export function OutfitImage({ items, mood, baseItems }: Props) {
+export function OutfitImage({ items, mood, baseItems, overrideSrc, overlay }: Props) {
   const state = useOutfitImage(items, mood, baseItems);
 
   return (
     <div className="lookbook-img-wrap">
       {/* 로딩·실패·완성이 모두 같은 크기를 차지한다 — 이미지가 뜰 때 카드가 튀지 않게. */}
       <div className="lookbook-img-slot">
-        {state.status === "loading" && (
+        {!overrideSrc && state.status === "loading" && (
           <div
             className="empty-state-mark"
             style={{ padding: "40px 0", marginBottom: 0 }}
@@ -27,7 +32,7 @@ export function OutfitImage({ items, mood, baseItems }: Props) {
             Composing the look…
           </div>
         )}
-        {state.status === "failed" && (
+        {!overrideSrc && state.status === "failed" && (
           <div
             className="caption"
             style={{ padding: "20px 0", textAlign: "center" }}
@@ -37,12 +42,14 @@ export function OutfitImage({ items, mood, baseItems }: Props) {
               : "이미지를 불러올 수 없습니다"}
           </div>
         )}
-        {state.status === "ready" && (
+        {overrideSrc && <img src={overrideSrc.url} alt={overrideSrc.alt} />}
+        {!overrideSrc && state.status === "ready" && (
           <img
             src={state.url}
             alt={state.presentation === "flat_lay" ? "추천 코디의 의류 배치" : "추천 착장"}
           />
         )}
+        {overlay}
       </div>
       {/* 룩북은 남성 장르를 골라도 여성 모델로 그려진다. 이건 제약이 아니라 이
           기능의 의도라서, 결과만 내놓지 말고 무엇을 하고 있는지 한 줄로 밝힌다.

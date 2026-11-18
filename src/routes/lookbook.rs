@@ -38,6 +38,15 @@ pub struct LookRow {
     /// 뒤에도 홈이 "제일" 버튼을 다시 그리고 취소할 수 있게 돌려준다.
     pub request_id: Option<String>,
     pub best: i64,
+    /// 이 사진의 90도 옆모습 상태(`lookbook_side_image.status`). 만든 적이 없으면 없다.
+    pub side_status: Option<String>,
+    /// 다 만든 옆모습 사진. 원본(`image_path`)은 그대로 두고 따로 둔다.
+    pub side_image_path: Option<String>,
+    /// 옆모습을 만들 수 있는 사진인가 — 내 착용 사진(의류 배치 아님)이고 파일이 있다.
+    #[sqlx(skip)]
+    pub side_eligible: bool,
+    #[serde(skip)]
+    pub side_source_ok: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -88,6 +97,11 @@ pub fn router() -> Router<AppState> {
         .route("/", get(list_looks).post(save_look))
         .route("/{id}", patch(mark_look).delete(delete_look))
         .route("/{id}/best", post(mark_best).delete(unmark_best))
+        .route(
+            "/{id}/side",
+            get(crate::routes::lookbook_side::side_status)
+                .post(crate::routes::lookbook_side::ensure_side),
+        )
 }
 
 /// 최근에 만든 코디부터. 화면이 한 번에 들고 있을 만큼만 준다.
@@ -101,7 +115,15 @@ async fn list_looks(
          (SELECT s.request_id FROM look_signal s WHERE s.look_id = lookbook_look.id \
            ORDER BY s.created_at DESC, s.id DESC LIMIT 1) AS request_id, \
          CAST(COALESCE((SELECT s.best FROM look_signal s WHERE s.look_id = lookbook_look.id \
-           ORDER BY s.created_at DESC, s.id DESC LIMIT 1), 0) AS SIGNED) AS best \
+           ORDER BY s.created_at DESC, s.id DESC LIMIT 1), 0) AS SIGNED) AS best, \
+         (SELECT CAST(si.status AS CHAR) FROM lookbook_side_image si \
+           WHERE si.user_id = lookbook_look.user_id AND si.source_path = lookbook_look.image_path) AS side_status, \
+         (SELECT si.image_path FROM lookbook_side_image si \
+           WHERE si.user_id = lookbook_look.user_id AND si.source_path = lookbook_look.image_path \
+             AND si.status = 'ready') AS side_image_path, \
+         CAST(EXISTS(SELECT 1 FROM outfit_image oi \
+           WHERE oi.user_id = lookbook_look.user_id AND oi.image_path = lookbook_look.image_path \
+             AND oi.presentation = 'model' AND oi.verification_status = 'passed') AS SIGNED) AS side_source_ok \
          FROM lookbook_look WHERE user_id = ? ORDER BY created_at DESC LIMIT 60",
     )
     .bind(&auth.user_id)
@@ -113,7 +135,9 @@ async fn list_looks(
     // 생성은 하지 않는다 — 모아 보는 화면을 여는 것만으로 이미지가 만들어지면 비용이
     // 조용히 새어 나간다.
     for row in &mut rows {
-        if row.image_path.is_some() {
+        if let Some(path) = &row.image_path {
+            row.side_eligible =
+                row.side_source_ok == 1 && crate::routes::lookbook_side::source_file_exists(path);
             continue;
         }
         row.image_path = cached_image_path(

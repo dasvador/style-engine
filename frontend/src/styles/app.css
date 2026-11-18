@@ -1169,6 +1169,34 @@ button, input, select, textarea { font-family: inherit; }
 .saved-make:hover { border-color: var(--accent); color: var(--accent); }
 .saved-thumb-empty { gap: 7px; flex-direction: column; }
 
+/* 룩북 사진의 원본/옆모습 전환. 사진 버튼(상세로 이동)과 겹치지 않는 별도 버튼이다 —
+   모서리에만 두어 사진의 나머지를 누르면 늘 상세로 간다. */
+.saved-photo { position: relative; }
+.saved-angle {
+  position: absolute; top: 8px; right: 8px; display: flex; gap: 2px;
+  padding: 2px; border-radius: 999px; background: rgba(20, 20, 20, 0.55);
+  backdrop-filter: blur(4px);
+}
+.saved-angle button {
+  min-height: 32px; min-width: 44px; padding: 0 10px; border: 0; border-radius: 999px;
+  background: transparent; color: #fff; font-size: 0.7rem; font-weight: 500; cursor: pointer;
+}
+.saved-angle button.on { background: #fff; color: #141414; }
+.saved-angle button:disabled { opacity: 0.7; cursor: progress; }
+.saved-angle-busy {
+  position: absolute; left: 8px; right: 8px; bottom: 17px; display: flex; gap: 6px;
+  align-items: center; justify-content: center; padding: 6px 8px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9); font-size: 0.7rem; color: var(--ink);
+  pointer-events: none;
+}
+.saved-angle-error {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  margin: -4px 0 8px; font-size: 0.72rem; color: var(--danger, #b3261e);
+}
+/* 홈 상세의 큰 사진에도 같은 전환을 겹친다. */
+.lookbook-img-slot { position: relative; }
+.lookbook-face .saved-angle-error { margin: 8px 18px 0; }
+
 /* ─────────────────────────────────────────────
    둘 중 고르기 — 홈 추천의 두 코디 비교
    두 카드는 자리 말고는 완전히 같은 모양이다. 생성 사진 없이 옷 이름·카테고리·색으로 보여 준다.

@@ -24,6 +24,7 @@ import type {
   Region,
   SaveLookBody,
   SavedLook,
+  SideView,
   SetGenresBody,
   StyleMood,
   UpdateClothingBody,
@@ -97,6 +98,10 @@ export const api = {
       apiDelete<{ id: string }>(
         `/lookbook/${id}/best?request_id=${encodeURIComponent(request_id)}`,
       ),
+    /** 옆모습 상태만 본다(만들지 않는다). */
+    side: (id: string) => apiGet<SideView>(`/lookbook/${encodeURIComponent(id)}/side`),
+    /** 옆모습이 없으면 한 장 만든다. 있거나 만드는 중이면 그 상태를 준다. */
+    makeSide: (id: string) => apiPost<SideView>(`/lookbook/${encodeURIComponent(id)}/side`, {}),
   },
 
   /** 내 생성 사진. 소유자 확인을 거치는 보호 경로다. */

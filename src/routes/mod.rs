@@ -5,6 +5,7 @@ pub mod feedback;
 pub mod health;
 pub mod images;
 pub mod lookbook;
+pub mod lookbook_side;
 pub mod outfit;
 pub mod outfit_flow;
 pub mod recommendation;

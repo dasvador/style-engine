@@ -47,6 +47,8 @@ pub enum LlmTask {
     ImageGeneration,
     /// 이미 만든 룩 사진에서 아이템 일부만 바꾸는 편집.
     ImageEdit,
+    /// 룩북 사진을 같은 장면의 90도 옆모습으로 다시 찍는 편집.
+    ImageAngle,
     /// 레퍼런스/쿼리 텍스트 임베딩.
     Embedding,
 }
@@ -64,6 +66,7 @@ impl LlmTask {
         LlmTask::GenderVerify,
         LlmTask::ImageGeneration,
         LlmTask::ImageEdit,
+        LlmTask::ImageAngle,
         LlmTask::Embedding,
     ];
 
@@ -81,6 +84,7 @@ impl LlmTask {
             LlmTask::GenderVerify => "gender_verify",
             LlmTask::ImageGeneration => "image_generation",
             LlmTask::ImageEdit => "image_edit",
+            LlmTask::ImageAngle => "image_angle",
             LlmTask::Embedding => "embedding",
         }
     }
@@ -122,6 +126,9 @@ fn default_task_config(task: LlmTask) -> TaskConfig {
         // 초점을 둔 sunburst 를 쓴다 (2026-10-15 시험: 신발·상의 교체 모두 나머지가
         // 그대로였고, flare 보다 빨랐다 — 13초 대 15~19초).
         LlmTask::ImageEdit => ("gpt-image-2.5-sunburst", None, 0),
+        // 옆모습은 사람·옷을 그대로 두고 카메라만 옮기는 편집이다. 생성과 같은 2.6 을 쓴다
+        // (2026-11-18 시험 1회: 얼굴·발 90도, 옷·소품 유지, low 1024x1536 약 $0.034).
+        LlmTask::ImageAngle => ("gpt-image-2.6-sunburst", None, 0),
         LlmTask::Embedding => ("text-embedding-3-small", None, 0),
     };
 
@@ -296,6 +303,7 @@ mod tests {
             (LlmTask::GenderVerify, "gpt-4o-mini", None, 5),
             (LlmTask::ImageGeneration, "gpt-image-2.6-sunburst", None, 0),
             (LlmTask::ImageEdit, "gpt-image-2.5-sunburst", None, 0),
+            (LlmTask::ImageAngle, "gpt-image-2.6-sunburst", None, 0),
             (LlmTask::Embedding, "text-embedding-3-small", None, 0),
         ];
 

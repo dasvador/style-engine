@@ -3,6 +3,7 @@
 //!   GET /api/images/{file}   — `file` 은 `static/images/` 바로 아래의 `<uuid>.png` 이름
 //!
 //! 내 사진인지는 생성 사진 캐시의 소유자로만 가린다: `outfit_image.user_id = 나` 일 때만 준다.
+//! 룩북 옆모습은 `lookbook_side_image.user_id = 나` 인 완성본만 준다(서버가 만든 행에만 경로가 적힌다).
 //! 룩북(`lookbook_look.image_path`)은 근거로 쓰지 않는다 — 예전에는 룩북 저장·핀이 계정을 가리지 않아
 //! 남의 사진 경로가 내 룩에 붙을 수 있었고, 그 경로가 곧 접근권이 되는 우회가 있었다.
 //! 그 밖(남의 사진·없는 사진·이상한 이름)은 모두 404 다 — 있는지 없는지도 알려 주지 않는다.
@@ -44,8 +45,11 @@ async fn show(
     }
     let image_path = format!("/static/images/{file}");
     let owned: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM outfit_image WHERE image_path = ? AND user_id = ?)",
+        "SELECT EXISTS(SELECT 1 FROM outfit_image WHERE image_path = ? AND user_id = ?) \
+           OR EXISTS(SELECT 1 FROM lookbook_side_image WHERE image_path = ? AND user_id = ? AND status = 'ready')",
     )
+    .bind(&image_path)
+    .bind(&auth.user_id)
     .bind(&image_path)
     .bind(&auth.user_id)
     .fetch_one(&state.db)

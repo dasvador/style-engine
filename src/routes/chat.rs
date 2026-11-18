@@ -1569,7 +1569,7 @@ async fn flat_lay_fallback(
 }
 
 /// 편집 입력 이미지 토큰의 단가 차이 (이미지 $8 − 단가표의 텍스트 $5, 100만 토큰당).
-const EDIT_IMAGE_INPUT_SURCHARGE_PER_MTOK: f64 = 3.0;
+pub(crate) const EDIT_IMAGE_INPUT_SURCHARGE_PER_MTOK: f64 = 3.0;
 
 /// 편집으로 바꿀 수 있는 아이템 수. 이보다 많이 바뀌면 사실상 다른 코디라 새로 만든다.
 const MAX_EDIT_CHANGES: usize = 2;
@@ -1797,7 +1797,7 @@ async fn edit_from_base(
 ///
 /// 조회에 실패하면 0으로 본다. 예산 조회가 안 된다고 기능을 막으면, DB 장애가
 /// 이미지 전면 중단으로 번진다. 상한을 넘길 위험보다 그쪽이 크다.
-async fn image_spend(db: &sqlx::MySqlPool) -> ImageSpend {
+pub(crate) async fn image_spend(db: &sqlx::MySqlPool) -> ImageSpend {
     sqlx::query_as::<_, ImageSpend>(
         "SELECT \
            COALESCE(SUM(CASE WHEN spend_date = CURRENT_DATE THEN cost_usd END), 0) AS today, \
@@ -3183,14 +3183,14 @@ Avoid: {base_avoid}, tight-fitting clothes, formal styling, luxury campaign mood
 ///
 /// 코드를 주석 처리하지 않고 플래그로 둔 이유: 주석 처리한 코드는 컴파일되지
 /// 않아 조용히 낡는다. 이 상태에서도 예산 로직은 계속 타입 검사와 테스트를 받는다.
-const BUDGET_ENFORCED: bool = false;
+pub(crate) const BUDGET_ENFORCED: bool = false;
 
 /// 한 달 상한. 이게 실제 보장이다. 기본 $10.
-const DEFAULT_MONTHLY_BUDGET_USD: f64 = 10.0;
+pub(crate) const DEFAULT_MONTHLY_BUDGET_USD: f64 = 10.0;
 
 /// 하루 상한. 한 달치를 하루에 태우지 못하게 하는 방지선이다.
 /// 월 상한의 1/10 이라 정상 사용에서는 걸리지 않는다.
-const DEFAULT_DAILY_BUDGET_USD: f64 = 1.0;
+pub(crate) const DEFAULT_DAILY_BUDGET_USD: f64 = 1.0;
 
 /// 이미지 1장(생성 1회 + 검증 1회)의 사전 추정 비용. 보장 상한이 아니다 — 실제 지출은
 /// 생성 뒤 토큰 사용량으로 기록된다. 생성 전에는 토큰 수를 모르므로, 예산을 넘길지
@@ -3198,7 +3198,7 @@ const DEFAULT_DAILY_BUDGET_USD: f64 = 1.0;
 /// 1024x1536)에 검증분을 더해 올림했다. 생성 모델을 바꾸면 함께 맞춘다.
 const IMAGE_COST_ESTIMATE_USD: f64 = 0.03;
 
-fn budget_from_env(var: &str, default: f64) -> f64 {
+pub(crate) fn budget_from_env(var: &str, default: f64) -> f64 {
     match std::env::var(var) {
         Ok(raw) => match raw.parse::<f64>() {
             Ok(v) if v >= 0.0 => v,
@@ -3215,13 +3215,13 @@ fn budget_from_env(var: &str, default: f64) -> f64 {
 ///
 /// 다 쓴 뒤에 막는 것이 아니라 **한 장 값을 더 써도 상한을 넘지 않을 때만** 허용한다.
 /// 그래야 상한이 실제 상한이 된다.
-fn budget_allows_image(spent: &ImageSpend, daily: f64, monthly: f64) -> bool {
+pub(crate) fn budget_allows_image(spent: &ImageSpend, daily: f64, monthly: f64) -> bool {
     spent.today + IMAGE_COST_ESTIMATE_USD <= daily
         && spent.this_month + IMAGE_COST_ESTIMATE_USD <= monthly
 }
 
 #[derive(Debug, Clone, Copy, Default, sqlx::FromRow)]
-struct ImageSpend {
+pub(crate) struct ImageSpend {
     today: f64,
     this_month: f64,
 }
