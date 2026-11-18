@@ -175,7 +175,7 @@ async fn save_look(
 
     // 이미 있던 코디면 INSERT 가 아니라 UPDATE 였으므로 기존 id 를 돌려준다.
     let existing: Option<(String,)> = sqlx::query_as(
-        "SELECT id FROM lookbook_look WHERE user_id = ? AND image_prompt = ? LIMIT 1",
+        "SELECT id FROM lookbook_look WHERE user_id = ? AND image_prompt_hash = UNHEX(SHA2(?, 256)) LIMIT 1",
     )
     .bind(&auth.user_id)
     .bind(&body.image_prompt)
@@ -270,7 +270,7 @@ pub async fn pinned_image(
 ) -> Option<String> {
     sqlx::query_as::<_, (String,)>(
         "SELECT image_path FROM lookbook_look \
-         WHERE user_id = ? AND image_prompt = ? AND mood_key <=> ? AND image_path IS NOT NULL LIMIT 1",
+         WHERE user_id = ? AND image_prompt_hash = UNHEX(SHA2(?, 256)) AND mood_key <=> ? AND image_path IS NOT NULL LIMIT 1",
     )
     .bind(owner)
     .bind(image_prompt)
@@ -292,7 +292,7 @@ pub async fn pin_image(
 ) {
     let _ = sqlx::query(
         "UPDATE lookbook_look SET image_path = ? \
-         WHERE user_id = ? AND image_prompt = ? AND mood_key <=> ? AND image_path IS NULL",
+         WHERE user_id = ? AND image_prompt_hash = UNHEX(SHA2(?, 256)) AND mood_key <=> ? AND image_path IS NULL",
     )
     .bind(path)
     .bind(owner)

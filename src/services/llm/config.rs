@@ -115,10 +115,9 @@ fn default_task_config(task: LlmTask) -> TaskConfig {
         LlmTask::ChatAgent => ("gpt-4o-mini", Some(0.5), 1000),
         LlmTask::StyleNote => ("gpt-4o-mini", Some(0.7), 300),
         LlmTask::GenderVerify => ("gpt-4o-mini", None, 5),
-        // flare 는 gpt-image-2 와 요청/응답 형식과 토큰 과금이 같고 지연만 절반이다.
-        // 편집 정밀도가 중요한 작업용으로 gpt-image-2.5-sunburst 가 따로 있지만,
-        // 여기 쓰임은 룩북 미리보기 한 장이라 지연이 우선이다.
-        LlmTask::ImageGeneration => ("gpt-image-2.5-flare", None, 0),
+        // 룩북 사진 생성. 다른 모델은 LLM_TASK_IMAGE_GENERATION 으로 바꾼다
+        // (예: 지연·비용이 더 낮은 gpt-image-2.5-flare).
+        LlmTask::ImageGeneration => ("gpt-image-2.6-sunburst", None, 0),
         // 편집은 바꾸라고 한 곳 말고는 아무것도 건드리지 않는 것이 전부다. 편집 정확도에
         // 초점을 둔 sunburst 를 쓴다 (2026-10-15 시험: 신발·상의 교체 모두 나머지가
         // 그대로였고, flare 보다 빨랐다 — 13초 대 15~19초).
@@ -295,7 +294,7 @@ mod tests {
             (LlmTask::ChatAgent, "gpt-4o-mini", Some(0.5), 1000),
             (LlmTask::StyleNote, "gpt-4o-mini", Some(0.7), 300),
             (LlmTask::GenderVerify, "gpt-4o-mini", None, 5),
-            (LlmTask::ImageGeneration, "gpt-image-2.5-flare", None, 0),
+            (LlmTask::ImageGeneration, "gpt-image-2.6-sunburst", None, 0),
             (LlmTask::ImageEdit, "gpt-image-2.5-sunburst", None, 0),
             (LlmTask::Embedding, "text-embedding-3-small", None, 0),
         ];

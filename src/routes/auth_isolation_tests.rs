@@ -1026,6 +1026,161 @@ async fn same_prompt_never_crosses_accounts() {
         .unwrap();
 }
 
+/// 600자를 넘는 이미지 문구의 코디도 룩북에 담기고 사진이 붙는다(2026-11-18 글램 3장 중 1장 누락).
+///   - 실제 누락된 코디의 문구(655자, 추운 날 여밈 문구 포함)로 저장이 200 이고 `look_signal` 도 남는다.
+///   - 사진이 나중에 만들어지면(캐시 적중 요청) 그 룩에 붙고, 목록에서 보인다. 생성 호출은 없다.
+///   - 같은 문구로 다시 담아도 한 행이고, 다른 계정은 같은 문구로 담아도 A 의 사진을 받지 않는다.
+#[tokio::test]
+async fn long_image_prompt_look_is_saved_and_pinned() {
+    let Some(ctx) = setup().await else {
+        eprintln!("TEST_DATABASE_URL 이 없어 건너뜁니다");
+        return;
+    };
+    let app = app(&ctx, AuthMode::Strict);
+    let (ua, ub) = (&ctx.users[0].0, &ctx.users[1].0);
+    let prompt = format!(
+        "top/inner: 퍼플 새틴 레이스 바스트 그레이 셔링 튜브탑 (jersey, one-piece strapless top: ruched grey stretch mesh over an opaque lining, attached purple satin bust band edged with dark purple lace, fitted), pants: 블랙 셔링 드레이프 사이드슬릿 맥시스커트 (matte stretch jersey, draped ruching gathered at one hip, self-fabric tie at the waist, side slit to the knee, ankle-length maxi), outerwear: 블랙 레더 시어링 재킷 (matte black leather, thick shearling lining, shearling collar and cuffs, hip-length, minimal hardware; worn closed with its own fastening, arms in the sleeves), shoes: 블랙 레더 니하이 롱부츠 (smooth leather, knee-high slim shaft, block heel), bag: 블랙 미니 체인 숄더백 (leather, chain strap, mini) {}",
+        ctx.run
+    );
+    assert!(
+        prompt.chars().count() > 655,
+        "예전 VARCHAR(600) 을 넘는 문구여야 한다"
+    );
+    let request_id = format!("req-long-{}", ctx.run);
+    let save = |i: usize| Opts {
+        token: tok(&ctx, i),
+        body: Some(serde_json::json!({
+            "mood_key": "glam", "title": "긴 문구 코디", "image_prompt": prompt,
+            "outfit_json": [], "request_id": request_id, "position": 1
+        })),
+        ..Default::default()
+    };
+    let (st, saved, _) = call(&app, "POST", "/api/lookbook", save(0)).await;
+    assert_eq!(st, StatusCode::OK, "{saved}");
+    let look_id = saved["id"].as_str().unwrap().to_string();
+    let signals: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM look_signal WHERE user_id = ? AND request_id = ? AND look_id = ? AND position = 1",
+    )
+    .bind(ua)
+    .bind(&request_id)
+    .bind(&look_id)
+    .fetch_one(&ctx.db)
+    .await
+    .unwrap();
+    assert_eq!(signals, 1);
+
+    // 같은 문구로 다시 담으면 같은 행이다.
+    let (st, again, _) = call(&app, "POST", "/api/lookbook", save(0)).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(again["id"], look_id.as_str());
+
+    // 홈의 사진 요청이 끝나 캐시에 사진이 생긴 상황. 생성하지 않도록 A 의 캐시 행을 둔다.
+    let genre = crate::models::style_vocab::StyleGenre::Glam;
+    let (oh, ph, _, _) = crate::routes::chat::image_cache_keys(&prompt, genre);
+    let file = format!("{}.png", uuid::Uuid::new_v4());
+    std::fs::create_dir_all("static/images").unwrap();
+    std::fs::write(
+        std::path::Path::new("static/images").join(&file),
+        [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0],
+    )
+    .unwrap();
+    let url = format!("/static/images/{file}");
+    sqlx::query(
+        "INSERT INTO outfit_image (id, user_id, outfit_hash, prompt_hash, image_path, mood, verification_status, hit_count) \
+         VALUES (?, ?, ?, ?, ?, 'glam', 'passed', 0)",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(ua)
+    .bind(&oh)
+    .bind(&ph)
+    .bind(&url)
+    .execute(&ctx.db)
+    .await
+    .unwrap();
+    let (st, img, _) = call(
+        &app,
+        "POST",
+        "/api/chat/image",
+        Opts {
+            token: tok(&ctx, 0),
+            body: Some(serde_json::json!({"items": prompt, "mood": "glam"})),
+            ..Default::default()
+        },
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK, "{img}");
+    assert_eq!(img["image_url"], url.as_str());
+    assert_eq!(img["presentation"], "model");
+    // 캐시 적중 응답은 룩을 건드리지 않는다. 룩북을 열면 캐시 사진을 찾아 붙인다(생성 없음).
+    let (_, list_a, _) = call(
+        &app,
+        "GET",
+        "/api/lookbook",
+        Opts {
+            token: tok(&ctx, 0),
+            ..Default::default()
+        },
+    )
+    .await;
+    let row = list_a
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["id"] == look_id.as_str())
+        .expect("룩북 목록에 보인다");
+    assert_eq!(row["image_path"], url.as_str());
+    assert_eq!(row["image_prompt"], prompt.as_str(), "문구가 잘리지 않는다");
+    let pinned: Option<String> =
+        sqlx::query_scalar("SELECT image_path FROM lookbook_look WHERE id = ? AND user_id = ?")
+            .bind(&look_id)
+            .bind(ua)
+            .fetch_one(&ctx.db)
+            .await
+            .unwrap();
+    assert_eq!(
+        pinned.as_deref(),
+        Some(url.as_str()),
+        "생긴 사진이 그 룩에 붙는다"
+    );
+
+    // B 가 같은 긴 문구를 담아도 A 의 사진은 붙지 않는다.
+    let (st, _, _) = call(&app, "POST", "/api/lookbook", save(1)).await;
+    assert_eq!(st, StatusCode::OK);
+    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+        "SELECT user_id, image_path FROM lookbook_look WHERE image_prompt = ? ORDER BY user_id",
+    )
+    .bind(&prompt)
+    .fetch_all(&ctx.db)
+    .await
+    .unwrap();
+    assert_eq!(rows.len(), 2, "계정마다 한 행");
+    for (u, p) in &rows {
+        if u == ub {
+            assert_eq!(p, &None, "B 의 룩에 A 사진이 붙었다");
+        } else {
+            assert_eq!(p.as_deref(), Some(url.as_str()));
+        }
+    }
+
+    let _ = std::fs::remove_file(std::path::Path::new("static/images").join(&file));
+    sqlx::query("DELETE FROM outfit_image WHERE outfit_hash = ? AND prompt_hash = ?")
+        .bind(&oh)
+        .bind(&ph)
+        .execute(&ctx.db)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM look_signal WHERE request_id = ?")
+        .bind(&request_id)
+        .execute(&ctx.db)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM lookbook_look WHERE image_prompt = ?")
+        .bind(&prompt)
+        .execute(&ctx.db)
+        .await
+        .unwrap();
+}
+
 /// 지역(위치)은 계정별: B 는 A 의 지역을 읽거나 지우거나 바꾸지 못한다.
 #[tokio::test]
 async fn region_is_per_account() {

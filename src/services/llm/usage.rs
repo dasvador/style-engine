@@ -143,6 +143,7 @@ mod tests {
             "gpt-image-2",
             "gpt-image-2.5-flare",
             "gpt-image-2.5-sunburst",
+            "gpt-image-2.6-sunburst",
         ] {
             assert_eq!(estimate_cost_usd(model, &usage), Some(per_image), "{model}");
         }

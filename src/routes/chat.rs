@@ -1717,22 +1717,26 @@ async fn edit_from_base(
     // 프롬프트 문구(자세·표정 등)를 고치면 키가 바뀌는데, 화면에 떠 있는 앞 사진은 예전 키로
     // 만든 것일 수 있다. 편집은 그 사진의 사람·표정·자세를 그대로 두고 옷만 바꾸는 일이라
     // 새 문구로 다시 그릴 이유가 없다. 의류 배치·실패 기록은 쓰지 않는다.
+    // 다만 지금 캐스팅 목록(`MODEL_ORIGINS`)에서 빠진 출신으로 그린 사진은 쓰지 않는다 —
+    // 편집은 사람을 그대로 두므로, 그 사진을 앞 사진으로 쓰면 빠진 캐스팅이 새 사진으로 이어진다.
     let base_path = if base_path.as_ref().is_some_and(|r| r.0.is_some()) {
         base_path
     } else {
-        sqlx::query_as(
-            "SELECT image_path FROM outfit_image \
+        let rows: Vec<(Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT image_path, prompt_text FROM outfit_image \
              WHERE user_id = ? AND outfit_hash = ? AND mood = ? AND presentation = 'model' \
                AND verification_status = 'passed' AND image_path IS NOT NULL \
-             ORDER BY created_at DESC LIMIT 1",
+             ORDER BY created_at DESC LIMIT 5",
         )
         .bind(owner)
         .bind(&base_outfit_hash)
         .bind(genre.as_str())
-        .fetch_optional(&state.db)
+        .fetch_all(&state.db)
         .await
-        .ok()
-        .flatten()
+        .unwrap_or_default();
+        rows.into_iter()
+            .find(|(_, text)| origin_still_cast(text.as_deref().unwrap_or("")))
+            .map(|(path, _)| (path,))
     };
     let base_url = base_path.and_then(|r| r.0)?;
     let base_png = std::fs::read(base_url.trim_start_matches('/')).ok()?;
@@ -2207,15 +2211,19 @@ fn genre_setting(genre: StyleGenre) -> (&'static [&'static str], &'static str) {
     }
 }
 
-/// 룩북 모델의 출신. 착장 해시로 하나를 고르며, 칸 수가 비중이다(20칸 중 한국 10칸).
+/// 룩북 모델의 캐스팅. 착장 해시로 하나를 고르며, 칸 수가 비중이다.
+/// 20칸 모두 아시아계 성인 여성이다(2026-11-18 사용자 결정): 한국 10칸, 일본·중국 각 3칸,
+/// 동남아시아·남아시아 각 2칸. 프롬프트에는 "a real adult {이 값} woman" 으로 들어간다.
+/// 앞 15칸은 예전 순서 그대로라, 그 칸에 걸리는 착장의 프롬프트·캐시 키는 바뀌지 않는다.
 ///
 /// 프롬프트가 출신을 말하지 않으면 이미지 모델은 기본값으로 서양인을 그린다. 9월까지는
 /// 장소 문장의 "Hangang riverside", "Seoul" 이 그 역할을 대신해 한국인이 나왔는데,
 /// 2026-09-11 장르별 문장을 다시 쓰며 지명이 빠지자 아시아 모델이 사라졌다. 늘 한국인일
-/// 필요는 없어서(2026-10-15 사용자 판단) 한국을 절반으로 두고 나머지를 섞는다.
+/// 필요는 없어서(2026-10-15 사용자 판단) 한국을 절반으로 두고 다른 아시아 출신을 섞는다.
 ///
-/// 출신만 한 단어로 적고 생김새는 적지 않는다 — 5월의 "Korean idol face" 같은 외모
-/// 묘사는 고정관념이자 인위적인 얼굴로 수렴하는 원인이었다.
+/// 출신만 짧게 적고 생김새는 적지 않는다 — 5월의 "Korean idol face" 같은 외모
+/// 묘사는 고정관념이자 인위적인 얼굴로 수렴하는 원인이었다. 이미지 모델은 확률적이라
+/// 이 값이 결과의 외모를 보장하지는 않는다.
 const MODEL_ORIGINS: [&str; 20] = [
     "Korean",
     "Korean",
@@ -2232,12 +2240,27 @@ const MODEL_ORIGINS: [&str; 20] = [
     "Chinese",
     "Southeast Asian",
     "South Asian",
-    "European",
-    "European",
-    "Black",
-    "Black",
-    "Latina",
+    "Japanese",
+    "Chinese",
+    "Chinese",
+    "Southeast Asian",
+    "South Asian",
 ];
+
+/// 저장된 프롬프트(앞 500자)의 "a real adult {출신} woman" 이 지금 캐스팅 목록에 있는가.
+///
+/// 출신 문구가 없는 예전 프롬프트(2026-10-15 이전)는 판단할 근거가 없어 그대로 둔다.
+fn origin_still_cast(prompt_text: &str) -> bool {
+    const LEAD: &str = "a real adult ";
+    let Some(start) = prompt_text.find(LEAD).map(|i| i + LEAD.len()) else {
+        return true;
+    };
+    let rest = &prompt_text[start..];
+    match rest.find(" woman") {
+        Some(end) => MODEL_ORIGINS.contains(&&rest[..end]),
+        None => true,
+    }
+}
 
 /// 착장 해시로 모델 출신을 고른다. 헤어(하위 자리)·장소와 함께 움직이지 않도록 상위
 /// 32비트를 쓴다.
@@ -3148,7 +3171,7 @@ Avoid: {base_avoid}, tight-fitting clothes, formal styling, luxury campaign mood
 
 // ─── 이미지 생성 예산 ───
 //
-// 이 앱에서 돈을 쓰는 곳은 사실상 이미지 하나다 (실측: 이미지 $0.0123/장,
+// 이 앱에서 돈을 쓰는 곳은 사실상 이미지 하나다 (추정: 이미지 약 $0.03/장,
 // 채팅 $0.0023/턴). 그래서 이미지만 막아도 총액이 잡히고, 채팅과 추천은
 // 예산과 무관하게 계속 동작한다 — 채팅으로 $10 을 쓰려면 하루 4,300턴이 필요하다.
 
@@ -3169,9 +3192,11 @@ const DEFAULT_MONTHLY_BUDGET_USD: f64 = 10.0;
 /// 월 상한의 1/10 이라 정상 사용에서는 걸리지 않는다.
 const DEFAULT_DAILY_BUDGET_USD: f64 = 1.0;
 
-/// 이미지 1장(생성 1회 + 검증 1회)의 실측 비용.
-/// 생성 전에는 토큰 수를 모르므로, 예산을 넘길지 판단할 때 이 값을 쓴다.
-const IMAGE_COST_ESTIMATE_USD: f64 = 0.0123;
+/// 이미지 1장(생성 1회 + 검증 1회)의 사전 추정 비용. 보장 상한이 아니다 — 실제 지출은
+/// 생성 뒤 토큰 사용량으로 기록된다. 생성 전에는 토큰 수를 모르므로, 예산을 넘길지
+/// 판단할 때 이 값을 쓴다. gpt-image-2.6-sunburst 생성 1회 실측 약 $0.029(low,
+/// 1024x1536)에 검증분을 더해 올림했다. 생성 모델을 바꾸면 함께 맞춘다.
+const IMAGE_COST_ESTIMATE_USD: f64 = 0.03;
 
 fn budget_from_env(var: &str, default: f64) -> f64 {
     match std::env::var(var) {
@@ -6065,11 +6090,89 @@ mod image_prompt_tests {
             .map(|h| model_origin(h.wrapping_mul(0x9E37_79B9_7F4A_7C15)))
             .collect();
         let distinct: std::collections::HashSet<_> = picks.iter().collect();
-        assert_eq!(distinct.len(), 8, "닿지 못하는 출신이 있다");
+        assert_eq!(distinct.len(), 5, "닿지 못하는 출신이 있다");
         let korean = picks.iter().filter(|o| **o == "Korean").count() as f64 / picks.len() as f64;
         assert!((0.4..0.6).contains(&korean), "한국 비중 {korean}");
         let p = build_image_prompt(StyleGenre::Minimal, "회색 티", 5u64 << 32);
         assert!(p.contains(&format!("a real adult {} woman", model_origin(5u64 << 32))));
+    }
+
+    /// 캐스팅은 아시아계 성인 여성 20칸뿐이다(2026-11-18 사용자 결정). 한국 10칸과 예전
+    /// 앞 15칸의 배정은 그대로라, 그 칸의 착장은 프롬프트가 바뀌지 않는다.
+    #[test]
+    fn casting_is_asian_adult_women_only() {
+        let count = |o: &str| MODEL_ORIGINS.iter().filter(|x| **x == o).count();
+        assert_eq!(
+            [
+                count("Korean"),
+                count("Japanese"),
+                count("Chinese"),
+                count("Southeast Asian"),
+                count("South Asian"),
+            ],
+            [10, 3, 3, 2, 2]
+        );
+        let earlier_asian_slots = [
+            "Korean",
+            "Korean",
+            "Korean",
+            "Korean",
+            "Korean",
+            "Korean",
+            "Korean",
+            "Korean",
+            "Korean",
+            "Korean",
+            "Japanese",
+            "Japanese",
+            "Chinese",
+            "Southeast Asian",
+            "South Asian",
+        ];
+        assert_eq!(MODEL_ORIGINS[..15], earlier_asian_slots);
+        for hash in [0u64, 15u64 << 32, 19u64 << 32] {
+            let p = build_image_prompt(StyleGenre::Glam, "블랙 레더 라이더 자켓", hash);
+            assert!(p.contains(&format!("a real adult {} woman", model_origin(hash))));
+            assert!(p.contains("male model"), "남성 회피 문장이 유지돼야 한다");
+        }
+    }
+
+    /// 어느 칸에서도 빠진 캐스팅(Black·Latina·European·white)이 프롬프트에 나오지 않는다.
+    /// 프롬프트가 바뀐 칸은 캐시 키(prompt_hash)도 바뀌어 새로 그린다.
+    #[test]
+    fn prompts_never_name_retired_casting() {
+        let items = "top/inner: 아이보리 새틴 셔츠 블라우스 (satin, silky sheen)";
+        for slot in 0..20u64 {
+            let hash = slot << 32;
+            let p = build_image_prompt(StyleGenre::Minimal, items, hash);
+            for retired in [
+                "adult Black woman",
+                "adult Latina woman",
+                "adult European woman",
+                "adult white ",
+            ] {
+                assert!(!p.contains(retired), "{retired}");
+            }
+        }
+    }
+
+    /// 편집의 앞 사진 대체 조회는 캐스팅에서 빠진 출신의 예전 사진을 쓰지 않는다.
+    #[test]
+    fn edit_base_skips_photos_of_retired_casting() {
+        let face = |o: &str| {
+            format!("Fashion editorial photograph.\n\nFace: a real adult {o} woman in her twenties")
+        };
+        assert!(origin_still_cast(&face("Korean")));
+        assert!(origin_still_cast(&face("South Asian")));
+        assert!(origin_still_cast(&face("Chinese")));
+        assert!(!origin_still_cast(&face("white European")));
+        assert!(!origin_still_cast(&face("white American")));
+        assert!(!origin_still_cast(&face("Black")));
+        assert!(!origin_still_cast(&face("Latina")));
+        assert!(!origin_still_cast(&face("European")));
+        // 출신 문구가 없던 예전 프롬프트는 판단하지 않는다.
+        assert!(origin_still_cast("Fashion editorial photograph of a woman"));
+        assert!(origin_still_cast(""));
     }
 
     /// 추천된 옷이 프롬프트에 그대로 들어가고, 그대로 그리라는 조건이 붙어야 한다.
