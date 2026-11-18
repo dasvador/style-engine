@@ -25,11 +25,14 @@ export function OutfitImage({ items, mood, baseItems, overrideSrc, overlay }: Pr
       {/* 로딩·실패·완성이 모두 같은 크기를 차지한다 — 이미지가 뜰 때 카드가 튀지 않게. */}
       <div className="lookbook-img-slot">
         {!overrideSrc && state.status === "loading" && (
-          <div
-            className="empty-state-mark"
-            style={{ padding: "40px 0", marginBottom: 0 }}
-          >
-            Composing the look…
+          <div className="lookbook-fitting" role="status">
+            <span className="visually-hidden">룩북 이미지를 만드는 중이에요.</span>
+            <svg viewBox="0 0 144 112" fill="none" aria-hidden="true">
+              <g stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M64 23a8 8 0 1 1 12 7c-3 2-4 4-4 8v4l48 29q6 4-1 5H25q-7-1-1-5l48-29" />
+                <path className="lookbook-stitches" d="M29 86q43 6 86 0" pathLength="100" />
+              </g>
+            </svg>
           </div>
         )}
         {!overrideSrc && state.status === "failed" && (
