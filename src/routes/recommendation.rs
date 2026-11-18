@@ -265,24 +265,34 @@ async fn get_multi_recommendation(
 
     // 무드 옷장에 이 상황(출근·데이트)에 맞는 옷이 모자란 슬롯은 같은 성별 전체 옷장에서
     // 빌려 온다. 무드가 없으면 이미 전체 옷장이라 빌릴 것이 없다.
-    if mood.is_some() {
+    if let Some(selected_mood) = mood {
         let wardrobe =
             clothing_repo::list_clothing_filtered(&state.db, user_id, body.gender.as_deref(), None)
                 .await?;
         let no_recent = std::collections::HashSet::new();
         let genres = clothing_repo::get_all_style_genres(&state.db, user_id).await?;
-        let borrowed = crate::services::shortlist::borrow_for_situation(
+        let borrow_ctx = crate::services::shortlist::ShortlistContext {
+            temperature: weather.temperature,
+            situation: body.occasion.as_deref(),
+            current_season: None,
+            recent_item_ids: &no_recent,
+        };
+        let mut borrowed = crate::services::shortlist::borrow_for_situation(
             &clothes,
             &wardrobe,
-            &crate::services::shortlist::ShortlistContext {
-                temperature: weather.temperature,
-                situation: body.occasion.as_deref(),
-                current_season: None,
-                recent_item_ids: &no_recent,
-            },
+            &borrow_ctx,
             mood,
             &genres,
         );
+        if let Some(outer) = crate::services::shortlist::borrow_winter_outer(
+            &clothes,
+            &wardrobe,
+            &borrow_ctx,
+            selected_mood,
+            &genres,
+        ) {
+            borrowed.push(outer.clone());
+        }
         if !borrowed.is_empty() {
             tracing::info!(
                 borrowed = ?borrowed.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
@@ -360,11 +370,19 @@ async fn get_multi_recommendation(
     }
     // 팝도 후보 목록에 색 계열을 남기고 깨진 이름을 뺀다 — 색이 무드의 중심이다.
     let pop = mood == Some(StyleGenre::Pop);
-    let shortlist = if palette || pop {
+    let mut shortlist = if palette || pop {
         crate::services::shortlist::build_all_shortlists_with_palette(&clothes, &sl_ctx)
     } else {
         crate::services::shortlist::build_all_shortlists(&clothes, &sl_ctx)
     };
+    // 무드·역할별 상위 후보에서 방한 외투가 빠져도 보완 단계가 같은 목록에서 쓸 수 있게 한다.
+    use crate::services::serving_ranker::{NEAR_FREEZING_C, is_winter_outer};
+    if weather.temperature < NEAR_FREEZING_C && !shortlist.outers.iter().any(|c| is_winter_outer(c))
+    {
+        if let Some(outer) = clothes.iter().find(|c| is_winter_outer(c)) {
+            shortlist.outers.push(outer);
+        }
+    }
     tracing::info!("{}", shortlist.summary());
     // 글램·엣지는 소재·실루엣·두께·특징까지 넘긴다 — 어떤 옷이 빛을 받는지, 어떤 형태인지가
     // 판단의 중심이라 이름만으로는 모자라다. 다른 무드는 예전과 같은 줄이다.
@@ -526,19 +544,6 @@ async fn get_multi_recommendation(
             .then_with(|| b.style_score.cmp(&a.style_score))
     });
 
-    // 이미 보여 준 코디와 거의 같은 후보를 뺀다. 무드를 바꿔 요청해도 같은 코디가 다시
-    // 나오던 문제 — 화면이 무드마다 따로 요청해서 서버는 앞서 보여 준 것을 몰랐다.
-    // 아래 모드 선택 함수는 그대로 두고 그 입력만 거른다.
-    let before = reranked.len();
-    let reranked = cross_mood::drop_repeats(reranked, &body.avoid_outfits);
-    if reranked.len() != before {
-        tracing::info!(
-            dropped = before - reranked.len(),
-            avoid = body.avoid_outfits.len(),
-            "이미 보여 준 코디와 겹치는 후보를 뺐다"
-        );
-    }
-
     // 휴면 아이템 감지
     let all_ids: Vec<String> = clothes.iter().map(|c| c.id.clone()).collect();
     let dormant_ids =
@@ -626,6 +631,20 @@ async fn get_multi_recommendation(
             .cmp(&a.final_score)
             .then_with(|| b.style_score.cmp(&a.style_score))
     });
+    // 이미 보여 준 코디와 거의 같은 후보를 뺀다. 무드를 바꿔 요청해도 같은 코디가 다시
+    // 나오던 문제 — 화면이 무드마다 따로 요청해서 서버는 앞서 보여 준 것을 몰랐다.
+    // 오늘 입기 판정 뒤에 거른다: 앞에서 거르면 입을 수 있는 후보가 반복뿐일 때 빈 응답이 됐다
+    // (2026-11-18 여성 스트리트 -10°C 여섯 번째 연속 요청 — 반복 3개를 뺀 뒤 남은 하나가 실패).
+    // 입을 수 있는 후보가 전부 반복이면 `drop_repeats` 는 그대로 둔다.
+    let before = servable.len();
+    let servable = cross_mood::drop_repeats(servable, &body.avoid_outfits);
+    if servable.len() != before {
+        tracing::info!(
+            dropped = before - servable.len(),
+            avoid = body.avoid_outfits.len(),
+            "이미 보여 준 코디와 겹치는 후보를 뺐다"
+        );
+    }
     if servable.is_empty() {
         tracing::warn!(
             candidates = reranked.len(),

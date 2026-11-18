@@ -248,7 +248,7 @@ export function HomePage({
       // 옷장 목록에서 이름으로 찾아 채운다. 요청이 커지지 않게 최근 30개만.
       const idByName = new Map(clothes.map((c) => [c.name, c.id]));
       const avoid_outfits = looksRef.current
-        .slice(-30)
+        .slice(0, 30)
         .map((l) =>
           l.outfit
             .map((o) => o.id ?? idByName.get(o.name))

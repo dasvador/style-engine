@@ -25,7 +25,7 @@ const HEAT_FAIL_C: f64 = 26.0;
 const OUTER_BONUS: i32 = 2;
 /// 이 기온 미만은 겨울 외출로 본다 — 겨울 외투가 있어야 통과하고, 하체 노출도 따진다.
 /// 운영의 보수적인 기준선이지, 이 기온에서 누구나 춥다는 과학적 경계가 아니다.
-const NEAR_FREEZING_C: f64 = 5.0;
+pub(crate) const NEAR_FREEZING_C: f64 = 5.0;
 /// 이 기온 미만에서는 하체가 얼마나 드러나는지를 따로 본다(같은 성격의 운영 기준).
 const LEG_CHECK_BELOW_C: f64 = 10.0;
 /// 이 기온 미만에서 코트는 여며 입는 것을 기준으로 판정하고, 그 상태를 응답·이미지에 넘긴다.
@@ -225,6 +225,8 @@ pub fn has_confirmed_insulation(c: &Clothing) -> bool {
             "fleece lining",
             "fleece-lined",
             "thermal lining",
+            // 워크 재킷의 울·아크릴 담요 안감(예: 디트로이트 재킷 겨울형).
+            "blanket lining",
         ]
         .iter()
         .any(|w| k.contains(w))
@@ -670,6 +672,13 @@ mod tests {
             compute_today_fit(&with(vec![tank.clone(), shearling]), 2.0),
             TodayFitLevel::Pass
         );
+        // 담요 안감 워크 재킷도 안감이 적혀 있으면 겨울 외투다.
+        let blanket = described(
+            outer(Weight::Heavy, Thickness::Thick),
+            "rigid cotton duck canvas, striped blanket lining, hip-length",
+            "워크자켓",
+        );
+        assert!(is_winter_outer(&blanket.clothing));
         // 8°C 는 겨울 외투 조건 밖이다 — 얇은 이너 + 라이더는 합계(2 + 6 = 8)로 통과.
         assert_eq!(
             compute_today_fit(&with(vec![tank, rider]), 8.0),

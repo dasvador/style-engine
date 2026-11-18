@@ -292,6 +292,25 @@ pub fn borrow_for_situation(
     borrowed
 }
 
+/// 얇은 이너가 많은 무드도 한겨울에 입을 수 있도록, 무드 안에 없는 겨울 외투 한 벌을 찾는다.
+pub(crate) fn borrow_winter_outer<'a>(
+    pool: &[Clothing],
+    wardrobe: &'a [Clothing],
+    ctx: &ShortlistContext,
+    mood: StyleGenre,
+    genres: &HashMap<String, Vec<String>>,
+) -> Option<&'a Clothing> {
+    use super::serving_ranker::{NEAR_FREEZING_C, is_winter_outer};
+    let eligible = |c: &Clothing| is_winter_outer(c) && !fails_situation(c, ctx.situation);
+    if ctx.temperature >= NEAR_FREEZING_C || pool.iter().any(eligible) {
+        return None;
+    }
+    wardrobe
+        .iter()
+        .filter(|c| eligible(c))
+        .max_by_key(|c| (mood_affinity(mood, genres.get(&c.id)), score_item(c, ctx)))
+}
+
 /// 무드에서 가까운 장르. 앞에 있을수록 가깝다. 무드 밖에서 옷을 빌릴 때 이 순서로 고른다.
 ///
 /// 장르 설명(`StyleGenre`)과 옷장의 장르 겹침에서 정했다 — 예를 들어 미니멀과 클래식은
@@ -362,8 +381,25 @@ fn eligible<'a>(
         pool.into_iter().map(|c| (c, score_item(c, ctx))).collect();
 
     candidates.sort_by_key(|a| std::cmp::Reverse(a.1));
+    // 5°C 미만에 겨울 외투가 두 벌 이상이면 외투 후보는 겨울 외투만 남긴다. 점수(`score_item`)는
+    // 보온을 보지 않고, 대부분의 무드는 모델에 외투 이름만 보내서, 2026-11-18 영하 실측에서 남성 카드의
+    // 절반 넘게 코치·하링턴 같은 안감 미확인 외투로 나갔다(서빙에서는 경계 감점만 받는다).
+    // 한 벌 이하면 목록을 바꾸지 않는다 — 그때는 무드 밖에서 빌려 온다(`borrow_winter_outer`).
+    if category == "아우터" && ctx.temperature < super::serving_ranker::NEAR_FREEZING_C {
+        let winter: Vec<(&Clothing, i32)> = candidates
+            .iter()
+            .copied()
+            .filter(|(c, _)| super::serving_ranker::is_winter_outer(c))
+            .collect();
+        if winter.len() >= MIN_WINTER_OUTERS {
+            return winter;
+        }
+    }
     candidates
 }
+
+/// 추운 날 외투 후보를 겨울 외투로만 채우는 최소 벌 수. 한 벌뿐이면 매번 같은 외투가 나온다.
+const MIN_WINTER_OUTERS: usize = 2;
 
 pub fn build_shortlist<'a>(
     clothes: &'a [Clothing],
@@ -943,5 +979,39 @@ mod tests {
             ids(&clothes, "상의", Some("출근")),
             vec!["그래픽 티", "셔츠", "후드티"]
         );
+    }
+
+    /// 영하에 겨울 외투가 두 벌 이상이면 외투 후보는 겨울 외투만이다. 한 벌뿐이면 목록을 그대로 둔다.
+    #[test]
+    fn freezing_keeps_only_winter_outers_when_there_are_two() {
+        let winter = |id: &str| {
+            let mut c = item(id, "아우터", Style::Basic, 2);
+            c.thickness = Thickness::Thick;
+            c.texture_keywords = Some("wool, padded quilted lining, knee-length".into());
+            c
+        };
+        let plain = item("코치 자켓", "아우터", Style::Basic, 2);
+        let recent = HashSet::new();
+        let ctx = |t: f64| ShortlistContext {
+            temperature: t,
+            situation: None,
+            current_season: None,
+            recent_item_ids: &recent,
+        };
+        let names = |clothes: &[Clothing], t: f64| -> Vec<String> {
+            let mut v: Vec<String> = eligible(clothes, "아우터", &ctx(t))
+                .into_iter()
+                .map(|(c, _)| c.id.clone())
+                .collect();
+            v.sort();
+            v
+        };
+        let two = vec![winter("패디드 코트"), winter("다운 코트"), plain.clone()];
+        assert_eq!(names(&two, -5.0), vec!["다운 코트", "패디드 코트"]);
+        // 5°C 이상이면 그대로다.
+        assert_eq!(names(&two, 8.0).len(), 3);
+        // 한 벌뿐이면 그대로다.
+        let one = vec![winter("패디드 코트"), plain];
+        assert_eq!(names(&one, -5.0).len(), 2);
     }
 }
